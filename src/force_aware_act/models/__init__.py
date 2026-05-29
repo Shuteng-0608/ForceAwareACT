@@ -2,6 +2,7 @@
 
 from force_aware_act.models.cross_attention import ForceVisionCrossAttention
 from force_aware_act.models.force import TemporalForceEncoder
+from force_aware_act.models.heads import ActionHead, ForceHead
 from force_aware_act.models.posterior import (
     ContactPosteriorEncoder,
     MotionPosteriorEncoder,
@@ -18,4 +19,6 @@ __all__ = [
     "ContactPosteriorEncoder",
     "reparameterize",
     "kl_normal",
+    "ActionHead",
+    "ForceHead",
 ]
