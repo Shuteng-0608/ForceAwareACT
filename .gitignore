@@ -21,3 +21,5 @@ datasets/
 *.pt
 *.pth
 *.ckpt
+*.egg-info/
+src/*.egg-info/
