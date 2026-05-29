@@ -12,6 +12,7 @@ dependencies = [
     "h5py",
     "numpy",
     "torch",
+    "torchvision",
 ]
 
 [project.optional-dependencies]

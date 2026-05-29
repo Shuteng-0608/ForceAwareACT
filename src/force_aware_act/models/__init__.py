@@ -1,1 +1,5 @@
-"""Model placeholders for ForceAwareACT."""
+"""Model modules for ForceAwareACT."""
+
+from force_aware_act.models.vision import ResNet18VisionEncoder
+
+__all__ = ["ResNet18VisionEncoder"]
