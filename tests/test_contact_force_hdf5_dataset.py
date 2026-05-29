@@ -61,7 +61,12 @@ def test_contact_force_hdf5_dataset_shapes(tmp_path):
     sample = dataset[5]
 
     assert len(dataset) == 89
-    assert sample["images"].shape == (2, 3, 64, 64)
+    assert sample["images"].shape == (2, 3, 224, 224)
+    np.testing.assert_allclose(sample["images"][0].numpy(), np.full((3, 224, 224), 2 / 255.0))
+    np.testing.assert_allclose(
+        sample["images"][1].numpy(),
+        np.full((3, 224, 224), 52 / 255.0),
+    )
     assert sample["qpos"].shape == (7,)
     assert sample["qvel"].shape == (7,)
     assert sample["joint_torque"].shape == (7,)
@@ -85,6 +90,9 @@ def test_contact_force_hdf5_dataset_timestamp_alignment(tmp_path):
 
     sample = dataset[5]
 
+    assert sample["images"].shape == (2, 3, 224, 224)
+    np.testing.assert_array_equal(sample["images"][0].numpy(), np.full((3, 224, 224), 2.0))
+    np.testing.assert_array_equal(sample["images"][1].numpy(), np.full((3, 224, 224), 52.0))
     assert sample["state_index"] == 5
     assert sample["t_state"] == np.float32(0.5)
     assert sample["image_index"] == 2
@@ -107,4 +115,33 @@ def test_contact_force_hdf5_dataset_timestamp_alignment(tmp_path):
         sample["future_force_chunk"].numpy(),
         np.arange(500 * 6, dtype=np.float32)
         .reshape(500, 6)[expected_future_force_indices],
+    )
+
+
+def test_contact_force_hdf5_dataset_imagenet_normalization(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+
+    dataset = ContactForceHDF5Dataset(
+        episode_path,
+        chunk_len=4,
+        force_window_len=5,
+        force_window_duration=0.08,
+        imagenet_normalize=True,
+    )
+
+    sample = dataset[5]
+
+    expected = np.array(
+        [
+            (2 / 255.0 - 0.485) / 0.229,
+            (2 / 255.0 - 0.456) / 0.224,
+            (2 / 255.0 - 0.406) / 0.225,
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(
+        sample["images"][0].numpy(),
+        expected[:, None, None] * np.ones((3, 224, 224), dtype=np.float32),
+        rtol=1e-6,
     )
