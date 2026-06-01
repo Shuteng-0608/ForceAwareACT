@@ -23,6 +23,18 @@ from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # no
 from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
 
 
+COLOR_COLUMNS = {
+    "future_force_mean": ("force_norm_future_mean", "future force mean"),
+    "future_force_max": ("force_norm_future_max", "future force max"),
+    "force_delta": ("force_norm_future_delta", "future force mean - current force"),
+    "current_force": ("force_norm_current", "current force"),
+    "current_torque": ("torque_norm_current", "current torque"),
+    "future_torque_mean": ("torque_norm_future_mean", "future torque mean"),
+    "time": ("t_state", "time"),
+    "loss_force_per_sample": ("loss_force_per_sample", "force loss per sample"),
+}
+
+
 class IndexedDataset(Dataset):
     """Return selected dataset samples with their original dataset index."""
 
@@ -119,6 +131,10 @@ def _write_rows(output_csv: Path, rows: list[dict], z_dim: int) -> None:
         "t_state",
         "force_norm_current",
         "force_norm_future_mean",
+        "force_norm_future_max",
+        "force_norm_future_delta",
+        "torque_norm_current",
+        "torque_norm_future_mean",
         *[f"mu_contact_{index}" for index in range(z_dim)],
         *[f"mu_motion_{index}" for index in range(z_dim)],
         "loss_force_per_sample",
@@ -129,14 +145,16 @@ def _write_rows(output_csv: Path, rows: list[dict], z_dim: int) -> None:
         writer.writerows(rows)
 
 
-def _save_plot(rows: list[dict], z_dim: int, plot_path: Path) -> None:
+def _save_plot(rows: list[dict], z_dim: int, plot_path: Path, color_by: str) -> None:
     try:
         import matplotlib.pyplot as plt
     except ImportError:
         print("matplotlib is not available; skipping plot", file=sys.stderr)
         return
 
-    pca_result = _compute_contact_pca(rows, z_dim)
+    color_column, color_label = COLOR_COLUMNS[color_by]
+    print(f"color_mode={color_by}")
+    pca_result = _compute_contact_pca(rows, z_dim, color_column)
     print(f"pca_rows_used={pca_result['rows_used']}")
     if pca_result["singular_values"] is not None:
         singular_values = pca_result["singular_values"]
@@ -151,19 +169,20 @@ def _save_plot(rows: list[dict], z_dim: int, plot_path: Path) -> None:
     scatter = plt.scatter(pcs[:, 0], pcs[:, 1], c=colors, cmap="viridis", s=16)
     plt.xlabel("mu_contact PC1")
     plt.ylabel("mu_contact PC2")
-    plt.colorbar(scatter, label="future force norm mean")
+    plt.title(f"mu_contact PCA colored by {color_label}")
+    plt.colorbar(scatter, label=color_label)
     plt.tight_layout()
     plt.savefig(plot_path)
     plt.close()
     print(f"saved_plot={plot_path}")
 
 
-def _compute_contact_pca(rows: list[dict], z_dim: int) -> dict:
+def _compute_contact_pca(rows: list[dict], z_dim: int, color_column: str) -> dict:
     mu_contact = np.array(
         [[row[f"mu_contact_{index}"] for index in range(z_dim)] for row in rows],
         dtype=np.float64,
     )
-    colors = np.array([row["force_norm_future_mean"] for row in rows], dtype=np.float64)
+    colors = np.array([row[color_column] for row in rows], dtype=np.float64)
     finite_mask = np.isfinite(mu_contact).all(axis=1) & np.isfinite(colors)
     mu_contact = mu_contact[finite_mask]
     colors = colors[finite_mask]
@@ -261,8 +280,16 @@ def analyze(args: argparse.Namespace) -> int:
                 normalized["future_force_chunk"],
                 reduction="none",
             ).mean(dim=(1, 2))
-            force_norm_current = raw_batch["force_window"][:, -1, :].norm(dim=-1)
-            force_norm_future_mean = raw_batch["future_force_chunk"].norm(dim=-1).mean(dim=1)
+            current_wrench = raw_batch["force_window"][:, -1, :]
+            future_wrench = raw_batch["future_force_chunk"]
+            force_norm_current = current_wrench[:, :3].norm(dim=-1)
+            torque_norm_current = current_wrench[:, 3:6].norm(dim=-1)
+            future_force_norms = future_wrench[:, :, :3].norm(dim=-1)
+            future_torque_norms = future_wrench[:, :, 3:6].norm(dim=-1)
+            force_norm_future_mean = future_force_norms.mean(dim=1)
+            force_norm_future_max = future_force_norms.max(dim=1).values
+            force_norm_future_delta = force_norm_future_mean - force_norm_current
+            torque_norm_future_mean = future_torque_norms.mean(dim=1)
 
             for row_index in range(outputs["mu_contact"].shape[0]):
                 row = {
@@ -270,6 +297,10 @@ def analyze(args: argparse.Namespace) -> int:
                     "t_state": float(raw_batch["t_state"][row_index]),
                     "force_norm_current": float(force_norm_current[row_index]),
                     "force_norm_future_mean": float(force_norm_future_mean[row_index]),
+                    "force_norm_future_max": float(force_norm_future_max[row_index]),
+                    "force_norm_future_delta": float(force_norm_future_delta[row_index]),
+                    "torque_norm_current": float(torque_norm_current[row_index]),
+                    "torque_norm_future_mean": float(torque_norm_future_mean[row_index]),
                     "loss_force_per_sample": float(loss_force_per_sample[row_index].cpu()),
                 }
                 for latent_index, value in enumerate(
@@ -288,7 +319,7 @@ def analyze(args: argparse.Namespace) -> int:
     print(f"sampled_rows={len(rows)}")
     print(f"saved_csv={args.output_csv}")
     if args.plot is not None:
-        _save_plot(rows, z_dim, args.plot)
+        _save_plot(rows, z_dim, args.plot, args.color_by)
     return 0
 
 
@@ -299,6 +330,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("normalization_stats", type=Path)
     parser.add_argument("output_csv", type=Path)
     parser.add_argument("--plot", type=Path, default=None)
+    parser.add_argument(
+        "--color-by",
+        choices=sorted(COLOR_COLUMNS.keys()),
+        default="future_force_mean",
+    )
     parser.add_argument("--max-samples", type=int, default=200)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=8)

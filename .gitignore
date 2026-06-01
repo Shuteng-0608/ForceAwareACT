@@ -16,6 +16,8 @@ checkpoints/
 
 data/
 datasets/
+peg_in_hole_hdf5/
+
 *.hdf5
 *.h5
 *.pt
