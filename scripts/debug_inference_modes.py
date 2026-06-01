@@ -148,6 +148,7 @@ def run_debug(args: argparse.Namespace) -> int:
             future_force_chunk=None,
             is_training=False,
             contact_latent_mode="prior",
+            deterministic_prior=True,
         )
         outputs_posterior = model(
             images=batch["images"],
@@ -162,10 +163,14 @@ def run_debug(args: argparse.Namespace) -> int:
     print(f"dataset_length={len(dataset)}")
     print(f"batch_size={batch['qpos'].shape[0]}")
     _print_shapes(outputs_zero, outputs_prior, outputs_posterior)
+    prior_uses_mean = torch.equal(outputs_prior["z_contact_prior"], outputs_prior["mu_contact_prior"])
+    print(f"deterministic_prior=True")
+    print(f"z_contact_prior_equals_mu_contact_prior={prior_uses_mean}")
 
     action_target = batch["action_chunk"]
     force_target = batch["future_force_chunk"]
-    z_delta = outputs_prior["z_contact"] - outputs_posterior["z_contact"]
+    mu_delta = outputs_prior["mu_contact_prior"] - outputs_posterior["mu_contact"]
+    z_delta = outputs_prior["z_contact_prior"] - outputs_posterior["z_contact"]
 
     print("\nMetrics")
     print("-------")
@@ -193,12 +198,22 @@ def run_debug(args: argparse.Namespace) -> int:
         "force_l1_posterior_to_target",
         functional.l1_loss(outputs_posterior["pred_force"], force_target),
     )
-    _print_metric("z_prior_to_posterior_mse", z_delta.pow(2).mean())
-    _print_metric("z_prior_to_posterior_l2", z_delta.norm(dim=-1).mean())
+    _print_metric("mu_prior_to_mu_posterior_mse", mu_delta.pow(2).mean())
+    _print_metric("mu_prior_to_mu_posterior_l2", mu_delta.norm(dim=-1).mean())
     _print_metric(
-        "z_prior_to_posterior_cosine",
+        "mu_prior_to_mu_posterior_cosine",
         functional.cosine_similarity(
-            outputs_prior["z_contact"],
+            outputs_prior["mu_contact_prior"],
+            outputs_posterior["mu_contact"],
+            dim=-1,
+        ).mean(),
+    )
+    _print_metric("z_prior_to_z_posterior_mse", z_delta.pow(2).mean())
+    _print_metric("z_prior_to_z_posterior_l2", z_delta.norm(dim=-1).mean())
+    _print_metric(
+        "z_prior_to_z_posterior_cosine",
+        functional.cosine_similarity(
+            outputs_prior["z_contact_prior"],
             outputs_posterior["z_contact"],
             dim=-1,
         ).mean(),
@@ -211,6 +226,11 @@ def run_debug(args: argparse.Namespace) -> int:
         "pred_force_zero_prior_mean_abs_diff",
         (outputs_zero["pred_force"] - outputs_prior["pred_force"]).abs().mean(),
     )
+    print("\nInterpretation")
+    print("--------------")
+    print("zero: deployable baseline with z_contact=0")
+    print("prior: deployable deterministic conditional prior using mu_contact_prior")
+    print("posterior: oracle/debug only; it uses future action and force labels")
     return 0
 
 
