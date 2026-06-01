@@ -98,6 +98,8 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "chunk_len": args.chunk_len,
         "force_window_len": args.force_window_len,
         "force_window_duration": args.force_window_duration,
+        "image_size": tuple(args.image_size),
+        "camera_names": tuple(args.camera_names),
         "imagenet_normalize": args.imagenet_normalize,
         "batch_size": args.batch_size,
         "num_workers": args.num_workers,
@@ -133,12 +135,12 @@ def train(args: argparse.Namespace) -> int:
     normalization_stats = _load_normalization_stats(args.normalization_stats)
     dataset = ContactForceHDF5Dataset(
         args.episode_paths,
-        camera_names=("ee_cam", "base_top_cam"),
+        camera_names=tuple(args.camera_names),
         action_mode="joint_pos",
         chunk_len=args.chunk_len,
         force_window_len=args.force_window_len,
         force_window_duration=args.force_window_duration,
-        image_size=(224, 224),
+        image_size=tuple(args.image_size),
         imagenet_normalize=args.imagenet_normalize,
     )
     if len(dataset) == 0:
@@ -272,6 +274,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
+    parser.add_argument("--image-size", type=int, nargs=2, default=(224, 224))
+    parser.add_argument("--camera-names", nargs="+", default=("ee_cam", "base_top_cam"))
     parser.add_argument("--imagenet-normalize", action="store_true")
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-workers", type=int, default=0)
@@ -307,6 +311,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.batch_size <= 0:
         print("error: --batch-size must be positive", file=sys.stderr)
+        return 2
+    if len(args.image_size) != 2 or args.image_size[0] <= 0 or args.image_size[1] <= 0:
+        print("error: --image-size must be two positive integers", file=sys.stderr)
+        return 2
+    if not args.camera_names:
+        print("error: --camera-names must include at least one camera", file=sys.stderr)
         return 2
     if args.max_steps <= 0:
         print("error: --max-steps must be positive", file=sys.stderr)

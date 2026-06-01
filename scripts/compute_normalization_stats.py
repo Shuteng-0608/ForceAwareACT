@@ -26,12 +26,12 @@ from script_utils import resolve_episode_paths, validate_episode_paths  # noqa: 
 def compute_and_save(args: argparse.Namespace) -> int:
     dataset = ContactForceHDF5Dataset(
         args.episode_paths,
-        camera_names=("ee_cam", "base_top_cam"),
         action_mode="joint_pos",
         chunk_len=args.chunk_len,
         force_window_len=args.force_window_len,
         force_window_duration=args.force_window_duration,
-        image_size=(224, 224),
+        image_size=tuple(args.image_size),
+        camera_names=tuple(args.camera_names),
         imagenet_normalize=args.imagenet_normalize,
     )
     print(f"dataset_length={len(dataset)}")
@@ -60,6 +60,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--chunk-len", type=int, default=50)
     parser.add_argument("--force-window-len", type=int, default=50)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
+    parser.add_argument("--image-size", type=int, nargs=2, default=(224, 224))
+    parser.add_argument("--camera-names", nargs="+", default=("ee_cam", "base_top_cam"))
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--eps", type=float, default=1.0e-6)
@@ -84,6 +86,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.batch_size <= 0:
         print("error: --batch-size must be positive", file=sys.stderr)
+        return 2
+    if len(args.image_size) != 2 or args.image_size[0] <= 0 or args.image_size[1] <= 0:
+        print("error: --image-size must be two positive integers", file=sys.stderr)
+        return 2
+    if not args.camera_names:
+        print("error: --camera-names must include at least one camera", file=sys.stderr)
         return 2
     if args.eps <= 0:
         print("error: --eps must be positive", file=sys.stderr)

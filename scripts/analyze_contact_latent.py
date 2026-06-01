@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Sequence
 
+import h5py
 import numpy as np
 import torch
 import torch.nn.functional as functional
@@ -19,13 +21,18 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
+from force_aware_act.data import ContactForceHDF5Dataset, nearest_index, normalize_tensor  # noqa: E402
 from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
 from script_utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
 COLOR_COLUMNS = {
-    "future_force_mean": ("force_norm_future_mean", "future force mean"),
+    "future_force_mean": ("future_force_mean_raw", "future force mean raw"),
+    "future_force_mean_raw": ("future_force_mean_raw", "future force mean raw"),
+    "future_force_mean_normalized": (
+        "future_force_mean_normalized",
+        "future force mean normalized",
+    ),
     "future_force_max": ("force_norm_future_max", "future force max"),
     "force_delta": ("force_norm_future_delta", "future force mean - current force"),
     "current_force": ("force_norm_current", "current force"),
@@ -33,25 +40,50 @@ COLOR_COLUMNS = {
     "future_torque_mean": ("torque_norm_future_mean", "future torque mean"),
     "time": ("t_state", "time"),
     "loss_force_per_sample": ("loss_force_per_sample", "force loss per sample"),
-    "episode_id": ("episode_id", "episode id"),
+    "episode_id": ("episode_numeric_id", "episode id"),
 }
+
+
+FORCE_BINS = ("low", "mid", "high")
+
+
+@dataclass(frozen=True)
+class SampleCandidate:
+    episode_id: int
+    local_index: int
+    global_index: int
+    future_force_mean_raw: Optional[float] = None
+    force_bin: str = ""
 
 
 class MultiEpisodeIndexedDataset(Dataset):
     """Return selected samples with global index and episode id."""
 
-    def __init__(self, datasets: Sequence[Dataset], indices: Sequence[tuple[int, int]]) -> None:
+    def __init__(
+        self,
+        datasets: Sequence[Dataset],
+        episode_paths: Sequence[Path],
+        indices: Sequence[SampleCandidate],
+    ) -> None:
         self.datasets = list(datasets)
+        self.episode_paths = [str(path) for path in episode_paths]
         self.indices = list(indices)
 
     def __len__(self) -> int:
         return len(self.indices)
 
     def __getitem__(self, item: int) -> dict:
-        episode_id, local_index = self.indices[item]
-        sample = dict(self.datasets[episode_id][local_index])
-        sample["episode_id"] = episode_id
-        sample["dataset_index"] = local_index
+        candidate = self.indices[item]
+        sample = dict(self.datasets[candidate.episode_id][candidate.local_index])
+        sample["episode_id"] = self.episode_paths[candidate.episode_id]
+        sample["episode_numeric_id"] = candidate.episode_id
+        sample["dataset_index"] = candidate.global_index
+        sample["sample_future_force_mean_raw"] = (
+            float("nan")
+            if candidate.future_force_mean_raw is None
+            else candidate.future_force_mean_raw
+        )
+        sample["sample_force_bin"] = candidate.force_bin
         return sample
 
 
@@ -101,30 +133,353 @@ def _model_kwargs_from_checkpoint(checkpoint: dict) -> dict:
     return model_config
 
 
-def _dataset_kwargs_from_checkpoint(checkpoint: dict) -> dict:
-    config = checkpoint.get("config", {})
+def _dataset_kwargs_from_args(args: argparse.Namespace) -> dict:
     return {
-        "camera_names": ("ee_cam", "base_top_cam"),
+        "camera_names": tuple(args.camera_names),
         "action_mode": "joint_pos",
-        "chunk_len": int(config.get("chunk_len", 10)),
-        "force_window_len": int(config.get("force_window_len", 20)),
-        "force_window_duration": float(config.get("force_window_duration", 0.25)),
-        "image_size": (224, 224),
-        "imagenet_normalize": bool(config.get("imagenet_normalize", False)),
+        "chunk_len": args.chunk_len,
+        "force_window_len": args.force_window_len,
+        "force_window_duration": args.force_window_duration,
+        "image_size": tuple(args.image_size),
+        "imagenet_normalize": False,
     }
 
 
-def _sample_indices(datasets: Sequence[Dataset], max_samples: Optional[int], stride: int) -> list[tuple[int, int]]:
-    indices = [
-        (episode_id, local_index)
+def _episode_offsets(datasets: Sequence[Dataset]) -> list[int]:
+    offsets = []
+    running_total = 0
+    for dataset in datasets:
+        offsets.append(running_total)
+        running_total += len(dataset)
+    return offsets
+
+
+def _candidate_grid(datasets: Sequence[Dataset], stride: int) -> list[list[SampleCandidate]]:
+    offsets = _episode_offsets(datasets)
+    return [
+        [
+            SampleCandidate(
+                episode_id=episode_id,
+                local_index=local_index,
+                global_index=offsets[episode_id] + local_index,
+            )
+            for local_index in range(0, len(dataset), stride)
+        ]
         for episode_id, dataset in enumerate(datasets)
-        for local_index in range(0, len(dataset), stride)
     ]
-    if max_samples is not None:
-        indices = indices[:max_samples]
+
+
+def _estimate_episode_future_force_means(
+    dataset: ContactForceHDF5Dataset,
+    candidates: Sequence[SampleCandidate],
+) -> list[SampleCandidate]:
+    if not candidates:
+        return []
+
+    with h5py.File(dataset.episode_paths[0], "r") as handle:
+        state_ts = np.asarray(handle["timestamps/state_episode"])
+        force_ts = np.asarray(handle["timestamps/force_episode"])
+        ft_wrench = np.asarray(handle["observations/ft_wrench"])
+
+    estimated = []
+    for candidate in candidates:
+        state_index = dataset.indices[candidate.local_index].state_index
+        future_force_indices = np.array(
+            [
+                nearest_index(force_ts, float(state_ts[state_index + step]))
+                for step in range(dataset.chunk_len)
+            ],
+            dtype=np.int64,
+        )
+        future_force_chunk = ft_wrench[future_force_indices]
+        future_force_mean = float(np.linalg.norm(future_force_chunk[:, :3], axis=1).mean())
+        estimated.append(
+            SampleCandidate(
+                episode_id=candidate.episode_id,
+                local_index=candidate.local_index,
+                global_index=candidate.global_index,
+                future_force_mean_raw=future_force_mean,
+                force_bin=candidate.force_bin,
+            )
+        )
+    return estimated
+
+
+def _assign_force_bins(candidates: Sequence[SampleCandidate]) -> list[SampleCandidate]:
+    if not candidates:
+        return []
+    values = np.array([candidate.future_force_mean_raw for candidate in candidates], dtype=np.float64)
+    finite_mask = np.isfinite(values)
+    if not finite_mask.any():
+        return [
+            SampleCandidate(
+                episode_id=candidate.episode_id,
+                local_index=candidate.local_index,
+                global_index=candidate.global_index,
+                future_force_mean_raw=candidate.future_force_mean_raw,
+                force_bin="unknown",
+            )
+            for candidate in candidates
+        ]
+
+    low_cut, high_cut = np.quantile(values[finite_mask], [1.0 / 3.0, 2.0 / 3.0])
+    binned = []
+    for candidate, value in zip(candidates, values):
+        if not np.isfinite(value):
+            force_bin = "unknown"
+        elif value <= low_cut:
+            force_bin = "low"
+        elif value <= high_cut:
+            force_bin = "mid"
+        else:
+            force_bin = "high"
+        binned.append(
+            SampleCandidate(
+                episode_id=candidate.episode_id,
+                local_index=candidate.local_index,
+                global_index=candidate.global_index,
+                future_force_mean_raw=candidate.future_force_mean_raw,
+                force_bin=force_bin,
+            )
+        )
+    return binned
+
+
+def _with_force_estimates(
+    datasets: Sequence[ContactForceHDF5Dataset],
+    candidates_by_episode: Sequence[Sequence[SampleCandidate]],
+) -> list[list[SampleCandidate]]:
+    estimated_by_episode = []
+    for dataset, candidates in zip(datasets, candidates_by_episode):
+        estimated = _estimate_episode_future_force_means(dataset, candidates)
+        estimated_by_episode.append(_assign_force_bins(estimated))
+    return estimated_by_episode
+
+
+def _force_stats(candidates: Sequence[SampleCandidate]) -> Optional[dict[str, float]]:
+    values = np.array(
+        [
+            candidate.future_force_mean_raw
+            for candidate in candidates
+            if candidate.future_force_mean_raw is not None
+        ],
+        dtype=np.float64,
+    )
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return None
+    return {
+        "min": float(values.min()),
+        "max": float(values.max()),
+        "mean": float(values.mean()),
+        "std": float(values.std()),
+    }
+
+
+def _print_force_stats(label: str, candidates: Sequence[SampleCandidate]) -> None:
+    stats = _force_stats(candidates)
+    if stats is None:
+        print(f"{label}=unavailable")
+        return
+    print(
+        f"{label}=min={stats['min']:.6g} "
+        f"max={stats['max']:.6g} "
+        f"mean={stats['mean']:.6g} "
+        f"std={stats['std']:.6g}"
+    )
+
+
+def _force_bin_counts(candidates: Sequence[SampleCandidate]) -> dict[str, int]:
+    counts = {force_bin: 0 for force_bin in FORCE_BINS}
+    for candidate in candidates:
+        if candidate.force_bin in counts:
+            counts[candidate.force_bin] += 1
+        elif candidate.force_bin:
+            counts[candidate.force_bin] = counts.get(candidate.force_bin, 0) + 1
+    return counts
+
+
+def _flatten_candidates(candidates_by_episode: Sequence[Sequence[SampleCandidate]]) -> list[SampleCandidate]:
+    return [
+        candidate
+        for candidates in candidates_by_episode
+        for candidate in candidates
+    ]
+
+
+def _select_stratified_episode(
+    candidates_by_episode: Sequence[Sequence[SampleCandidate]],
+    max_samples: Optional[int],
+) -> list[SampleCandidate]:
+    if max_samples is None or len(candidates_by_episode) <= 1:
+        indices = _flatten_candidates(candidates_by_episode)
+        return indices if max_samples is None else indices[:max_samples]
+
+    target_count = min(max_samples, sum(len(candidates) for candidates in candidates_by_episode))
+    base_count = target_count // len(candidates_by_episode)
+    remainder = target_count % len(candidates_by_episode)
+    selected_by_episode: list[list[SampleCandidate]] = []
+    next_position_by_episode = []
+
+    for episode_id, candidates in enumerate(candidates_by_episode):
+        requested = base_count + (1 if episode_id < remainder else 0)
+        selected = list(candidates[:requested])
+        selected_by_episode.append(selected)
+        next_position_by_episode.append(len(selected))
+
+    remaining = target_count - sum(len(selected) for selected in selected_by_episode)
+    while remaining > 0:
+        made_progress = False
+        for episode_id, candidates in enumerate(candidates_by_episode):
+            next_position = next_position_by_episode[episode_id]
+            if next_position >= len(candidates):
+                continue
+            selected_by_episode[episode_id].append(candidates[next_position])
+            next_position_by_episode[episode_id] += 1
+            remaining -= 1
+            made_progress = True
+            if remaining == 0:
+                break
+        if not made_progress:
+            break
+
+    return _flatten_candidates(selected_by_episode)
+
+
+def _take_force_balanced(candidates: Sequence[SampleCandidate], requested: int) -> list[SampleCandidate]:
+    if requested <= 0 or not candidates:
+        return []
+
+    by_bin = {
+        force_bin: [candidate for candidate in candidates if candidate.force_bin == force_bin]
+        for force_bin in FORCE_BINS
+    }
+    selected_by_bin = {force_bin: [] for force_bin in FORCE_BINS}
+    base_count = requested // len(FORCE_BINS)
+    remainder = requested % len(FORCE_BINS)
+
+    for bin_index, force_bin in enumerate(FORCE_BINS):
+        bin_requested = base_count + (1 if bin_index < remainder else 0)
+        selected_by_bin[force_bin] = by_bin[force_bin][:bin_requested]
+
+    remaining = min(requested, len(candidates)) - sum(
+        len(selected) for selected in selected_by_bin.values()
+    )
+    positions = {
+        force_bin: len(selected_by_bin[force_bin])
+        for force_bin in FORCE_BINS
+    }
+    while remaining > 0:
+        made_progress = False
+        for force_bin in FORCE_BINS:
+            position = positions[force_bin]
+            if position >= len(by_bin[force_bin]):
+                continue
+            selected_by_bin[force_bin].append(by_bin[force_bin][position])
+            positions[force_bin] += 1
+            remaining -= 1
+            made_progress = True
+            if remaining == 0:
+                break
+        if not made_progress:
+            break
+
+    selected = []
+    for force_bin in FORCE_BINS:
+        selected.extend(selected_by_bin[force_bin])
+    return sorted(selected, key=lambda candidate: candidate.local_index)
+
+
+def _select_force_balanced(
+    candidates_by_episode: Sequence[Sequence[SampleCandidate]],
+    max_samples: Optional[int],
+) -> list[SampleCandidate]:
+    total_count = sum(len(candidates) for candidates in candidates_by_episode)
+    if max_samples is None:
+        target_count = total_count
+    else:
+        target_count = min(max_samples, total_count)
+
+    base_count = target_count // len(candidates_by_episode)
+    remainder = target_count % len(candidates_by_episode)
+    selected_by_episode = []
+    for episode_id, candidates in enumerate(candidates_by_episode):
+        requested = base_count + (1 if episode_id < remainder else 0)
+        selected_by_episode.append(_take_force_balanced(candidates, requested))
+
+    remaining = target_count - sum(len(selected) for selected in selected_by_episode)
+    while remaining > 0:
+        made_progress = False
+        for episode_id, candidates in enumerate(candidates_by_episode):
+            selected_ids = {candidate.local_index for candidate in selected_by_episode[episode_id]}
+            extras = [
+                candidate
+                for candidate in candidates
+                if candidate.local_index not in selected_ids
+            ]
+            if not extras:
+                continue
+            selected_by_episode[episode_id].append(extras[0])
+            remaining -= 1
+            made_progress = True
+            if remaining == 0:
+                break
+        if not made_progress:
+            break
+
+    return _flatten_candidates(selected_by_episode)
+
+
+def _sample_indices(
+    datasets: Sequence[Dataset],
+    max_samples: Optional[int],
+    stride: int,
+) -> list[SampleCandidate]:
+    candidates_by_episode = _candidate_grid(datasets, stride)
+    indices = _select_stratified_episode(candidates_by_episode, max_samples)
     if not indices:
         raise ValueError("no dataset indices selected")
     return indices
+
+
+def _select_sample_indices(
+    datasets: Sequence[ContactForceHDF5Dataset],
+    max_samples: Optional[int],
+    stride: int,
+    sampling_mode: str,
+) -> tuple[list[SampleCandidate], list[SampleCandidate]]:
+    candidates_by_episode = _candidate_grid(datasets, stride)
+    candidates_by_episode = _with_force_estimates(datasets, candidates_by_episode)
+    all_candidates = _flatten_candidates(candidates_by_episode)
+    if sampling_mode == "uniform":
+        selected = all_candidates if max_samples is None else all_candidates[:max_samples]
+        return selected, all_candidates
+    if sampling_mode == "stratified_episode":
+        selected = _select_stratified_episode(candidates_by_episode, max_samples)
+        return selected, all_candidates
+    if sampling_mode == "force_balanced":
+        selected = _select_force_balanced(candidates_by_episode, max_samples)
+        return selected, all_candidates
+    raise ValueError(f"unsupported sampling_mode: {sampling_mode}")
+
+
+def _sampled_force_bin_counts(rows: list[dict]) -> dict[str, int]:
+    counts = {force_bin: 0 for force_bin in FORCE_BINS}
+    for row in rows:
+        force_bin = str(row.get("force_bin", ""))
+        if force_bin in counts:
+            counts[force_bin] += 1
+        elif force_bin:
+            counts[force_bin] = counts.get(force_bin, 0) + 1
+    return counts
+
+
+def _episode_counts(rows: list[dict]) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for row in rows:
+        episode_id = int(row["episode_numeric_id"])
+        counts[episode_id] = counts.get(episode_id, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _tensor_to_float_list(tensor: torch.Tensor) -> list[float]:
@@ -136,13 +491,17 @@ def _write_rows(output_csv: Path, rows: list[dict], z_dim: int) -> None:
     fieldnames = [
         "dataset_index",
         "episode_id",
+        "episode_numeric_id",
         "t_state",
         "force_norm_current",
         "force_norm_future_mean",
+        "future_force_mean_raw",
+        "future_force_mean_normalized",
         "force_norm_future_max",
         "force_norm_future_delta",
         "torque_norm_current",
         "torque_norm_future_mean",
+        "force_bin",
         *[f"mu_contact_{index}" for index in range(z_dim)],
         *[f"mu_motion_{index}" for index in range(z_dim)],
         "loss_force_per_sample",
@@ -155,6 +514,9 @@ def _write_rows(output_csv: Path, rows: list[dict], z_dim: int) -> None:
 
 def _save_plot(rows: list[dict], z_dim: int, plot_path: Path, color_by: str) -> None:
     try:
+        import matplotlib
+
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
         print("matplotlib is not available; skipping plot", file=sys.stderr)
@@ -254,7 +616,13 @@ def analyze(args: argparse.Namespace) -> int:
         raise ValueError("checkpoint must contain a dict")
 
     stats = _load_stats(args.normalization_stats)
-    dataset_kwargs = _dataset_kwargs_from_checkpoint(checkpoint)
+    dataset_kwargs = _dataset_kwargs_from_args(args)
+    print("effective_dataset_config:")
+    print(f"chunk_len={dataset_kwargs['chunk_len']}")
+    print(f"force_window_len={dataset_kwargs['force_window_len']}")
+    print(f"force_window_duration={dataset_kwargs['force_window_duration']}")
+    print(f"image_size={dataset_kwargs['image_size']}")
+    print(f"camera_names={dataset_kwargs['camera_names']}")
     datasets = [
         ContactForceHDF5Dataset(episode_path, **dataset_kwargs)
         for episode_path in args.episode_paths
@@ -267,8 +635,15 @@ def analyze(args: argparse.Namespace) -> int:
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    indices = _sample_indices(datasets, args.max_samples, args.stride)
-    indexed_dataset = MultiEpisodeIndexedDataset(datasets, indices)
+    indices, candidate_indices = _select_sample_indices(
+        datasets,
+        args.max_samples,
+        args.stride,
+        args.sampling_mode,
+    )
+    print(f"sampling_mode={args.sampling_mode}")
+    _print_force_stats("candidate_future_force_mean_raw", candidate_indices)
+    indexed_dataset = MultiEpisodeIndexedDataset(datasets, args.episode_paths, indices)
     dataloader = DataLoader(indexed_dataset, batch_size=args.batch_size, shuffle=False)
 
     rows = []
@@ -303,18 +678,28 @@ def analyze(args: argparse.Namespace) -> int:
             force_norm_future_max = future_force_norms.max(dim=1).values
             force_norm_future_delta = force_norm_future_mean - force_norm_current
             torque_norm_future_mean = future_torque_norms.mean(dim=1)
+            normalized_future_force_mean = normalized["future_force_chunk"][:, :, :3].norm(dim=-1).mean(dim=1)
 
             for row_index in range(outputs["mu_contact"].shape[0]):
+                sample_force_bin = raw_batch["sample_force_bin"][row_index]
+                if not sample_force_bin:
+                    sample_force_bin = "unknown"
                 row = {
                     "dataset_index": int(raw_batch["dataset_index"][row_index]),
-                    "episode_id": int(raw_batch["episode_id"][row_index]),
+                    "episode_id": str(raw_batch["episode_id"][row_index]),
+                    "episode_numeric_id": int(raw_batch["episode_numeric_id"][row_index]),
                     "t_state": float(raw_batch["t_state"][row_index]),
                     "force_norm_current": float(force_norm_current[row_index]),
                     "force_norm_future_mean": float(force_norm_future_mean[row_index]),
+                    "future_force_mean_raw": float(force_norm_future_mean[row_index]),
+                    "future_force_mean_normalized": float(
+                        normalized_future_force_mean[row_index].detach().cpu()
+                    ),
                     "force_norm_future_max": float(force_norm_future_max[row_index]),
                     "force_norm_future_delta": float(force_norm_future_delta[row_index]),
                     "torque_norm_current": float(torque_norm_current[row_index]),
                     "torque_norm_future_mean": float(torque_norm_future_mean[row_index]),
+                    "force_bin": str(sample_force_bin),
                     "loss_force_per_sample": float(loss_force_per_sample[row_index].cpu()),
                 }
                 for latent_index, value in enumerate(
@@ -329,9 +714,30 @@ def analyze(args: argparse.Namespace) -> int:
 
     z_dim = int(outputs["mu_contact"].shape[1])
     _write_rows(args.output_csv, rows, z_dim)
+    sampled_episode_counts = _episode_counts(rows)
+    unique_episode_numeric_ids = list(sampled_episode_counts.keys())
+    sampled_future_force_candidates = [
+        SampleCandidate(
+            episode_id=int(row["episode_numeric_id"]),
+            local_index=0,
+            global_index=int(row["dataset_index"]),
+            future_force_mean_raw=float(row["future_force_mean_raw"]),
+            force_bin=str(row["force_bin"]),
+        )
+        for row in rows
+    ]
     print(f"dataset_length={total_dataset_len}")
     print(f"sampled_rows={len(rows)}")
+    print(f"sampled_episode_counts={sampled_episode_counts}")
+    print(f"unique_episode_numeric_ids={unique_episode_numeric_ids}")
+    _print_force_stats("sampled_future_force_mean_raw", sampled_future_force_candidates)
+    print(f"sampled_force_quantile_counts={_sampled_force_bin_counts(rows)}")
     print(f"saved_csv={args.output_csv}")
+    episode_mapping = {
+        str(path): index
+        for index, path in enumerate(args.episode_paths)
+    }
+    print(f"episode_id_mapping={episode_mapping}")
     if args.plot is not None:
         _save_plot(rows, z_dim, args.plot, args.color_by)
     return 0
@@ -344,6 +750,16 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("normalization_stats", type=Path)
     parser.add_argument("output_csv", type=Path)
     parser.add_argument("--episode-list", type=Path, default=None)
+    parser.add_argument("--chunk-len", type=int, default=10)
+    parser.add_argument("--force-window-len", type=int, default=20)
+    parser.add_argument("--force-window-duration", type=float, default=0.25)
+    parser.add_argument("--image-size", type=int, nargs=2, default=(224, 224))
+    parser.add_argument("--camera-names", nargs="+", default=("ee_cam", "base_top_cam"))
+    parser.add_argument(
+        "--sampling-mode",
+        choices=("uniform", "stratified_episode", "force_balanced"),
+        default="stratified_episode",
+    )
     parser.add_argument("--plot", type=Path, default=None)
     parser.add_argument(
         "--color-by",
@@ -383,6 +799,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.batch_size <= 0:
         print("error: --batch-size must be positive", file=sys.stderr)
+        return 2
+    if args.chunk_len <= 0:
+        print("error: --chunk-len must be positive", file=sys.stderr)
+        return 2
+    if args.force_window_len <= 0:
+        print("error: --force-window-len must be positive", file=sys.stderr)
+        return 2
+    if len(args.image_size) != 2 or args.image_size[0] <= 0 or args.image_size[1] <= 0:
+        print("error: --image-size must be two positive integers", file=sys.stderr)
+        return 2
+    if not args.camera_names:
+        print("error: --camera-names must include at least one camera", file=sys.stderr)
         return 2
 
     try:
