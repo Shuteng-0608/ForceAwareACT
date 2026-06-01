@@ -164,8 +164,10 @@ class ForceAwareACTPolicy(nn.Module):
         action_chunk: Optional[torch.Tensor] = None,
         future_force_chunk: Optional[torch.Tensor] = None,
         is_training: bool = True,
+        contact_latent_mode: str = "zero",
     ) -> Dict[str, Any]:
         self._validate_online_inputs(images, qpos, force_window)
+        self._validate_contact_latent_mode(contact_latent_mode, is_training)
         self._validate_training_state(action_chunk, future_force_chunk, is_training)
 
         visual_tokens = self.vision_encoder(images)
@@ -208,7 +210,24 @@ class ForceAwareACTPolicy(nn.Module):
             )
         else:
             z_motion = qpos.new_zeros(batch_size, self.z_dim)
-            z_contact = qpos.new_zeros(batch_size, self.z_dim)
+            if contact_latent_mode == "zero":
+                z_contact = qpos.new_zeros(batch_size, self.z_dim)
+            else:
+                visual_summary = visual_tokens.mean(dim=1)
+                mu_contact_prior, logvar_contact_prior, z_contact_prior = self.contact_prior(
+                    z_q=z_q,
+                    z_F_online=z_f_online,
+                    z_VF=z_vf,
+                    visual_summary=visual_summary,
+                )
+                z_contact = z_contact_prior
+                outputs.update(
+                    {
+                        "mu_contact_prior": mu_contact_prior,
+                        "logvar_contact_prior": logvar_contact_prior,
+                        "z_contact_prior": z_contact_prior,
+                    }
+                )
 
         policy_tokens = self._assemble_policy_tokens(
             visual_tokens=visual_tokens,
@@ -271,6 +290,21 @@ class ForceAwareACTPolicy(nn.Module):
         batch_size = images.shape[0]
         if qpos.shape[0] != batch_size or force_window.shape[0] != batch_size:
             raise ValueError("images, qpos, and force_window must have the same batch size")
+
+    def _validate_contact_latent_mode(self, contact_latent_mode: str, is_training: bool) -> None:
+        valid_modes = {"zero", "prior", "posterior"}
+        if contact_latent_mode not in valid_modes:
+            raise ValueError(
+                "contact_latent_mode must be one of: 'zero', 'prior', 'posterior'"
+            )
+        if is_training and contact_latent_mode == "prior":
+            raise ValueError(
+                "contact_latent_mode='prior' is not supported when is_training=True"
+            )
+        if not is_training and contact_latent_mode == "posterior":
+            raise ValueError(
+                "contact_latent_mode='posterior' is unavailable when is_training=False"
+            )
 
     def _validate_training_state(
         self,

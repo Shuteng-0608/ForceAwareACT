@@ -117,6 +117,68 @@ def test_force_aware_act_policy_inference_does_not_call_contact_prior(monkeypatc
     assert outputs["pred_force"].shape == (2, 4, 6)
 
 
+def test_force_aware_act_policy_inference_prior_mode_returns_prior_outputs(monkeypatch):
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+    call_count = {"value": 0}
+    original_forward = model.contact_prior.forward
+
+    def capture_forward(*args, **kwargs):
+        call_count["value"] += 1
+        return original_forward(*args, **kwargs)
+
+    monkeypatch.setattr(model.contact_prior, "forward", capture_forward)
+
+    with torch.no_grad():
+        outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=None,
+            future_force_chunk=None,
+            is_training=False,
+            contact_latent_mode="prior",
+        )
+
+    assert call_count["value"] == 1
+    assert outputs["pred_action"].shape == (2, 4, 7)
+    assert outputs["pred_force"].shape == (2, 4, 6)
+    assert outputs["mu_contact_prior"].shape == (2, 16)
+    assert outputs["logvar_contact_prior"].shape == (2, 16)
+    assert outputs["z_contact_prior"].shape == (2, 16)
+    assert torch.count_nonzero(outputs["z_motion"]) == 0
+    assert outputs["z_contact"] is outputs["z_contact_prior"]
+
+
+def test_force_aware_act_policy_inference_prior_mode_uses_prior_contact(monkeypatch):
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+    captured = {}
+    original_forward = model.force_head.forward
+
+    def capture_forward(decoder_hidden, z_contact):
+        captured["z_contact"] = z_contact
+        return original_forward(decoder_hidden, z_contact)
+
+    monkeypatch.setattr(model.force_head, "forward", capture_forward)
+
+    with torch.no_grad():
+        outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=None,
+            future_force_chunk=None,
+            is_training=False,
+            contact_latent_mode="prior",
+        )
+
+    assert captured["z_contact"] is outputs["z_contact_prior"]
+    assert captured["z_contact"] is outputs["z_contact"]
+
+
 def test_force_aware_act_policy_training_force_head_uses_posterior_contact(monkeypatch):
     model = _make_policy(chunk_len=4)
     model.eval()
@@ -143,6 +205,74 @@ def test_force_aware_act_policy_training_force_head_uses_posterior_contact(monke
     assert "z_contact" in captured
     assert captured["z_contact"] is outputs["z_contact"]
     assert captured["z_contact"] is not outputs["z_contact_prior"]
+
+
+def test_force_aware_act_policy_training_posterior_mode_is_allowed():
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+
+    with torch.no_grad():
+        outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=inputs["action_chunk"],
+            future_force_chunk=inputs["future_force_chunk"],
+            is_training=True,
+            contact_latent_mode="posterior",
+        )
+
+    assert outputs["pred_action"].shape == (2, 4, 7)
+    assert outputs["pred_force"].shape == (2, 4, 6)
+
+
+def test_force_aware_act_policy_training_prior_mode_raises():
+    model = _make_policy(chunk_len=4)
+    inputs = _make_inputs(chunk_len=4)
+
+    with pytest.raises(ValueError, match="prior"):
+        model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=inputs["action_chunk"],
+            future_force_chunk=inputs["future_force_chunk"],
+            is_training=True,
+            contact_latent_mode="prior",
+        )
+
+
+def test_force_aware_act_policy_inference_posterior_mode_raises():
+    model = _make_policy(chunk_len=4)
+    inputs = _make_inputs(chunk_len=4)
+
+    with pytest.raises(ValueError, match="posterior"):
+        model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=None,
+            future_force_chunk=None,
+            is_training=False,
+            contact_latent_mode="posterior",
+        )
+
+
+def test_force_aware_act_policy_unknown_contact_latent_mode_raises():
+    model = _make_policy(chunk_len=4)
+    inputs = _make_inputs(chunk_len=4)
+
+    with pytest.raises(ValueError, match="contact_latent_mode"):
+        model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=None,
+            future_force_chunk=None,
+            is_training=False,
+            contact_latent_mode="invalid",
+        )
 
 
 def test_force_aware_act_policy_inference_rejects_future_labels():
