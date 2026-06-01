@@ -165,6 +165,7 @@ class ForceAwareACTPolicy(nn.Module):
         future_force_chunk: Optional[torch.Tensor] = None,
         is_training: bool = True,
         contact_latent_mode: str = "zero",
+        deterministic_prior: bool = True,
     ) -> Dict[str, Any]:
         self._validate_online_inputs(images, qpos, force_window)
         self._validate_contact_latent_mode(contact_latent_mode, is_training)
@@ -214,18 +215,23 @@ class ForceAwareACTPolicy(nn.Module):
                 z_contact = qpos.new_zeros(batch_size, self.z_dim)
             else:
                 visual_summary = visual_tokens.mean(dim=1)
-                mu_contact_prior, logvar_contact_prior, z_contact_prior = self.contact_prior(
+                (
+                    mu_contact_prior,
+                    logvar_contact_prior,
+                    z_contact_prior_sample,
+                ) = self.contact_prior(
                     z_q=z_q,
                     z_F_online=z_f_online,
                     z_VF=z_vf,
                     visual_summary=visual_summary,
                 )
-                z_contact = z_contact_prior
+                z_contact = mu_contact_prior if deterministic_prior else z_contact_prior_sample
                 outputs.update(
                     {
                         "mu_contact_prior": mu_contact_prior,
                         "logvar_contact_prior": logvar_contact_prior,
-                        "z_contact_prior": z_contact_prior,
+                        "z_contact_prior": z_contact,
+                        "z_contact_prior_sample": z_contact_prior_sample,
                     }
                 )
 

@@ -147,8 +147,10 @@ def test_force_aware_act_policy_inference_prior_mode_returns_prior_outputs(monke
     assert outputs["mu_contact_prior"].shape == (2, 16)
     assert outputs["logvar_contact_prior"].shape == (2, 16)
     assert outputs["z_contact_prior"].shape == (2, 16)
+    assert outputs["z_contact_prior_sample"].shape == (2, 16)
     assert torch.count_nonzero(outputs["z_motion"]) == 0
     assert outputs["z_contact"] is outputs["z_contact_prior"]
+    torch.testing.assert_close(outputs["z_contact"], outputs["mu_contact_prior"])
 
 
 def test_force_aware_act_policy_inference_prior_mode_uses_prior_contact(monkeypatch):
@@ -177,6 +179,29 @@ def test_force_aware_act_policy_inference_prior_mode_uses_prior_contact(monkeypa
 
     assert captured["z_contact"] is outputs["z_contact_prior"]
     assert captured["z_contact"] is outputs["z_contact"]
+    torch.testing.assert_close(captured["z_contact"], outputs["mu_contact_prior"])
+
+
+def test_force_aware_act_policy_inference_prior_stochastic_mode_uses_sample():
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+
+    with torch.no_grad():
+        outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=None,
+            future_force_chunk=None,
+            is_training=False,
+            contact_latent_mode="prior",
+            deterministic_prior=False,
+        )
+
+    assert outputs["z_contact"] is outputs["z_contact_prior"]
+    assert outputs["z_contact_prior"] is outputs["z_contact_prior_sample"]
+    assert outputs["z_contact_prior"].shape == (2, 16)
 
 
 def test_force_aware_act_policy_training_force_head_uses_posterior_contact(monkeypatch):
