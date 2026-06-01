@@ -138,8 +138,11 @@ def _save_plot(rows: list[dict], z_dim: int, plot_path: Path) -> None:
 
     pca_result = _compute_contact_pca(rows, z_dim)
     print(f"pca_rows_used={pca_result['rows_used']}")
+    if pca_result["singular_values"] is not None:
+        singular_values = pca_result["singular_values"]
+        print(f"singular_values_first_two={singular_values[:2].tolist()}")
     if pca_result["pcs"] is None:
-        print("fewer than 2 valid samples for PCA plot; skipping plot", file=sys.stderr)
+        print(pca_result["skip_reason"], file=sys.stderr)
         return
 
     pcs = pca_result["pcs"]
@@ -156,26 +159,66 @@ def _save_plot(rows: list[dict], z_dim: int, plot_path: Path) -> None:
 
 
 def _compute_contact_pca(rows: list[dict], z_dim: int) -> dict:
-    contact = np.array(
+    mu_contact = np.array(
         [[row[f"mu_contact_{index}"] for index in range(z_dim)] for row in rows],
         dtype=np.float64,
     )
     colors = np.array([row["force_norm_future_mean"] for row in rows], dtype=np.float64)
-    finite_mask = np.isfinite(contact).all(axis=1) & np.isfinite(colors)
-    contact = contact[finite_mask]
+    finite_mask = np.isfinite(mu_contact).all(axis=1) & np.isfinite(colors)
+    mu_contact = mu_contact[finite_mask]
     colors = colors[finite_mask]
-    if contact.shape[0] < 2:
-        return {"pcs": None, "colors": colors, "rows_used": contact.shape[0]}
 
-    centered = contact.astype(np.float64, copy=False)
-    centered = centered - centered.mean(axis=0, keepdims=True)
-    # Do not variance-scale: near-zero-variance dimensions are safe because SVD
-    # works on centered values directly and no division by variance occurs.
-    _, _, vh = np.linalg.svd(centered, full_matrices=False)
-    pcs = centered @ vh[:2].T
+    print(f"mu_contact_shape={mu_contact.shape}")
+    print(f"finite_rows={mu_contact.shape[0]}")
+    if mu_contact.shape[0] == 0:
+        print("mu_contact_stats=unavailable")
+        print("color_min_max=unavailable")
+        return {
+            "pcs": None,
+            "colors": colors,
+            "rows_used": 0,
+            "singular_values": None,
+            "skip_reason": "fewer than 2 valid samples for PCA plot; skipping plot",
+        }
+
+    print(
+        "mu_contact_stats="
+        f"min={mu_contact.min():.6g} "
+        f"max={mu_contact.max():.6g} "
+        f"mean={mu_contact.mean():.6g} "
+        f"std={mu_contact.std():.6g}"
+    )
+    print(f"color_min_max=min={colors.min():.6g} max={colors.max():.6g}")
+    if mu_contact.shape[0] < 2:
+        return {
+            "pcs": None,
+            "colors": colors,
+            "rows_used": mu_contact.shape[0],
+            "singular_values": None,
+            "skip_reason": "fewer than 2 valid samples for PCA plot; skipping plot",
+        }
+
+    centered = mu_contact - mu_contact.mean(axis=0, keepdims=True)
+    centered = np.nan_to_num(centered, nan=0.0, posinf=0.0, neginf=0.0)
+    u, s, vh = np.linalg.svd(centered, full_matrices=False)
+    pcs = u[:, :2] * s[:2]
     if pcs.shape[1] == 1:
         pcs = np.concatenate([pcs, np.zeros((pcs.shape[0], 1), dtype=np.float64)], axis=1)
-    return {"pcs": pcs, "colors": colors, "rows_used": contact.shape[0]}
+    if not np.isfinite(pcs).all():
+        return {
+            "pcs": None,
+            "colors": colors,
+            "rows_used": mu_contact.shape[0],
+            "singular_values": s[:2],
+            "skip_reason": "PCA produced non-finite coordinates; skipping plot",
+        }
+    return {
+        "pcs": pcs,
+        "colors": colors,
+        "rows_used": mu_contact.shape[0],
+        "singular_values": s[:2],
+        "skip_reason": None,
+    }
 
 
 def analyze(args: argparse.Namespace) -> int:
