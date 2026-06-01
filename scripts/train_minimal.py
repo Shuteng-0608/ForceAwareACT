@@ -3,11 +3,13 @@
 
 Example:
     PYTHONPATH=src .venv/bin/python scripts/train_minimal.py test_data/episode.hdf5 --max-steps 20
+    PYTHONPATH=src .venv/bin/python scripts/train_minimal.py test_data/episode.hdf5 --log-csv outputs/minimal_train/train_log.csv
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import sys
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Sequence
@@ -105,6 +107,7 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "beta_contact_max": args.beta_contact_max,
         "warmup_steps": args.warmup_steps,
         "output_dir": str(args.output_dir),
+        "log_csv": str(args.log_csv),
         "device": args.device,
         "normalization_stats_path": (
             str(args.normalization_stats) if args.normalization_stats is not None else None
@@ -167,55 +170,87 @@ def train(args: argparse.Namespace) -> int:
 
     print(f"dataset_length={len(dataset)}")
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
+    print(f"log_csv={args.log_csv}")
     print(f"normalization_enabled={normalization_stats is not None}")
     if normalization_stats is not None:
         print(f"normalization_stats_path={args.normalization_stats}")
 
     batch_iter = _cycle_batches(dataloader)
     last_step = 0
-    for step in range(1, args.max_steps + 1):
-        last_step = step
-        batch = _move_batch_to_device(next(batch_iter), device)
-        if normalization_stats is not None:
-            batch = _normalize_batch(batch, normalization_stats)
-        beta_motion = linear_warmup(step, args.warmup_steps, args.beta_motion_max)
-        beta_contact = linear_warmup(step, args.warmup_steps, args.beta_contact_max)
+    args.log_csv.parent.mkdir(parents=True, exist_ok=True)
+    with args.log_csv.open("w", newline="") as log_file:
+        log_writer = csv.DictWriter(
+            log_file,
+            fieldnames=[
+                "step",
+                "loss_total",
+                "loss_action",
+                "loss_force",
+                "kl_motion",
+                "kl_contact",
+                "beta_motion",
+                "beta_contact",
+                "normalization_enabled",
+            ],
+        )
+        log_writer.writeheader()
+        for step in range(1, args.max_steps + 1):
+            last_step = step
+            batch = _move_batch_to_device(next(batch_iter), device)
+            if normalization_stats is not None:
+                batch = _normalize_batch(batch, normalization_stats)
+            beta_motion = linear_warmup(step, args.warmup_steps, args.beta_motion_max)
+            beta_contact = linear_warmup(step, args.warmup_steps, args.beta_contact_max)
 
-        optimizer.zero_grad(set_to_none=True)
-        outputs = model(
-            images=batch["images"],
-            qpos=batch["qpos"],
-            force_window=batch["force_window"],
-            action_chunk=batch["action_chunk"],
-            future_force_chunk=batch["future_force_chunk"],
-            is_training=True,
-        )
-        losses = compute_force_aware_act_loss(
-            outputs=outputs,
-            action_chunk=batch["action_chunk"],
-            future_force_chunk=batch["future_force_chunk"],
-            lambda_force=args.lambda_force,
-            beta_motion=beta_motion,
-            beta_contact=beta_contact,
-        )
-        losses["loss_total"].backward()
-        optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            outputs = model(
+                images=batch["images"],
+                qpos=batch["qpos"],
+                force_window=batch["force_window"],
+                action_chunk=batch["action_chunk"],
+                future_force_chunk=batch["future_force_chunk"],
+                is_training=True,
+            )
+            losses = compute_force_aware_act_loss(
+                outputs=outputs,
+                action_chunk=batch["action_chunk"],
+                future_force_chunk=batch["future_force_chunk"],
+                lambda_force=args.lambda_force,
+                beta_motion=beta_motion,
+                beta_contact=beta_contact,
+            )
+            losses["loss_total"].backward()
+            optimizer.step()
 
-        print(
-            " ".join(
-                [
-                    f"step={step}",
-                    f"loss_total={losses['loss_total'].item():.6g}",
-                    f"loss_action={losses['loss_action'].item():.6g}",
-                    f"loss_force={losses['loss_force'].item():.6g}",
-                    f"kl_motion={losses['kl_motion'].item():.6g}",
-                    f"kl_contact={losses['kl_contact'].item():.6g}",
-                    f"beta_motion={beta_motion:.6g}",
-                    f"beta_contact={beta_contact:.6g}",
-                ]
-            ),
-            flush=True,
-        )
+            log_writer.writerow(
+                {
+                    "step": step,
+                    "loss_total": losses["loss_total"].item(),
+                    "loss_action": losses["loss_action"].item(),
+                    "loss_force": losses["loss_force"].item(),
+                    "kl_motion": losses["kl_motion"].item(),
+                    "kl_contact": losses["kl_contact"].item(),
+                    "beta_motion": beta_motion,
+                    "beta_contact": beta_contact,
+                    "normalization_enabled": normalization_stats is not None,
+                }
+            )
+
+            print(
+                " ".join(
+                    [
+                        f"step={step}",
+                        f"loss_total={losses['loss_total'].item():.6g}",
+                        f"loss_action={losses['loss_action'].item():.6g}",
+                        f"loss_force={losses['loss_force'].item():.6g}",
+                        f"kl_motion={losses['kl_motion'].item():.6g}",
+                        f"kl_contact={losses['kl_contact'].item():.6g}",
+                        f"beta_motion={beta_motion:.6g}",
+                        f"beta_contact={beta_contact:.6g}",
+                    ]
+                ),
+                flush=True,
+            )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = {
@@ -245,6 +280,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--beta-contact-max", type=float, default=1.0e-4)
     parser.add_argument("--warmup-steps", type=int, default=100)
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/minimal_train"))
+    parser.add_argument("--log-csv", type=Path, default=Path("outputs/minimal_train/train_log.csv"))
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--normalization-stats", type=Path, default=None)
     return parser.parse_args(argv)
@@ -255,6 +291,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args.episode_paths = [path.expanduser() for path in args.episode_paths]
     if args.normalization_stats is not None:
         args.normalization_stats = args.normalization_stats.expanduser()
+    args.log_csv = args.log_csv.expanduser()
     for path in args.episode_paths:
         if not path.exists():
             print(f"error: file does not exist: {path}", file=sys.stderr)
