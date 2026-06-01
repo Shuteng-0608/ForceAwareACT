@@ -60,6 +60,9 @@ def test_force_aware_act_policy_training_forward_shapes():
     assert outputs["logvar_motion"].shape == (2, 16)
     assert outputs["mu_contact"].shape == (2, 16)
     assert outputs["logvar_contact"].shape == (2, 16)
+    assert outputs["mu_contact_prior"].shape == (2, 16)
+    assert outputs["logvar_contact_prior"].shape == (2, 16)
+    assert outputs["z_contact_prior"].shape == (2, 16)
 
 
 def test_force_aware_act_policy_inference_forward_shapes_and_no_posteriors():
@@ -83,8 +86,63 @@ def test_force_aware_act_policy_inference_forward_shapes_and_no_posteriors():
     assert "logvar_motion" not in outputs
     assert "mu_contact" not in outputs
     assert "logvar_contact" not in outputs
+    assert "mu_contact_prior" not in outputs
+    assert "logvar_contact_prior" not in outputs
+    assert "z_contact_prior" not in outputs
     assert torch.count_nonzero(outputs["z_motion"]) == 0
     assert torch.count_nonzero(outputs["z_contact"]) == 0
+
+
+def test_force_aware_act_policy_inference_does_not_call_contact_prior(monkeypatch):
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+
+    def raise_if_called(*args, **kwargs):
+        raise AssertionError("contact_prior.forward should not be called during inference")
+
+    monkeypatch.setattr(model.contact_prior, "forward", raise_if_called)
+
+    with torch.no_grad():
+        outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=None,
+            future_force_chunk=None,
+            is_training=False,
+        )
+
+    assert outputs["pred_action"].shape == (2, 4, 7)
+    assert outputs["pred_force"].shape == (2, 4, 6)
+
+
+def test_force_aware_act_policy_training_force_head_uses_posterior_contact(monkeypatch):
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+    captured = {}
+    original_forward = model.force_head.forward
+
+    def capture_forward(decoder_hidden, z_contact):
+        captured["z_contact"] = z_contact
+        return original_forward(decoder_hidden, z_contact)
+
+    monkeypatch.setattr(model.force_head, "forward", capture_forward)
+
+    with torch.no_grad():
+        outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=inputs["action_chunk"],
+            future_force_chunk=inputs["future_force_chunk"],
+            is_training=True,
+        )
+
+    assert "z_contact" in captured
+    assert captured["z_contact"] is outputs["z_contact"]
+    assert captured["z_contact"] is not outputs["z_contact_prior"]
 
 
 def test_force_aware_act_policy_inference_rejects_future_labels():

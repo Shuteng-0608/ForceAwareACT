@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import torch
 from torch import nn
 
+from force_aware_act.models.contact_prior import ContactPriorEncoder
 from force_aware_act.models.cross_attention import ForceVisionCrossAttention
 from force_aware_act.models.force import TemporalForceEncoder
 from force_aware_act.models.heads import ActionHead, ForceHead
@@ -122,6 +123,13 @@ class ForceAwareACTPolicy(nn.Module):
             dropout=dropout,
             max_chunk_len=chunk_len,
         )
+        self.contact_prior = ContactPriorEncoder(
+            d_model=d_model,
+            z_dim=z_dim,
+            hidden_dim=d_model,
+            dropout=dropout,
+            use_visual_summary=True,
+        )
         self.motion_latent_proj = nn.Linear(z_dim, d_model)
         self.contact_latent_proj = nn.Linear(z_dim, d_model)
 
@@ -180,12 +188,22 @@ class ForceAwareACTPolicy(nn.Module):
                 action_chunk,
                 future_force_chunk,
             )
+            visual_summary = visual_tokens.mean(dim=1)
+            mu_contact_prior, logvar_contact_prior, z_contact_prior = self.contact_prior(
+                z_q=z_q,
+                z_F_online=z_f_online,
+                z_VF=z_vf,
+                visual_summary=visual_summary,
+            )
             outputs.update(
                 {
                     "mu_motion": mu_motion,
                     "logvar_motion": logvar_motion,
                     "mu_contact": mu_contact,
                     "logvar_contact": logvar_contact,
+                    "mu_contact_prior": mu_contact_prior,
+                    "logvar_contact_prior": logvar_contact_prior,
+                    "z_contact_prior": z_contact_prior,
                 }
             )
         else:
