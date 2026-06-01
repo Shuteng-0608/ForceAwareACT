@@ -740,30 +740,48 @@ def _compute_prior_overlay_pca(rows: list[dict], z_dim: int, color_column: str) 
         f"mean={prior_centered.mean():.6g} "
         f"std={prior_centered.std():.6g}"
     )
-    vh_first_two = vh[:2]
+    prior_centered = np.asarray(prior_centered, dtype=np.float64)
+    components = np.asarray(vh[:2], dtype=np.float64)
+    prior_centered = np.nan_to_num(
+        prior_centered,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    components = np.nan_to_num(
+        components,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    prior_centered_finite = bool(np.isfinite(prior_centered).all())
+    pca_components_finite = bool(np.isfinite(components).all())
     print(
         "vh_first_two_stats="
-        f"min={vh_first_two.min():.6g} "
-        f"max={vh_first_two.max():.6g}"
+        f"min={components.min():.6g} "
+        f"max={components.max():.6g}"
     )
-    try:
-        with np.errstate(over="raise", invalid="raise", divide="raise"):
-            prior_pcs = np.matmul(prior_centered, vh_first_two.T)
-    except FloatingPointError as error:
-        return {
-            "posterior_pcs": None,
-            "prior_pcs": None,
-            "colors": colors,
-            "rows_used": mu_contact.shape[0],
-            "singular_values": s[:2],
-            "posterior_pcs_finite": bool(np.isfinite(posterior_pcs).all()),
-            "prior_pcs_finite": False,
-            "skip_reason": f"prior overlay prior projection failed numerically: {error}",
-        }
+    print(f"prior_centered_finite={prior_centered_finite}")
+    print(f"pca_components_finite={pca_components_finite}")
+    prior_pcs = np.stack(
+        [
+            np.sum(prior_centered * components[0][None, :], axis=1),
+            np.sum(prior_centered * components[1][None, :], axis=1),
+        ],
+        axis=1,
+    )
     posterior_pcs_finite = bool(np.isfinite(posterior_pcs).all())
     prior_pcs_finite = bool(np.isfinite(prior_pcs).all())
     print(f"posterior_pcs_finite={posterior_pcs_finite}")
     print(f"prior_pcs_finite={prior_pcs_finite}")
+    if prior_pcs.size > 0:
+        print(
+            "prior_pcs_stats="
+            f"min={prior_pcs.min():.6g} "
+            f"max={prior_pcs.max():.6g} "
+            f"mean={prior_pcs.mean():.6g} "
+            f"std={prior_pcs.std():.6g}"
+        )
     if posterior_pcs.shape[1] == 1:
         posterior_pcs = np.concatenate(
             [posterior_pcs, np.zeros((posterior_pcs.shape[0], 1), dtype=np.float64)],
