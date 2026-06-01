@@ -23,5 +23,7 @@ peg_in_hole_hdf5/
 *.pt
 *.pth
 *.ckpt
+*.csv
+*.png
 *.egg-info/
 src/*.egg-info/
