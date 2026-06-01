@@ -26,6 +26,7 @@ if str(SRC_ROOT) not in sys.path:
 from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
 from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
 from force_aware_act.training import compute_force_aware_act_loss, linear_warmup  # noqa: E402
+from script_utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
 def _move_batch_to_device(batch: Dict[str, object], device: torch.device) -> Dict[str, object]:
@@ -266,7 +267,8 @@ def train(args: argparse.Namespace) -> int:
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Minimal ForceAwareACT training loop.")
-    parser.add_argument("episode_paths", type=Path, nargs="+", help="One or more HDF5 episodes.")
+    parser.add_argument("episode_paths", type=Path, nargs="*", help="One or more HDF5 episodes.")
+    parser.add_argument("--episode-list", type=Path, default=None)
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
@@ -288,17 +290,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    args.episode_paths = [path.expanduser() for path in args.episode_paths]
+    args.episode_paths = resolve_episode_paths(args.episode_paths, args.episode_list)
     if args.normalization_stats is not None:
         args.normalization_stats = args.normalization_stats.expanduser()
     args.log_csv = args.log_csv.expanduser()
-    for path in args.episode_paths:
-        if not path.exists():
-            print(f"error: file does not exist: {path}", file=sys.stderr)
-            return 2
-        if not path.is_file():
-            print(f"error: path is not a file: {path}", file=sys.stderr)
-            return 2
+    if not args.episode_paths:
+        print("error: provide episode paths or --episode-list", file=sys.stderr)
+        return 2
+    if not validate_episode_paths(args.episode_paths):
+        return 2
     if args.chunk_len <= 0:
         print("error: --chunk-len must be positive", file=sys.stderr)
         return 2

@@ -20,6 +20,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import ContactForceHDF5Dataset, compute_normalization_stats  # noqa: E402
+from script_utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
 def compute_and_save(args: argparse.Namespace) -> int:
@@ -53,7 +54,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Compute qpos/action/force normalization stats from HDF5 episodes.",
     )
-    parser.add_argument("episode_paths", type=Path, nargs="+", help="One or more HDF5 episodes.")
+    parser.add_argument("episode_paths", type=Path, nargs="*", help="One or more HDF5 episodes.")
+    parser.add_argument("--episode-list", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=Path("outputs/normalization_stats.pt"))
     parser.add_argument("--chunk-len", type=int, default=50)
     parser.add_argument("--force-window-len", type=int, default=50)
@@ -67,15 +69,13 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    args.episode_paths = [path.expanduser() for path in args.episode_paths]
+    args.episode_paths = resolve_episode_paths(args.episode_paths, args.episode_list)
     args.output = args.output.expanduser()
-    for path in args.episode_paths:
-        if not path.exists():
-            print(f"error: file does not exist: {path}", file=sys.stderr)
-            return 2
-        if not path.is_file():
-            print(f"error: path is not a file: {path}", file=sys.stderr)
-            return 2
+    if not args.episode_paths:
+        print("error: provide episode paths or --episode-list", file=sys.stderr)
+        return 2
+    if not validate_episode_paths(args.episode_paths):
+        return 2
     if args.chunk_len <= 0:
         print("error: --chunk-len must be positive", file=sys.stderr)
         return 2

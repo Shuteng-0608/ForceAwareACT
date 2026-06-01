@@ -21,6 +21,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
 from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
+from script_utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
 COLOR_COLUMNS = {
@@ -32,23 +33,25 @@ COLOR_COLUMNS = {
     "future_torque_mean": ("torque_norm_future_mean", "future torque mean"),
     "time": ("t_state", "time"),
     "loss_force_per_sample": ("loss_force_per_sample", "force loss per sample"),
+    "episode_id": ("episode_id", "episode id"),
 }
 
 
-class IndexedDataset(Dataset):
-    """Return selected dataset samples with their original dataset index."""
+class MultiEpisodeIndexedDataset(Dataset):
+    """Return selected samples with global index and episode id."""
 
-    def __init__(self, dataset: Dataset, indices: Sequence[int]) -> None:
-        self.dataset = dataset
+    def __init__(self, datasets: Sequence[Dataset], indices: Sequence[tuple[int, int]]) -> None:
+        self.datasets = list(datasets)
         self.indices = list(indices)
 
     def __len__(self) -> int:
         return len(self.indices)
 
     def __getitem__(self, item: int) -> dict:
-        dataset_index = self.indices[item]
-        sample = dict(self.dataset[dataset_index])
-        sample["dataset_index"] = dataset_index
+        episode_id, local_index = self.indices[item]
+        sample = dict(self.datasets[episode_id][local_index])
+        sample["episode_id"] = episode_id
+        sample["dataset_index"] = local_index
         return sample
 
 
@@ -111,8 +114,12 @@ def _dataset_kwargs_from_checkpoint(checkpoint: dict) -> dict:
     }
 
 
-def _sample_indices(dataset_len: int, max_samples: Optional[int], stride: int) -> list[int]:
-    indices = list(range(0, dataset_len, stride))
+def _sample_indices(datasets: Sequence[Dataset], max_samples: Optional[int], stride: int) -> list[tuple[int, int]]:
+    indices = [
+        (episode_id, local_index)
+        for episode_id, dataset in enumerate(datasets)
+        for local_index in range(0, len(dataset), stride)
+    ]
     if max_samples is not None:
         indices = indices[:max_samples]
     if not indices:
@@ -128,6 +135,7 @@ def _write_rows(output_csv: Path, rows: list[dict], z_dim: int) -> None:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "dataset_index",
+        "episode_id",
         "t_state",
         "force_norm_current",
         "force_norm_future_mean",
@@ -246,16 +254,21 @@ def analyze(args: argparse.Namespace) -> int:
         raise ValueError("checkpoint must contain a dict")
 
     stats = _load_stats(args.normalization_stats)
-    dataset = ContactForceHDF5Dataset(args.episode_path, **_dataset_kwargs_from_checkpoint(checkpoint))
-    if len(dataset) == 0:
-        raise ValueError("dataset is empty")
+    dataset_kwargs = _dataset_kwargs_from_checkpoint(checkpoint)
+    datasets = [
+        ContactForceHDF5Dataset(episode_path, **dataset_kwargs)
+        for episode_path in args.episode_paths
+    ]
+    total_dataset_len = sum(len(dataset) for dataset in datasets)
+    if total_dataset_len == 0:
+        raise ValueError("datasets are empty")
 
     model = ForceAwareACTPolicy(**_model_kwargs_from_checkpoint(checkpoint)).to(args.device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    indices = _sample_indices(len(dataset), args.max_samples, args.stride)
-    indexed_dataset = IndexedDataset(dataset, indices)
+    indices = _sample_indices(datasets, args.max_samples, args.stride)
+    indexed_dataset = MultiEpisodeIndexedDataset(datasets, indices)
     dataloader = DataLoader(indexed_dataset, batch_size=args.batch_size, shuffle=False)
 
     rows = []
@@ -294,6 +307,7 @@ def analyze(args: argparse.Namespace) -> int:
             for row_index in range(outputs["mu_contact"].shape[0]):
                 row = {
                     "dataset_index": int(raw_batch["dataset_index"][row_index]),
+                    "episode_id": int(raw_batch["episode_id"][row_index]),
                     "t_state": float(raw_batch["t_state"][row_index]),
                     "force_norm_current": float(force_norm_current[row_index]),
                     "force_norm_future_mean": float(force_norm_future_mean[row_index]),
@@ -315,7 +329,7 @@ def analyze(args: argparse.Namespace) -> int:
 
     z_dim = int(outputs["mu_contact"].shape[1])
     _write_rows(args.output_csv, rows, z_dim)
-    print(f"dataset_length={len(dataset)}")
+    print(f"dataset_length={total_dataset_len}")
     print(f"sampled_rows={len(rows)}")
     print(f"saved_csv={args.output_csv}")
     if args.plot is not None:
@@ -325,10 +339,11 @@ def analyze(args: argparse.Namespace) -> int:
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze ForceAwareACT contact posterior latents.")
-    parser.add_argument("episode_path", type=Path)
+    parser.add_argument("episode_paths", type=Path, nargs="*")
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("normalization_stats", type=Path)
     parser.add_argument("output_csv", type=Path)
+    parser.add_argument("--episode-list", type=Path, default=None)
     parser.add_argument("--plot", type=Path, default=None)
     parser.add_argument(
         "--color-by",
@@ -344,13 +359,18 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    args.episode_path = args.episode_path.expanduser()
+    args.episode_paths = resolve_episode_paths(args.episode_paths, args.episode_list)
     args.checkpoint = args.checkpoint.expanduser()
     args.normalization_stats = args.normalization_stats.expanduser()
     args.output_csv = args.output_csv.expanduser()
     if args.plot is not None:
         args.plot = args.plot.expanduser()
-    for path_name in ("episode_path", "checkpoint", "normalization_stats"):
+    if not args.episode_paths:
+        print("error: provide episode paths or --episode-list", file=sys.stderr)
+        return 2
+    if not validate_episode_paths(args.episode_paths):
+        return 2
+    for path_name in ("checkpoint", "normalization_stats"):
         path = getattr(args, path_name)
         if not path.is_file():
             print(f"error: {path_name} does not exist: {path}", file=sys.stderr)
