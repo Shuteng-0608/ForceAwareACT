@@ -21,7 +21,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from force_aware_act.data import ContactForceHDF5Dataset  # noqa: E402
+from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
 from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
 from force_aware_act.training import compute_force_aware_act_loss, linear_warmup  # noqa: E402
 
@@ -37,6 +37,56 @@ def _cycle_batches(dataloader: DataLoader) -> Iterable[Dict[str, object]]:
     while True:
         for batch in dataloader:
             yield batch
+
+
+def _load_normalization_stats(stats_path: Optional[Path]) -> Optional[Dict[str, torch.Tensor]]:
+    if stats_path is None:
+        return None
+    stats = torch.load(stats_path, map_location="cpu")
+    if not isinstance(stats, dict):
+        raise ValueError("normalization stats file must contain a dict")
+    required_keys = (
+        "qpos_mean",
+        "qpos_std",
+        "action_mean",
+        "action_std",
+        "force_mean",
+        "force_std",
+    )
+    for key in required_keys:
+        if key not in stats:
+            raise KeyError(f"normalization stats missing required key: {key}")
+        if not torch.is_tensor(stats[key]):
+            raise ValueError(f"normalization stats {key!r} must be a torch.Tensor")
+    return stats
+
+
+def _normalize_batch(
+    batch: Dict[str, object],
+    stats: Dict[str, torch.Tensor],
+) -> Dict[str, object]:
+    normalized = dict(batch)
+    normalized["qpos"] = normalize_tensor(
+        normalized["qpos"],
+        stats["qpos_mean"],
+        stats["qpos_std"],
+    )
+    normalized["force_window"] = normalize_tensor(
+        normalized["force_window"],
+        stats["force_mean"],
+        stats["force_std"],
+    )
+    normalized["action_chunk"] = normalize_tensor(
+        normalized["action_chunk"],
+        stats["action_mean"],
+        stats["action_std"],
+    )
+    normalized["future_force_chunk"] = normalize_tensor(
+        normalized["future_force_chunk"],
+        stats["force_mean"],
+        stats["force_std"],
+    )
+    return normalized
 
 
 def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
@@ -56,6 +106,9 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "warmup_steps": args.warmup_steps,
         "output_dir": str(args.output_dir),
         "device": args.device,
+        "normalization_stats_path": (
+            str(args.normalization_stats) if args.normalization_stats is not None else None
+        ),
         "model": {
             "pretrained_resnet18": False,
             "d_model": 128,
@@ -73,6 +126,7 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
 
 def train(args: argparse.Namespace) -> int:
     device = torch.device(args.device)
+    normalization_stats = _load_normalization_stats(args.normalization_stats)
     dataset = ContactForceHDF5Dataset(
         args.episode_paths,
         camera_names=("ee_cam", "base_top_cam"),
@@ -113,12 +167,17 @@ def train(args: argparse.Namespace) -> int:
 
     print(f"dataset_length={len(dataset)}")
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
+    print(f"normalization_enabled={normalization_stats is not None}")
+    if normalization_stats is not None:
+        print(f"normalization_stats_path={args.normalization_stats}")
 
     batch_iter = _cycle_batches(dataloader)
     last_step = 0
     for step in range(1, args.max_steps + 1):
         last_step = step
         batch = _move_batch_to_device(next(batch_iter), device)
+        if normalization_stats is not None:
+            batch = _normalize_batch(batch, normalization_stats)
         beta_motion = linear_warmup(step, args.warmup_steps, args.beta_motion_max)
         beta_contact = linear_warmup(step, args.warmup_steps, args.beta_contact_max)
 
@@ -187,12 +246,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--warmup-steps", type=int, default=100)
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/minimal_train"))
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--normalization-stats", type=Path, default=None)
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     args.episode_paths = [path.expanduser() for path in args.episode_paths]
+    if args.normalization_stats is not None:
+        args.normalization_stats = args.normalization_stats.expanduser()
     for path in args.episode_paths:
         if not path.exists():
             print(f"error: file does not exist: {path}", file=sys.stderr)
@@ -211,6 +273,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.max_steps <= 0:
         print("error: --max-steps must be positive", file=sys.stderr)
+        return 2
+    if args.normalization_stats is not None and not args.normalization_stats.is_file():
+        print(
+            f"error: normalization stats file does not exist: {args.normalization_stats}",
+            file=sys.stderr,
+        )
         return 2
 
     try:
