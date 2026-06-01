@@ -486,7 +486,7 @@ def _tensor_to_float_list(tensor: torch.Tensor) -> list[float]:
     return [float(value) for value in tensor.detach().cpu().tolist()]
 
 
-def _write_rows(output_csv: Path, rows: list[dict], z_dim: int) -> None:
+def _write_rows(output_csv: Path, rows: list[dict], z_dim: int, include_prior: bool) -> None:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "dataset_index",
@@ -503,7 +503,17 @@ def _write_rows(output_csv: Path, rows: list[dict], z_dim: int) -> None:
         "torque_norm_future_mean",
         "force_bin",
         *[f"mu_contact_{index}" for index in range(z_dim)],
+        *([f"mu_contact_prior_{index}" for index in range(z_dim)] if include_prior else []),
         *[f"mu_motion_{index}" for index in range(z_dim)],
+        *(
+            [
+                "prior_mu_mse",
+                "prior_mu_l2",
+                "prior_mu_cosine_similarity",
+            ]
+            if include_prior
+            else []
+        ),
         "loss_force_per_sample",
     ]
     with output_csv.open("w", newline="") as csv_file:
@@ -545,6 +555,71 @@ def _save_plot(rows: list[dict], z_dim: int, plot_path: Path, color_by: str) -> 
     plt.savefig(plot_path)
     plt.close()
     print(f"saved_plot={plot_path}")
+
+
+def _save_prior_overlay_plot(rows: list[dict], z_dim: int, plot_path: Path, color_by: str) -> None:
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib is not available; skipping prior overlay plot", file=sys.stderr)
+        return
+
+    color_column, color_label = COLOR_COLUMNS[color_by]
+    print(f"prior_overlay_color_mode={color_by}")
+    overlay = _compute_prior_overlay_pca(rows, z_dim, color_column)
+    print(f"prior_overlay_rows_used={overlay['rows_used']}")
+    if overlay["singular_values"] is not None:
+        print(f"prior_overlay_singular_values_first_two={overlay['singular_values'][:2].tolist()}")
+    if "posterior_pcs_finite" in overlay:
+        print(f"prior_overlay_posterior_pcs_finite={overlay['posterior_pcs_finite']}")
+    if "prior_pcs_finite" in overlay:
+        print(f"prior_overlay_prior_pcs_finite={overlay['prior_pcs_finite']}")
+    if overlay["posterior_pcs"] is None:
+        print(overlay["skip_reason"], file=sys.stderr)
+        return
+
+    posterior_pcs = overlay["posterior_pcs"]
+    prior_pcs = overlay["prior_pcs"]
+    colors = overlay["colors"]
+    plot_path.parent.mkdir(parents=True, exist_ok=True)
+    for posterior_point, prior_point in zip(posterior_pcs, prior_pcs):
+        plt.plot(
+            [posterior_point[0], prior_point[0]],
+            [posterior_point[1], prior_point[1]],
+            color="0.6",
+            alpha=0.25,
+            linewidth=0.75,
+        )
+    posterior_scatter = plt.scatter(
+        posterior_pcs[:, 0],
+        posterior_pcs[:, 1],
+        c=colors,
+        cmap="viridis",
+        s=18,
+        marker="o",
+        label="posterior",
+    )
+    plt.scatter(
+        prior_pcs[:, 0],
+        prior_pcs[:, 1],
+        c=colors,
+        cmap="viridis",
+        s=24,
+        marker="x",
+        label="prior",
+    )
+    plt.xlabel("mu_contact posterior PC1")
+    plt.ylabel("mu_contact posterior PC2")
+    plt.title(f"contact prior vs posterior PCA colored by {color_label}")
+    plt.colorbar(posterior_scatter, label=color_label)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"saved_prior_overlay_plot={plot_path}")
 
 
 def _compute_contact_pca(rows: list[dict], z_dim: int, color_column: str) -> dict:
@@ -610,6 +685,133 @@ def _compute_contact_pca(rows: list[dict], z_dim: int, color_column: str) -> dic
     }
 
 
+def _compute_prior_overlay_pca(rows: list[dict], z_dim: int, color_column: str) -> dict:
+    mu_contact = np.array(
+        [[row[f"mu_contact_{index}"] for index in range(z_dim)] for row in rows],
+        dtype=np.float64,
+    )
+    mu_prior = np.array(
+        [[row[f"mu_contact_prior_{index}"] for index in range(z_dim)] for row in rows],
+        dtype=np.float64,
+    )
+    colors = np.array([row[color_column] for row in rows], dtype=np.float64)
+    finite_mask = (
+        np.isfinite(mu_contact).all(axis=1)
+        & np.isfinite(mu_prior).all(axis=1)
+        & np.isfinite(colors)
+    )
+    mu_contact = mu_contact[finite_mask]
+    mu_prior = mu_prior[finite_mask]
+    colors = colors[finite_mask]
+
+    print(f"prior_overlay_mu_contact_shape={mu_contact.shape}")
+    print(f"prior_overlay_finite_rows={mu_contact.shape[0]}")
+    if mu_contact.shape[0] < 2:
+        return {
+            "posterior_pcs": None,
+            "prior_pcs": None,
+            "colors": colors,
+            "rows_used": mu_contact.shape[0],
+            "singular_values": None,
+            "skip_reason": "fewer than 2 valid samples for prior overlay plot; skipping plot",
+        }
+
+    posterior_mean = mu_contact.mean(axis=0, keepdims=True)
+    centered_posterior = mu_contact - posterior_mean
+    centered_posterior = np.nan_to_num(
+        centered_posterior,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    u, s, vh = np.linalg.svd(centered_posterior, full_matrices=False)
+    posterior_pcs = u[:, :2] * s[:2]
+    prior_centered = mu_prior - posterior_mean
+    prior_centered = np.nan_to_num(
+        prior_centered,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    print(
+        "prior_centered_stats="
+        f"min={prior_centered.min():.6g} "
+        f"max={prior_centered.max():.6g} "
+        f"mean={prior_centered.mean():.6g} "
+        f"std={prior_centered.std():.6g}"
+    )
+    vh_first_two = vh[:2]
+    print(
+        "vh_first_two_stats="
+        f"min={vh_first_two.min():.6g} "
+        f"max={vh_first_two.max():.6g}"
+    )
+    try:
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            prior_pcs = np.matmul(prior_centered, vh_first_two.T)
+    except FloatingPointError as error:
+        return {
+            "posterior_pcs": None,
+            "prior_pcs": None,
+            "colors": colors,
+            "rows_used": mu_contact.shape[0],
+            "singular_values": s[:2],
+            "posterior_pcs_finite": bool(np.isfinite(posterior_pcs).all()),
+            "prior_pcs_finite": False,
+            "skip_reason": f"prior overlay prior projection failed numerically: {error}",
+        }
+    posterior_pcs_finite = bool(np.isfinite(posterior_pcs).all())
+    prior_pcs_finite = bool(np.isfinite(prior_pcs).all())
+    print(f"posterior_pcs_finite={posterior_pcs_finite}")
+    print(f"prior_pcs_finite={prior_pcs_finite}")
+    if posterior_pcs.shape[1] == 1:
+        posterior_pcs = np.concatenate(
+            [posterior_pcs, np.zeros((posterior_pcs.shape[0], 1), dtype=np.float64)],
+            axis=1,
+        )
+        prior_pcs = np.concatenate(
+            [prior_pcs, np.zeros((prior_pcs.shape[0], 1), dtype=np.float64)],
+            axis=1,
+        )
+    if not np.isfinite(posterior_pcs).all() or not np.isfinite(prior_pcs).all():
+        return {
+            "posterior_pcs": None,
+            "prior_pcs": None,
+            "colors": colors,
+            "rows_used": mu_contact.shape[0],
+            "singular_values": s[:2],
+            "posterior_pcs_finite": posterior_pcs_finite,
+            "prior_pcs_finite": prior_pcs_finite,
+            "skip_reason": "prior overlay PCA produced non-finite coordinates; skipping plot",
+        }
+    return {
+        "posterior_pcs": posterior_pcs,
+        "prior_pcs": prior_pcs,
+        "colors": colors,
+        "rows_used": mu_contact.shape[0],
+        "singular_values": s[:2],
+        "posterior_pcs_finite": posterior_pcs_finite,
+        "prior_pcs_finite": prior_pcs_finite,
+        "skip_reason": None,
+    }
+
+
+def _print_prior_metric_summary(rows: list[dict]) -> None:
+    for column in ("prior_mu_mse", "prior_mu_l2", "prior_mu_cosine_similarity"):
+        values = np.array([row[column] for row in rows], dtype=np.float64)
+        values = values[np.isfinite(values)]
+        if values.size == 0:
+            print(f"{column}_summary=unavailable")
+            continue
+        print(
+            f"{column}_summary="
+            f"mean={values.mean():.6g} "
+            f"std={values.std():.6g} "
+            f"min={values.min():.6g} "
+            f"max={values.max():.6g}"
+        )
+
+
 def analyze(args: argparse.Namespace) -> int:
     checkpoint = torch.load(args.checkpoint, map_location=args.device)
     if not isinstance(checkpoint, dict):
@@ -662,6 +864,16 @@ def analyze(args: argparse.Namespace) -> int:
                 future_force_chunk=normalized["future_force_chunk"],
                 is_training=True,
             )
+            prior_available = all(
+                key in outputs
+                for key in ("mu_contact_prior", "logvar_contact_prior")
+            )
+            if args.include_prior and not prior_available:
+                print(
+                    "include_prior requested, but model outputs do not contain contact prior; "
+                    "skipping prior export for this batch",
+                    file=sys.stderr,
+                )
 
             loss_force_per_sample = functional.l1_loss(
                 outputs["pred_force"],
@@ -679,6 +891,15 @@ def analyze(args: argparse.Namespace) -> int:
             force_norm_future_delta = force_norm_future_mean - force_norm_current
             torque_norm_future_mean = future_torque_norms.mean(dim=1)
             normalized_future_force_mean = normalized["future_force_chunk"][:, :, :3].norm(dim=-1).mean(dim=1)
+            if args.include_prior and prior_available:
+                prior_delta = outputs["mu_contact_prior"] - outputs["mu_contact"]
+                prior_mu_mse = prior_delta.pow(2).mean(dim=-1)
+                prior_mu_l2 = prior_delta.norm(dim=-1)
+                prior_mu_cosine_similarity = functional.cosine_similarity(
+                    outputs["mu_contact_prior"],
+                    outputs["mu_contact"],
+                    dim=-1,
+                )
 
             for row_index in range(outputs["mu_contact"].shape[0]):
                 sample_force_bin = raw_batch["sample_force_bin"][row_index]
@@ -706,6 +927,16 @@ def analyze(args: argparse.Namespace) -> int:
                     _tensor_to_float_list(outputs["mu_contact"][row_index])
                 ):
                     row[f"mu_contact_{latent_index}"] = value
+                if args.include_prior and prior_available:
+                    for latent_index, value in enumerate(
+                        _tensor_to_float_list(outputs["mu_contact_prior"][row_index])
+                    ):
+                        row[f"mu_contact_prior_{latent_index}"] = value
+                    row["prior_mu_mse"] = float(prior_mu_mse[row_index].detach().cpu())
+                    row["prior_mu_l2"] = float(prior_mu_l2[row_index].detach().cpu())
+                    row["prior_mu_cosine_similarity"] = float(
+                        prior_mu_cosine_similarity[row_index].detach().cpu()
+                    )
                 for latent_index, value in enumerate(
                     _tensor_to_float_list(outputs["mu_motion"][row_index])
                 ):
@@ -713,7 +944,11 @@ def analyze(args: argparse.Namespace) -> int:
                 rows.append(row)
 
     z_dim = int(outputs["mu_contact"].shape[1])
-    _write_rows(args.output_csv, rows, z_dim)
+    prior_rows_available = bool(rows) and all(
+        f"mu_contact_prior_{index}" in rows[0]
+        for index in range(z_dim)
+    )
+    _write_rows(args.output_csv, rows, z_dim, include_prior=prior_rows_available)
     sampled_episode_counts = _episode_counts(rows)
     unique_episode_numeric_ids = list(sampled_episode_counts.keys())
     sampled_future_force_candidates = [
@@ -732,6 +967,9 @@ def analyze(args: argparse.Namespace) -> int:
     print(f"unique_episode_numeric_ids={unique_episode_numeric_ids}")
     _print_force_stats("sampled_future_force_mean_raw", sampled_future_force_candidates)
     print(f"sampled_force_quantile_counts={_sampled_force_bin_counts(rows)}")
+    print(f"prior_analysis_found={prior_rows_available}")
+    if prior_rows_available:
+        _print_prior_metric_summary(rows)
     print(f"saved_csv={args.output_csv}")
     episode_mapping = {
         str(path): index
@@ -740,6 +978,14 @@ def analyze(args: argparse.Namespace) -> int:
     print(f"episode_id_mapping={episode_mapping}")
     if args.plot is not None:
         _save_plot(rows, z_dim, args.plot, args.color_by)
+    if args.plot_prior_overlay is not None:
+        if not prior_rows_available:
+            print(
+                "prior overlay requested, but prior columns are unavailable; skipping overlay",
+                file=sys.stderr,
+            )
+        else:
+            _save_prior_overlay_plot(rows, z_dim, args.plot_prior_overlay, args.color_by)
     return 0
 
 
@@ -760,7 +1006,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         choices=("uniform", "stratified_episode", "force_balanced"),
         default="stratified_episode",
     )
+    parser.add_argument("--include-prior", action="store_true")
     parser.add_argument("--plot", type=Path, default=None)
+    parser.add_argument("--plot-prior-overlay", type=Path, default=None)
     parser.add_argument(
         "--color-by",
         choices=sorted(COLOR_COLUMNS.keys()),
@@ -781,6 +1029,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args.output_csv = args.output_csv.expanduser()
     if args.plot is not None:
         args.plot = args.plot.expanduser()
+    if args.plot_prior_overlay is not None:
+        args.plot_prior_overlay = args.plot_prior_overlay.expanduser()
+    if args.plot_prior_overlay is not None and not args.include_prior:
+        print("error: --plot-prior-overlay requires --include-prior", file=sys.stderr)
+        return 2
     if not args.episode_paths:
         print("error: provide episode paths or --episode-list", file=sys.stderr)
         return 2
