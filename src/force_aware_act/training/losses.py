@@ -27,7 +27,9 @@ def compute_force_aware_act_loss(
     lambda_force: float = 0.1,
     beta_motion: float = 1.0e-4,
     beta_contact: float = 1.0e-4,
-) -> Dict[str, Union[torch.Tensor, float]]:
+    lambda_prior: float = 0.0,
+    prior_loss_mode: str = "mse_mu",
+) -> Dict[str, Union[torch.Tensor, float, str]]:
     """Compute the supervised action/force and posterior KL losses."""
 
     _validate_required_outputs(outputs)
@@ -46,6 +48,18 @@ def compute_force_aware_act_loss(
         + beta_motion * kl_motion
         + beta_contact * kl_contact
     )
+    loss_prior = pred_action.new_zeros(())
+    if lambda_prior > 0:
+        _validate_prior_outputs(outputs)
+        prior_losses = compute_contact_prior_distillation_loss(
+            mu_prior=outputs["mu_contact_prior"],
+            logvar_prior=outputs["logvar_contact_prior"],
+            mu_posterior=outputs["mu_contact"],
+            logvar_posterior=outputs["logvar_contact"],
+            mode=prior_loss_mode,
+        )
+        loss_prior = prior_losses["loss_prior"]
+        loss_total = loss_total + lambda_prior * loss_prior
 
     return {
         "loss_total": loss_total,
@@ -53,9 +67,12 @@ def compute_force_aware_act_loss(
         "loss_force": loss_force,
         "kl_motion": kl_motion,
         "kl_contact": kl_contact,
+        "loss_prior": loss_prior,
         "lambda_force": lambda_force,
         "beta_motion": beta_motion,
         "beta_contact": beta_contact,
+        "lambda_prior": lambda_prior,
+        "prior_loss_mode": prior_loss_mode,
     }
 
 
@@ -115,6 +132,17 @@ def _validate_required_outputs(outputs: Mapping[str, Any]) -> None:
     for key in REQUIRED_OUTPUT_KEYS:
         if key not in outputs:
             raise KeyError(f"outputs is missing required key: {key}")
+        if not isinstance(outputs[key], torch.Tensor):
+            raise ValueError(f"outputs[{key!r}] must be a torch.Tensor")
+
+
+def _validate_prior_outputs(outputs: Mapping[str, Any]) -> None:
+    for key in ("mu_contact_prior", "logvar_contact_prior", "mu_contact", "logvar_contact"):
+        if key not in outputs:
+            raise KeyError(
+                "outputs is missing required contact-prior distillation key: "
+                f"{key}"
+            )
         if not isinstance(outputs[key], torch.Tensor):
             raise ValueError(f"outputs[{key!r}] must be a torch.Tensor")
 

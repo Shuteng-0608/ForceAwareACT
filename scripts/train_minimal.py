@@ -4,6 +4,7 @@
 Example:
     PYTHONPATH=src .venv/bin/python scripts/train_minimal.py test_data/episode.hdf5 --max-steps 20
     PYTHONPATH=src .venv/bin/python scripts/train_minimal.py test_data/episode.hdf5 --log-csv outputs/minimal_train/train_log.csv
+    PYTHONPATH=src .venv/bin/python scripts/train_minimal.py test_data/episode.hdf5 --lambda-prior 0.01
 """
 
 from __future__ import annotations
@@ -106,6 +107,8 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "max_steps": args.max_steps,
         "learning_rate": args.learning_rate,
         "lambda_force": args.lambda_force,
+        "lambda_prior": args.lambda_prior,
+        "prior_loss_mode": args.prior_loss_mode,
         "beta_motion_max": args.beta_motion_max,
         "beta_contact_max": args.beta_contact_max,
         "warmup_steps": args.warmup_steps,
@@ -191,8 +194,11 @@ def train(args: argparse.Namespace) -> int:
                 "loss_force",
                 "kl_motion",
                 "kl_contact",
+                "loss_prior",
                 "beta_motion",
                 "beta_contact",
+                "lambda_prior",
+                "prior_loss_mode",
                 "normalization_enabled",
             ],
         )
@@ -221,6 +227,8 @@ def train(args: argparse.Namespace) -> int:
                 lambda_force=args.lambda_force,
                 beta_motion=beta_motion,
                 beta_contact=beta_contact,
+                lambda_prior=args.lambda_prior,
+                prior_loss_mode=args.prior_loss_mode,
             )
             losses["loss_total"].backward()
             optimizer.step()
@@ -233,25 +241,35 @@ def train(args: argparse.Namespace) -> int:
                     "loss_force": losses["loss_force"].item(),
                     "kl_motion": losses["kl_motion"].item(),
                     "kl_contact": losses["kl_contact"].item(),
+                    "loss_prior": losses["loss_prior"].item(),
                     "beta_motion": beta_motion,
                     "beta_contact": beta_contact,
+                    "lambda_prior": args.lambda_prior,
+                    "prior_loss_mode": args.prior_loss_mode,
                     "normalization_enabled": normalization_stats is not None,
                 }
             )
 
+            loss_parts = [
+                f"step={step}",
+                f"loss_total={losses['loss_total'].item():.6g}",
+                f"loss_action={losses['loss_action'].item():.6g}",
+                f"loss_force={losses['loss_force'].item():.6g}",
+                f"kl_motion={losses['kl_motion'].item():.6g}",
+                f"kl_contact={losses['kl_contact'].item():.6g}",
+            ]
+            if args.lambda_prior > 0:
+                loss_parts.append(f"loss_prior={losses['loss_prior'].item():.6g}")
+                loss_parts.append(f"lambda_prior={args.lambda_prior:.6g}")
+                loss_parts.append(f"prior_loss_mode={args.prior_loss_mode}")
+            loss_parts.extend(
+                [
+                    f"beta_motion={beta_motion:.6g}",
+                    f"beta_contact={beta_contact:.6g}",
+                ]
+            )
             print(
-                " ".join(
-                    [
-                        f"step={step}",
-                        f"loss_total={losses['loss_total'].item():.6g}",
-                        f"loss_action={losses['loss_action'].item():.6g}",
-                        f"loss_force={losses['loss_force'].item():.6g}",
-                        f"kl_motion={losses['kl_motion'].item():.6g}",
-                        f"kl_contact={losses['kl_contact'].item():.6g}",
-                        f"beta_motion={beta_motion:.6g}",
-                        f"beta_contact={beta_contact:.6g}",
-                    ]
-                ),
+                " ".join(loss_parts),
                 flush=True,
             )
 
@@ -282,6 +300,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--learning-rate", type=float, default=1.0e-4)
     parser.add_argument("--lambda-force", type=float, default=0.1)
+    parser.add_argument("--lambda-prior", type=float, default=0.0)
+    parser.add_argument("--prior-loss-mode", choices=("mse_mu", "kl_q_to_p"), default="mse_mu")
     parser.add_argument("--beta-motion-max", type=float, default=1.0e-4)
     parser.add_argument("--beta-contact-max", type=float, default=1.0e-4)
     parser.add_argument("--warmup-steps", type=int, default=100)
@@ -320,6 +340,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.max_steps <= 0:
         print("error: --max-steps must be positive", file=sys.stderr)
+        return 2
+    if args.lambda_prior < 0:
+        print("error: --lambda-prior must be non-negative", file=sys.stderr)
         return 2
     if args.normalization_stats is not None and not args.normalization_stats.is_file():
         print(

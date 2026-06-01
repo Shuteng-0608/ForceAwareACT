@@ -18,6 +18,16 @@ def _make_outputs():
     }
 
 
+def _add_prior_outputs(outputs):
+    outputs.update(
+        {
+            "mu_contact_prior": torch.full((1, 2), 2.0),
+            "logvar_contact_prior": torch.zeros(1, 2),
+        }
+    )
+    return outputs
+
+
 def test_force_aware_act_loss_terms_are_scalar_tensors():
     outputs = _make_outputs()
     action_chunk = torch.zeros(1, 1, 2)
@@ -28,6 +38,9 @@ def test_force_aware_act_loss_terms_are_scalar_tensors():
     for key in ("loss_total", "loss_action", "loss_force", "kl_motion", "kl_contact"):
         assert isinstance(losses[key], torch.Tensor)
         assert losses[key].shape == ()
+    assert losses["loss_prior"].shape == ()
+    assert losses["lambda_prior"] == 0.0
+    assert losses["prior_loss_mode"] == "mse_mu"
 
 
 def test_force_aware_act_loss_total_matches_weighted_sum():
@@ -53,6 +66,59 @@ def test_force_aware_act_loss_total_matches_weighted_sum():
     torch.testing.assert_close(losses["loss_total"], expected)
 
 
+def test_force_aware_act_loss_total_unchanged_when_lambda_prior_zero():
+    outputs = _make_outputs()
+    action_chunk = torch.zeros(1, 1, 2)
+    future_force_chunk = torch.zeros(1, 1, 3)
+
+    losses = compute_force_aware_act_loss(
+        outputs,
+        action_chunk,
+        future_force_chunk,
+        lambda_force=0.5,
+        beta_motion=0.25,
+        beta_contact=0.125,
+        lambda_prior=0.0,
+    )
+
+    expected = (
+        losses["loss_action"]
+        + 0.5 * losses["loss_force"]
+        + 0.25 * losses["kl_motion"]
+        + 0.125 * losses["kl_contact"]
+    )
+    torch.testing.assert_close(losses["loss_total"], expected)
+    torch.testing.assert_close(losses["loss_prior"], torch.zeros(()))
+
+
+def test_force_aware_act_loss_total_includes_weighted_prior_loss():
+    outputs = _add_prior_outputs(_make_outputs())
+    action_chunk = torch.zeros(1, 1, 2)
+    future_force_chunk = torch.zeros(1, 1, 3)
+
+    losses = compute_force_aware_act_loss(
+        outputs,
+        action_chunk,
+        future_force_chunk,
+        lambda_force=0.5,
+        beta_motion=0.25,
+        beta_contact=0.125,
+        lambda_prior=0.75,
+        prior_loss_mode="mse_mu",
+    )
+
+    expected = (
+        losses["loss_action"]
+        + 0.5 * losses["loss_force"]
+        + 0.25 * losses["kl_motion"]
+        + 0.125 * losses["kl_contact"]
+        + 0.75 * losses["loss_prior"]
+    )
+    torch.testing.assert_close(losses["loss_total"], expected)
+    assert losses["lambda_prior"] == 0.75
+    assert losses["prior_loss_mode"] == "mse_mu"
+
+
 def test_linear_warmup_values():
     assert linear_warmup(step=0, warmup_steps=10, max_value=0.5) == 0.0
     assert linear_warmup(step=5, warmup_steps=10, max_value=0.5) == 0.25
@@ -73,6 +139,20 @@ def test_force_aware_act_loss_missing_keys_raise_clear_errors():
     del outputs["mu_contact"]
     with pytest.raises(KeyError, match="mu_contact"):
         compute_force_aware_act_loss(outputs, action_chunk, future_force_chunk)
+
+
+def test_force_aware_act_loss_missing_prior_outputs_raise_when_enabled():
+    outputs = _make_outputs()
+    action_chunk = torch.zeros(1, 1, 2)
+    future_force_chunk = torch.zeros(1, 1, 3)
+
+    with pytest.raises(KeyError, match="mu_contact_prior"):
+        compute_force_aware_act_loss(
+            outputs,
+            action_chunk,
+            future_force_chunk,
+            lambda_prior=0.1,
+        )
 
 
 def test_force_aware_act_loss_one_batch_forward_backward():
@@ -108,6 +188,8 @@ def test_force_aware_act_loss_one_batch_forward_backward():
         lambda_force=0.1,
         beta_motion=1.0e-4,
         beta_contact=1.0e-4,
+        lambda_prior=0.1,
+        prior_loss_mode="mse_mu",
     )
     losses["loss_total"].backward()
 
