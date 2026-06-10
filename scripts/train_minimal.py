@@ -27,7 +27,7 @@ if str(SRC_ROOT) not in sys.path:
 from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
 from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
 from force_aware_act.training import compute_force_aware_act_loss, linear_warmup  # noqa: E402
-from script_utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
+from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
 def _move_batch_to_device(batch: Dict[str, object], device: torch.device) -> Dict[str, object]:
@@ -314,7 +314,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    args.episode_paths = resolve_episode_paths(args.episode_paths, args.episode_list)
+    args.episode_paths = resolve_episode_paths(
+        args.episode_paths, args.episode_list, project_root=REPO_ROOT
+    )
     if args.normalization_stats is not None:
         args.normalization_stats = args.normalization_stats.expanduser()
     args.log_csv = args.log_csv.expanduser()

@@ -20,7 +20,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import ContactForceHDF5Dataset, compute_normalization_stats  # noqa: E402
-from script_utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
+from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
 def compute_and_save(args: argparse.Namespace) -> int:
@@ -71,7 +71,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    args.episode_paths = resolve_episode_paths(args.episode_paths, args.episode_list)
+    args.episode_paths = resolve_episode_paths(
+        args.episode_paths, args.episode_list, project_root=REPO_ROOT
+    )
     args.output = args.output.expanduser()
     if not args.episode_paths:
         print("error: provide episode paths or --episode-list", file=sys.stderr)

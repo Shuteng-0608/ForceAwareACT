@@ -18,6 +18,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import ContactForceHDF5Dataset, get_episode_safe_lengths  # noqa: E402
+from force_aware_act.utils import resolve_episode_paths  # noqa: E402
 
 
 REQUIRED_DATASETS = (
@@ -32,38 +33,6 @@ REQUIRED_DATASETS = (
     "timestamps/force_episode",
     "timestamps/image_episode",
 )
-
-
-def _resolve_relative_path(path: Path, primary_base: Path) -> Path:
-    path = path.expanduser()
-    if path.is_absolute():
-        return path.resolve()
-
-    primary = (primary_base / path).resolve()
-    project_relative = (REPO_ROOT / path).resolve()
-    if primary.exists() or not project_relative.exists():
-        return primary
-    return project_relative
-
-
-def resolve_episode_paths(
-    direct_paths: Sequence[Path],
-    episode_list: Optional[Path],
-) -> list[Path]:
-    paths = [_resolve_relative_path(path, REPO_ROOT) for path in direct_paths]
-    if episode_list is not None:
-        resolved_list = _resolve_relative_path(episode_list, REPO_ROOT)
-        with resolved_list.open("r", encoding="utf-8") as list_file:
-            for line in list_file:
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                paths.append(_resolve_relative_path(Path(stripped), resolved_list.parent))
-
-    print(f"resolved_episode_count={len(paths)}")
-    for path in paths:
-        print(f"resolved_episode={path}")
-    return paths
 
 
 def _vector_text(values: Optional[np.ndarray]) -> str:
@@ -422,7 +391,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     try:
-        episode_paths = resolve_episode_paths(args.episode_paths, args.episode_list)
+        episode_paths = resolve_episode_paths(
+            args.episode_paths, args.episode_list, project_root=REPO_ROOT
+        )
     except Exception as error:
         print(f"error: failed to resolve episode paths: {error}", file=sys.stderr)
         return 2
@@ -452,7 +423,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print_aggregate(results)
 
     if args.output_csv is not None:
-        write_csv(_resolve_relative_path(args.output_csv, REPO_ROOT), results)
+        output_csv = args.output_csv.expanduser()
+        if not output_csv.is_absolute():
+            output_csv = REPO_ROOT / output_csv
+        write_csv(output_csv.resolve(), results)
     return 0
 
 
