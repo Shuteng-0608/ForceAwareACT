@@ -2,6 +2,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pytest
 
 from force_aware_act.data import ContactForceHDF5Dataset
 
@@ -45,6 +46,13 @@ def _write_fake_episode(path: Path) -> None:
         images = observations.create_group("images")
         images.create_dataset("ee_cam", data=ee_cam)
         images.create_dataset("base_top_cam", data=base_top_cam)
+
+
+def _shorten_dataset(path: Path, key: str, remove_count: int) -> None:
+    with h5py.File(path, "r+") as handle:
+        values = np.asarray(handle[key])
+        del handle[key]
+        handle.create_dataset(key, data=values[:-remove_count])
 
 
 def test_contact_force_hdf5_dataset_shapes(tmp_path):
@@ -145,3 +153,80 @@ def test_contact_force_hdf5_dataset_imagenet_normalization(tmp_path):
         expected[:, None, None] * np.ones((3, 224, 224), dtype=np.float32),
         rtol=1e-6,
     )
+
+
+def test_perfectly_aligned_episode_has_no_safe_length_trimming(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+
+    dataset = ContactForceHDF5Dataset(episode_path, chunk_len=10)
+    safe_lengths = dataset.episode_safe_lengths[episode_path]
+
+    assert len(dataset) == 89
+    assert safe_lengths.trim_state == 0
+    assert safe_lengths.trim_image == 0
+    assert safe_lengths.trim_force == 0
+    assert safe_lengths.mismatch_groups == ()
+
+
+def test_one_frame_image_timestamp_mismatch_works_in_tolerant_mode(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+    _shorten_dataset(episode_path, "timestamps/image_episode", 1)
+
+    dataset = ContactForceHDF5Dataset(episode_path, chunk_len=10)
+
+    assert dataset.episode_safe_lengths[episode_path].image_len == 49
+    assert dataset.episode_safe_lengths[episode_path].trim_image == 1
+    assert dataset[len(dataset) - 1]["image_index"] < 49
+
+
+def test_one_frame_base_top_camera_mismatch_works_in_tolerant_mode(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+    _shorten_dataset(episode_path, "observations/images/base_top_cam", 1)
+
+    dataset = ContactForceHDF5Dataset(episode_path, chunk_len=10)
+    sample = dataset[len(dataset) - 1]
+
+    assert dataset.episode_safe_lengths[episode_path].image_len == 49
+    assert sample["images"].shape == (2, 3, 224, 224)
+    assert sample["image_index"] < 49
+
+
+def test_one_frame_force_timestamp_mismatch_works_in_tolerant_mode(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+    _shorten_dataset(episode_path, "timestamps/force_episode", 1)
+
+    dataset = ContactForceHDF5Dataset(episode_path, chunk_len=10)
+    sample = dataset[len(dataset) - 1]
+
+    assert dataset.episode_safe_lengths[episode_path].force_len == 499
+    assert dataset.episode_safe_lengths[episode_path].trim_force == 1
+    assert sample["force_indices"].max() < 499
+
+
+def test_length_mismatch_strict_mode_raises(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+    _shorten_dataset(episode_path, "timestamps/image_episode", 1)
+
+    with pytest.raises(ValueError, match="image group length mismatch"):
+        ContactForceHDF5Dataset(
+            episode_path,
+            tolerate_length_mismatch=False,
+        )
+
+
+def test_length_mismatch_above_maximum_raises(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+    _shorten_dataset(episode_path, "timestamps/image_episode", 2)
+
+    with pytest.raises(ValueError, match="exceeds max_length_mismatch=1"):
+        ContactForceHDF5Dataset(
+            episode_path,
+            tolerate_length_mismatch=True,
+            max_length_mismatch=1,
+        )
