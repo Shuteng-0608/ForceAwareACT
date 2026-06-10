@@ -37,6 +37,21 @@ METRIC_COLUMNS = (
     "pred_action_zero_prior_mean_abs_diff",
     "pred_force_zero_prior_mean_abs_diff",
 )
+IMPROVEMENT_COLUMNS = (
+    "action_prior_improvement_vs_zero",
+    "force_prior_improvement_vs_zero",
+)
+SAMPLE_METRIC_COLUMNS = (*METRIC_COLUMNS, *IMPROVEMENT_COLUMNS)
+SAMPLE_METADATA_COLUMNS = (
+    "batch_index",
+    "sample_index_in_batch",
+    "global_dataset_index",
+    "episode_path",
+    "episode_index",
+    "local_state_index",
+    "timestamp",
+)
+SAMPLE_OUTPUT_COLUMNS = (*SAMPLE_METADATA_COLUMNS, *SAMPLE_METRIC_COLUMNS)
 
 
 def _load_normalization_stats(path: Path) -> Dict[str, torch.Tensor]:
@@ -96,7 +111,22 @@ def _scalar(tensor: torch.Tensor) -> float:
     return float(tensor.detach().cpu().item())
 
 
-def _batch_metrics(model: ForceAwareACTPolicy, batch: Dict[str, object]) -> dict[str, float]:
+def _sample_values(tensor: torch.Tensor) -> list[float]:
+    return tensor.detach().cpu().tolist()
+
+
+def _mean_except_batch(tensor: torch.Tensor) -> torch.Tensor:
+    return tensor.mean(dim=tuple(range(1, tensor.ndim)))
+
+
+def _safe_improvement(zero: torch.Tensor, prior: torch.Tensor) -> torch.Tensor:
+    return torch.where(zero != 0, (zero - prior) / zero, torch.full_like(zero, float("nan")))
+
+
+def _batch_and_sample_metrics(
+    model: ForceAwareACTPolicy,
+    batch: Dict[str, object],
+) -> tuple[dict[str, float], dict[str, list[float]]]:
     with torch.no_grad():
         outputs_zero = model(
             images=batch["images"],
@@ -130,34 +160,48 @@ def _batch_metrics(model: ForceAwareACTPolicy, batch: Dict[str, object]) -> dict
     action_target = batch["action_chunk"]
     force_target = batch["future_force_chunk"]
     mu_delta = outputs_prior["mu_contact_prior"] - outputs_posterior["mu_contact"]
-
-    return {
-        "action_l1_zero": _scalar(functional.l1_loss(outputs_zero["pred_action"], action_target)),
-        "action_l1_prior": _scalar(functional.l1_loss(outputs_prior["pred_action"], action_target)),
-        "action_l1_posterior": _scalar(
-            functional.l1_loss(outputs_posterior["pred_action"], action_target)
+    sample_tensors = {
+        "action_l1_zero": _mean_except_batch(
+            functional.l1_loss(outputs_zero["pred_action"], action_target, reduction="none")
         ),
-        "force_l1_zero": _scalar(functional.l1_loss(outputs_zero["pred_force"], force_target)),
-        "force_l1_prior": _scalar(functional.l1_loss(outputs_prior["pred_force"], force_target)),
-        "force_l1_posterior": _scalar(
-            functional.l1_loss(outputs_posterior["pred_force"], force_target)
+        "action_l1_prior": _mean_except_batch(
+            functional.l1_loss(outputs_prior["pred_action"], action_target, reduction="none")
         ),
-        "mu_prior_to_mu_posterior_mse": _scalar(mu_delta.pow(2).mean()),
-        "mu_prior_to_mu_posterior_l2": _scalar(mu_delta.norm(dim=-1).mean()),
-        "mu_prior_to_mu_posterior_cosine": _scalar(
-            functional.cosine_similarity(
-                outputs_prior["mu_contact_prior"],
-                outputs_posterior["mu_contact"],
-                dim=-1,
-            ).mean()
+        "action_l1_posterior": _mean_except_batch(
+            functional.l1_loss(outputs_posterior["pred_action"], action_target, reduction="none")
         ),
-        "pred_action_zero_prior_mean_abs_diff": _scalar(
-            (outputs_zero["pred_action"] - outputs_prior["pred_action"]).abs().mean()
+        "force_l1_zero": _mean_except_batch(
+            functional.l1_loss(outputs_zero["pred_force"], force_target, reduction="none")
         ),
-        "pred_force_zero_prior_mean_abs_diff": _scalar(
-            (outputs_zero["pred_force"] - outputs_prior["pred_force"]).abs().mean()
+        "force_l1_prior": _mean_except_batch(
+            functional.l1_loss(outputs_prior["pred_force"], force_target, reduction="none")
+        ),
+        "force_l1_posterior": _mean_except_batch(
+            functional.l1_loss(outputs_posterior["pred_force"], force_target, reduction="none")
+        ),
+        "mu_prior_to_mu_posterior_mse": mu_delta.pow(2).mean(dim=-1),
+        "mu_prior_to_mu_posterior_l2": mu_delta.norm(dim=-1),
+        "mu_prior_to_mu_posterior_cosine": functional.cosine_similarity(
+            outputs_prior["mu_contact_prior"],
+            outputs_posterior["mu_contact"],
+            dim=-1,
+        ),
+        "pred_action_zero_prior_mean_abs_diff": _mean_except_batch(
+            (outputs_zero["pred_action"] - outputs_prior["pred_action"]).abs()
+        ),
+        "pred_force_zero_prior_mean_abs_diff": _mean_except_batch(
+            (outputs_zero["pred_force"] - outputs_prior["pred_force"]).abs()
         ),
     }
+    sample_tensors["action_prior_improvement_vs_zero"] = _safe_improvement(
+        sample_tensors["action_l1_zero"], sample_tensors["action_l1_prior"]
+    )
+    sample_tensors["force_prior_improvement_vs_zero"] = _safe_improvement(
+        sample_tensors["force_l1_zero"], sample_tensors["force_l1_prior"]
+    )
+    batch_metrics = {column: _scalar(sample_tensors[column].mean()) for column in METRIC_COLUMNS}
+    sample_metrics = {column: _sample_values(values) for column, values in sample_tensors.items()}
+    return batch_metrics, sample_metrics
 
 
 def _summarize(values: Sequence[float]) -> dict[str, float]:
@@ -223,6 +267,42 @@ def _write_csv(path: Path, rows: list[dict[str, float]]) -> None:
     print(f"saved_csv={path}")
 
 
+def _write_ranked_cases(
+    path: Path,
+    rows: list[dict[str, object]],
+    sort_key: str,
+    top_k: int,
+    best: bool,
+) -> None:
+    finite_rows = [
+        row
+        for row in rows
+        if isinstance(row[sort_key], (int, float))
+        and torch.isfinite(torch.tensor(float(row[sort_key]))).item()
+    ]
+    smaller_is_better = sort_key in IMPROVEMENT_COLUMNS
+    reverse = smaller_is_better if best else not smaller_is_better
+    ranked = sorted(finite_rows, key=lambda row: float(row[sort_key]), reverse=reverse)[:top_k]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=SAMPLE_OUTPUT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(ranked)
+    label = "best" if best else "worst"
+    print(f"saved_{label}_cases={path}")
+    print(f"{label}_cases_sort_key={sort_key}")
+    print(f"{label}_cases_count={len(ranked)}")
+
+
+def _batch_metadata_value(batch: Dict[str, object], key: str, sample_index: int) -> object:
+    value = batch.get(key)
+    if value is None:
+        return ""
+    if torch.is_tensor(value):
+        return value[sample_index].detach().cpu().item()
+    return value[sample_index]
+
+
 def evaluate(args: argparse.Namespace) -> int:
     device = torch.device(args.device)
     stats = _load_normalization_stats(args.normalization_stats)
@@ -251,13 +331,34 @@ def evaluate(args: argparse.Namespace) -> int:
 
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     rows = []
+    sample_rows: list[dict[str, object]] = []
+    episode_indices = {str(path): index for index, path in enumerate(args.episode_paths)}
+    evaluated_samples = 0
     for batch_index, batch in enumerate(dataloader, start=1):
         if batch_index > args.max_batches:
             break
         batch = _move_batch_to_device(batch, device)
         batch = _normalize_batch(batch, stats)
-        row = {"batch_index": batch_index, **_batch_metrics(model, batch)}
+        batch_metrics, sample_metrics = _batch_and_sample_metrics(model, batch)
+        row = {"batch_index": batch_index, **batch_metrics}
         rows.append(row)
+        batch_size = len(sample_metrics["force_l1_zero"])
+        for sample_index in range(batch_size):
+            episode_path = str(_batch_metadata_value(batch, "episode_path", sample_index))
+            sample_row: dict[str, object] = {
+                "batch_index": batch_index,
+                "sample_index_in_batch": sample_index,
+                "global_dataset_index": evaluated_samples + sample_index,
+                "episode_path": episode_path,
+                "episode_index": episode_indices.get(episode_path, ""),
+                "local_state_index": _batch_metadata_value(batch, "state_index", sample_index),
+                "timestamp": _batch_metadata_value(batch, "t_state", sample_index),
+            }
+            sample_row.update(
+                {column: sample_metrics[column][sample_index] for column in SAMPLE_METRIC_COLUMNS}
+            )
+            sample_rows.append(sample_row)
+        evaluated_samples += batch_size
         print(
             " ".join(
                 [
@@ -280,6 +381,22 @@ def evaluate(args: argparse.Namespace) -> int:
     _print_summary(rows)
     if args.output_csv is not None:
         _write_csv(args.output_csv, rows)
+    if args.save_worst_cases is not None:
+        _write_ranked_cases(
+            args.save_worst_cases,
+            sample_rows,
+            args.worst_sort_key,
+            args.top_k_worst,
+            best=False,
+        )
+    if args.save_best_cases is not None:
+        _write_ranked_cases(
+            args.save_best_cases,
+            sample_rows,
+            args.worst_sort_key,
+            args.top_k_best,
+            best=True,
+        )
     return 0
 
 
@@ -298,6 +415,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--camera-names", nargs="+", default=("ee_cam", "base_top_cam"))
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-csv", type=Path, default=None)
+    parser.add_argument("--save-worst-cases", type=Path, default=None)
+    parser.add_argument("--top-k-worst", type=int, default=50)
+    parser.add_argument(
+        "--worst-sort-key",
+        choices=SAMPLE_METRIC_COLUMNS,
+        default="force_prior_improvement_vs_zero",
+    )
+    parser.add_argument("--save-best-cases", type=Path, default=None)
+    parser.add_argument("--top-k-best", type=int, default=50)
     return parser.parse_args(argv)
 
 
@@ -310,6 +436,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args.normalization_stats = args.normalization_stats.expanduser()
     if args.output_csv is not None:
         args.output_csv = args.output_csv.expanduser()
+    if args.save_worst_cases is not None:
+        args.save_worst_cases = args.save_worst_cases.expanduser()
+    if args.save_best_cases is not None:
+        args.save_best_cases = args.save_best_cases.expanduser()
     if not args.episode_paths:
         print("error: provide episode paths or --episode-list", file=sys.stderr)
         return 2
@@ -329,6 +459,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.max_batches <= 0:
         print("error: --max-batches must be positive", file=sys.stderr)
+        return 2
+    if args.top_k_worst <= 0:
+        print("error: --top-k-worst must be positive", file=sys.stderr)
+        return 2
+    if args.top_k_best <= 0:
+        print("error: --top-k-best must be positive", file=sys.stderr)
         return 2
     if args.chunk_len <= 0:
         print("error: --chunk-len must be positive", file=sys.stderr)
