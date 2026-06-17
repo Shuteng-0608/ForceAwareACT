@@ -654,11 +654,120 @@ test10:
 
 ---
 
-## 15. 后续工作
+## 15. Worst-Case Analysis
+
+为定位 prior inference 明显劣于 zero inference 的困难样本，在 test10 的 500 个 evaluation batches、共 4,000 个样本上增加了 per-sample worst-case logging。排序指标采用：
+
+```text
+force_prior_improvement_vs_zero
+```
+
+该指标越小，表示 prior 相比 zero 的 future-force prediction 退化越严重。
+
+### 15.1 Worst-case 样本分布
+
+最差样本主要集中在两个短时间段：
+
+```text
+episode 20260610_145610_teleop_001:
+  state index 331-336
+  timestamp 11.034-11.200 s
+
+episode 20260610_144718_teleop_004:
+  state index 159-162
+  timestamp 5.300-5.400 s
+```
+
+其中最差样本的 force improvement ratio 接近 `-2.98`：
+
+| Episode | State index | Timestamp | Force L1 zero | Force L1 prior | Force improvement |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `20260610_145610_teleop_001` | 334 | 11.134 s | 0.3136 | 1.2477 | -2.9789 |
+| `20260610_144718_teleop_004` | 160 | 5.334 s | 0.2406 | 0.9555 | -2.9705 |
+
+这些结果表明，worst-case failure 并非随机散布，而是集中发生在连续的局部接触阶段。
+
+### 15.2 局部接触信号分析
+
+对上述两个代表性样本检查了 selected state 前后各 40 个 state frames，并按 timestamp 对齐高频 wrench 数据。
+
+| Case | Selected force norm | Max force norm | Peak force offset | Selected force delta | Max force delta | Peak delta offset |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| State 334 | 64.04 | 214.95 | -0.362 s | -1704.61 | 5493.97 | -0.710 s |
+| State 160 | 33.02 | 63.76 | -0.184 s | -467.63 | 5924.74 | -0.304 s |
+
+两个 failure case 都发生在显著 force-norm 和 force-delta spike 之后。State 334 在 selected timestamp 仍具有较大的负 force derivative，说明该样本处于快速卸载或接触状态切换阶段。State 160 的主要 force spike 距 selected state 更近，同样属于强瞬态接触区域。
+
+这一现象支持以下解释：
+
+```text
+prior failure 与快速接触瞬态相关；
+过去力窗口中包含强接触峰值，但未来力可能快速下降；
+conditional prior 在这些样本中错误延续或放大了高力接触模式。
+```
+
+### 15.3 Prediction-chunk 分析
+
+进一步导出了两个 selected states 的未来 10-step action/force prediction chunks，并比较 zero、prior 和 posterior oracle。
+
+| Case | Action L1 zero | Action L1 prior | Action L1 posterior | Force L1 zero | Force L1 prior | Force L1 posterior |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| State 334 | 0.1365 | 0.1148 | 0.0304 | 0.3136 | 1.2477 | 0.1422 |
+| State 160 | 0.1460 | 0.1416 | 0.0583 | 0.2406 | 0.9555 | 0.1001 |
+
+在两个样本中，prior 对 action prediction 仍有小幅改善，但 future-force prediction 明显恶化。对 denormalized translational force norm 的检查显示：
+
+```text
+State 334:
+  ground-truth mean force norm = 19.61
+  prior mean force norm        = 228.66
+  prior mean force-norm bias   = +209.05
+
+State 160:
+  ground-truth mean force norm = 6.11
+  prior mean force norm        = 121.57
+  prior mean force-norm bias   = +115.46
+```
+
+prior 在两个 case 的全部 10 个 future steps 中都高估了 translational force magnitude。相比之下，posterior oracle 的 force prediction 明显更接近 ground truth，且 action prediction 也保持更低误差。
+
+对应的 prior-posterior latent 对齐也明显变差：
+
+```text
+State 334:
+  mu MSE    = 3.565
+  mu L2     = 7.553
+  cosine    = -0.223
+
+State 160:
+  mu MSE    = 1.808
+  mu L2     = 5.379
+  cosine    = 0.092
+```
+
+### 15.4 Worst-case 结论
+
+worst-case analysis 表明，conditional contact prior 的主要失败模式不是普遍性的 force underprediction，而是在少数快速接触切换样本中严重高估未来力。模型可能将过去窗口中的强接触峰值解释为未来仍将持续的接触状态，未能及时预测卸载或脱离接触。
+
+posterior oracle 在这些样本中仍能较好跟踪 ground truth，说明模型的 force prediction capacity 足够，主要瓶颈位于 online conditional prior 对未来 contact mode 的推断。
+
+后续改进应重点关注：
+
+```text
+增加 force derivative / contact transition 特征；
+对高力瞬态和卸载阶段进行 balanced sampling；
+为 prior uncertainty 或 multimodal contact transitions 建模；
+加入 worst-case-aware 或 force-overshoot penalty；
+在 closed-loop rollout 中检查该类高估是否导致过度保守或不稳定控制。
+```
+
+---
+
+## 16. 后续工作
 
 建议下一步做以下工作：
 
-### 15.1 修复 episode-list 路径解析
+### 16.1 修复 episode-list 路径解析
 
 统一所有脚本中的 episode path resolution：
 
@@ -670,7 +779,7 @@ episode-list-parent-relative path -> fallback
 
 这样可以避免 `configs/splits/mujoco_data/...` 这类错误路径。
 
-### 15.2 Worst-case analysis
+### 16.2 Worst-case analysis
 
 为 `evaluate_inference_modes.py` 增加：
 
@@ -696,7 +805,7 @@ future force statistics
 
 这样可以定位哪些接触状态最难建模。
 
-### 15.3 Latent PCA on train/val/test
+### 16.3 Latent PCA on train/val/test
 
 对 100 条数据重新做 force-balanced latent PCA，并分别检查：
 
@@ -709,7 +818,7 @@ force delta coloring
 time coloring
 ```
 
-### 15.4 Evaluate closed-loop rollout
+### 16.4 Evaluate closed-loop rollout
 
 当前评估是 offline supervised prediction。下一阶段需要在 MuJoCo 或真实控制链路中验证：
 
@@ -719,7 +828,7 @@ zero mode vs prior mode
 
 对实际插孔成功率、接触力峰值、轨迹平滑性和卡滞恢复能力的影响。
 
-### 15.5 Ablation study
+### 16.5 Ablation study
 
 后续可加入 ablation：
 
@@ -735,7 +844,7 @@ different lambda_force / lambda_prior
 
 ---
 
-## 16. 当前实验状态
+## 17. 当前实验状态
 
 截至本轮实验结束，项目状态如下：
 

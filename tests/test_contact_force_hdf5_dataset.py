@@ -7,7 +7,7 @@ import pytest
 from force_aware_act.data import ContactForceHDF5Dataset
 
 
-def _write_fake_episode(path: Path) -> None:
+def _write_fake_episode(path: Path, include_actions: bool = False) -> None:
     n_state = 100
     n_force = 500
     n_image = 50
@@ -23,6 +23,7 @@ def _write_fake_episode(path: Path) -> None:
     joint_torque = joint_pos + 2000.0
     ee_pose = joint_pos + 3000.0
     ft_wrench = np.arange(n_force * 6, dtype=np.float32).reshape(n_force, 6)
+    action = joint_pos + 10_000.0
 
     ee_cam = np.zeros((n_image, height, width, 3), dtype=np.uint8)
     base_top_cam = np.zeros((n_image, height, width, 3), dtype=np.uint8)
@@ -46,6 +47,11 @@ def _write_fake_episode(path: Path) -> None:
         images = observations.create_group("images")
         images.create_dataset("ee_cam", data=ee_cam)
         images.create_dataset("base_top_cam", data=base_top_cam)
+
+        if include_actions:
+            handle.create_dataset("action", data=action)
+            actions = handle.create_group("actions")
+            actions.create_dataset("joint_pos_command", data=action)
 
 
 def _shorten_dataset(path: Path, key: str, remove_count: int) -> None:
@@ -124,6 +130,143 @@ def test_contact_force_hdf5_dataset_timestamp_alignment(tmp_path):
         np.arange(500 * 6, dtype=np.float32)
         .reshape(500, 6)[expected_future_force_indices],
     )
+
+
+def test_action_mode_joint_pos_still_works_without_command_labels(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=False)
+
+    dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="joint_pos",
+        chunk_len=4,
+        force_window_len=5,
+    )
+
+    sample = dataset[5]
+
+    np.testing.assert_array_equal(
+        sample["action_chunk"].numpy(),
+        np.arange(42, 70, dtype=np.float32).reshape(4, 7),
+    )
+
+
+def test_action_mode_action_uses_root_command_labels(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+
+    dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="action",
+        chunk_len=4,
+        force_window_len=5,
+    )
+
+    sample = dataset[5]
+    expected = np.arange(35, 63, dtype=np.float32).reshape(4, 7) + 10_000.0
+
+    assert len(dataset) == 96
+    assert sample["action_chunk"].shape == (4, 7)
+    np.testing.assert_array_equal(sample["action_chunk"].numpy(), expected)
+
+
+def test_action_mode_joint_pos_command_uses_semantic_command_copy(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+
+    action_dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="action",
+        chunk_len=4,
+        force_window_len=5,
+    )
+    command_dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="joint_pos_command",
+        chunk_len=4,
+        force_window_len=5,
+    )
+
+    np.testing.assert_array_equal(
+        action_dataset[5]["action_chunk"].numpy(),
+        command_dataset[5]["action_chunk"].numpy(),
+    )
+
+
+def test_action_mode_delta_joint_cmd_is_command_minus_current_qpos(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+
+    dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="delta_joint_cmd",
+        chunk_len=4,
+        force_window_len=5,
+    )
+
+    sample = dataset[5]
+    current_qpos = np.arange(35, 42, dtype=np.float32)
+    expected_action = np.arange(35, 63, dtype=np.float32).reshape(4, 7) + 10_000.0
+    expected_delta = expected_action - current_qpos[None, :]
+
+    np.testing.assert_array_equal(sample["action_chunk"].numpy(), expected_delta)
+
+
+def test_action_mode_delta_joint_pos_command_is_command_minus_current_qpos(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+
+    dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="delta_joint_pos_command",
+        chunk_len=4,
+        force_window_len=5,
+    )
+
+    sample = dataset[5]
+    current_qpos = np.arange(35, 42, dtype=np.float32)
+    expected_action = np.arange(35, 63, dtype=np.float32).reshape(4, 7) + 10_000.0
+    expected_delta = expected_action - current_qpos[None, :]
+
+    np.testing.assert_array_equal(sample["action_chunk"].numpy(), expected_delta)
+
+
+def test_command_action_mode_missing_dataset_raises_clear_error(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=False)
+
+    with pytest.raises(KeyError, match="missing action dataset"):
+        ContactForceHDF5Dataset(episode_path, action_mode="action")
+
+
+def test_command_action_mode_length_mismatch_raises(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+    _shorten_dataset(episode_path, "action", 2)
+
+    with pytest.raises(ValueError, match="action dataset length mismatch"):
+        ContactForceHDF5Dataset(episode_path, action_mode="action")
+
+
+def test_command_action_mode_returns_expected_shapes_and_finite_tensors(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+
+    dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="action",
+        chunk_len=10,
+        force_window_len=20,
+    )
+    sample = dataset[5]
+
+    assert sample["images"].shape == (2, 3, 224, 224)
+    assert sample["qpos"].shape == (7,)
+    assert sample["force_window"].shape == (20, 6)
+    assert sample["action_chunk"].shape == (10, 7)
+    assert sample["future_force_chunk"].shape == (10, 6)
+    for key in ("qpos", "force_window", "action_chunk", "future_force_chunk"):
+        assert np.isfinite(sample[key].numpy()).all()
 
 
 def test_contact_force_hdf5_dataset_imagenet_normalization(tmp_path):

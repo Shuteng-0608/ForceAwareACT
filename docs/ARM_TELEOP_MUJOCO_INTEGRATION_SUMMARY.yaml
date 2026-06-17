@@ -1,0 +1,133 @@
+arm_teleop_path: ../arm_teleop
+arm_teleop_branch: dev_peg_in_hole
+main_entry: ../arm_teleop/vptele/main_mujoco.py
+
+model_xml_candidates:
+  - ../arm_teleop/model/pangu_all_right.xml
+  - ../arm_teleop/model/right_arm_peg_tool_wall_contact.xml
+  - ../arm_teleop/model/right_arm_stable.xml
+selected_model_xml: ../arm_teleop/model/pangu_all_right.xml
+selected_model_evidence:
+  - vptele/config/config_arm_right_peg.yaml selects pangu_all_right.xml
+  - a checked 100-episode HDF5 file records pangu_all_right.xml in model_path
+
+arm_joint_names:
+  - joint_1
+  - joint_2
+  - joint_3
+  - joint_4
+  - joint_5
+  - joint_6
+  - joint_7
+
+actuator_names:
+  - motor_joint_1
+  - motor_joint_2
+  - motor_joint_3
+  - motor_joint_4
+  - motor_joint_5
+  - motor_joint_6
+  - motor_joint_7
+
+camera_names:
+  recorded:
+    - ee_cam
+    - base_top_cam
+  additional_model_cameras:
+    - wall_task_cam
+    - wall_side_cam
+    - cctv_cam
+  recorded_image_shape_hwc: [480, 640, 3]
+  recorded_color_format: uint8_rgb
+  forceawareact_image_shape_nchw: [2, 3, 224, 224]
+
+force_sensor_names_or_sources:
+  site: ft_sensor_site
+  force_sensor: peg_ft_force
+  torque_sensor: peg_ft_torque
+  hdf5_field: observations/ft_wrench
+  component_order: [Fx, Fy, Fz, Tx, Ty, Tz]
+  documented_frame: ft_sensor_site_local_frame
+
+control_mode:
+  selected: actuator_position_control
+  command_sink: data.ctrl
+  physics_step: mujoco.mj_step
+  public_teleop_command_method: set_arm_positions
+  public_to_internal_arm_sign: [-1, 1, 1, -1, 1, 1, 1]
+  forceawareact_action_convention: internal_mujoco_qpos
+  qpos_direct_write_use: initialization_reset_or_debug_only
+
+control_rate:
+  physics_timestep_seconds: 0.001
+  nominal_physics_hz: 1000
+  teleop_update_period_seconds: 0.01
+  teleop_observed_comment_hz: 80
+  hdf5_state_hz: 30
+  hdf5_force_hz: 500
+  hdf5_image_hz: 30
+  viewer_hz: 60
+  camera_monitor_hz: 15
+  max_joint_velocity_rad_s: 0.5
+
+initial_arm_joints:
+  teleop_command_convention: [-0.046, -0.2, 0.0, 1.6, -1.32, 0.005, 0.005]
+  internal_mujoco_convention: [0.046, -0.2, 0.0, -1.6, -1.32, 0.005, 0.005]
+
+hdf5_fields:
+  - observations/ee_pose
+  - observations/joint_pos
+  - observations/joint_vel
+  - observations/joint_torque
+  - observations/ft_wrench
+  - observations/images/ee_cam
+  - observations/images/base_top_cam
+  - timestamps/state
+  - timestamps/state_episode
+  - timestamps/force
+  - timestamps/force_episode
+  - timestamps/image
+  - timestamps/image_episode
+  - episode_metadata
+  - events
+
+task:
+  name: wall_peg_in_hole
+  peg_body: peg_tool
+  peg_geom: cylindrical_peg
+  wall_body: wall_task
+  insertion_axis_world: [0.0, 1.0, 0.0]
+  hole_randomization_on_record_start: true
+  hole_random_x_range_m: [-0.020, 0.020]
+  hole_random_y_range_m: [0.010, 0.010]
+  hole_random_z_range_m: [-0.020, 0.020]
+  visual_guides_enabled_during_collection: false
+  selected_xml_peg_tip_site_available: false
+  selected_xml_hole_center_site_available: false
+  recorded_task_success: unknown
+
+runtime_dependencies:
+  collection:
+    - ROS
+    - /arm_teleop/right_arm_ik_srv
+    - Vision Pro right-wrist stream
+    - MuJoCo
+    - OpenCV camera monitor
+    - optional recording keyboard client
+  proposed_policy_rollout:
+    - MuJoCo
+    - ForceAwareACT checkpoint
+    - normalization statistics
+    - no Vision Pro or IK required for direct joint-position policy control
+
+rollout_open_questions:
+  - How should internal MuJoCo qpos predictions be sent without double-applying arm_sign?
+  - What are the exact ft_sensor_site force and torque axis/sign conventions?
+  - Is force bias removal needed?
+  - Should policy inference run exactly at 30 Hz?
+  - Should rollout execute only the first action or a short portion of each chunk?
+  - What joint, velocity, action-delta, force, and torque safety limits should apply?
+  - How will reset state and wall_task randomization be reproduced and logged?
+  - How will success and failure be measured without active peg_tip_site and hole_center_site?
+  - How will rendering and inference be isolated from the 1000 Hz physics loop?
+  - Should predicted future force be used only for diagnostics or also for a safety stop?
