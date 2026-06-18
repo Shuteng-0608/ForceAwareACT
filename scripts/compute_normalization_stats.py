@@ -23,10 +23,19 @@ from force_aware_act.data import ContactForceHDF5Dataset, compute_normalization_
 from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
+ACTION_MODE_CHOICES = (
+    "joint_pos",
+    "action",
+    "joint_pos_command",
+    "delta_joint_cmd",
+    "delta_joint_pos_command",
+)
+
+
 def compute_and_save(args: argparse.Namespace) -> int:
     dataset = ContactForceHDF5Dataset(
         args.episode_paths,
-        action_mode="joint_pos",
+        action_mode=args.action_mode,
         chunk_len=args.chunk_len,
         force_window_len=args.force_window_len,
         force_window_duration=args.force_window_duration,
@@ -41,12 +50,29 @@ def compute_and_save(args: argparse.Namespace) -> int:
         num_workers=args.num_workers,
         eps=args.eps,
     )
+    stats.update(
+        {
+            "action_mode": args.action_mode,
+            "chunk_len": args.chunk_len,
+            "force_window_len": args.force_window_len,
+            "force_window_duration": args.force_window_duration,
+            "camera_names": tuple(args.camera_names),
+            "image_size": tuple(args.image_size),
+            "imagenet_normalize": bool(args.imagenet_normalize),
+            "episode_paths": [str(path) for path in args.episode_paths],
+            "episode_list": str(args.episode_list) if args.episode_list is not None else None,
+        }
+    )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(stats, args.output)
     print(f"saved_stats={args.output}")
+    print(f"action_mode={args.action_mode}")
     for key, value in stats.items():
-        print(f"{key}: shape={tuple(value.shape)}")
+        if torch.is_tensor(value):
+            print(f"{key}: shape={tuple(value.shape)}")
+        else:
+            print(f"{key}: {value}")
     return 0
 
 
@@ -57,6 +83,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("episode_paths", type=Path, nargs="*", help="One or more HDF5 episodes.")
     parser.add_argument("--episode-list", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=Path("outputs/normalization_stats.pt"))
+    parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
     parser.add_argument("--chunk-len", type=int, default=50)
     parser.add_argument("--force-window-len", type=int, default=50)
     parser.add_argument("--force-window-duration", type=float, default=0.25)

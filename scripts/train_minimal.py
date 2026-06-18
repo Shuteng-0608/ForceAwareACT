@@ -13,7 +13,7 @@ import argparse
 import csv
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Sequence
+from typing import Any, Dict, Iterable, Optional, Sequence
 
 import torch
 from torch.optim import AdamW
@@ -30,6 +30,15 @@ from force_aware_act.training import compute_force_aware_act_loss, linear_warmup
 from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
+ACTION_MODE_CHOICES = (
+    "joint_pos",
+    "action",
+    "joint_pos_command",
+    "delta_joint_cmd",
+    "delta_joint_pos_command",
+)
+
+
 def _move_batch_to_device(batch: Dict[str, object], device: torch.device) -> Dict[str, object]:
     return {
         key: value.to(device) if torch.is_tensor(value) else value
@@ -43,7 +52,7 @@ def _cycle_batches(dataloader: DataLoader) -> Iterable[Dict[str, object]]:
             yield batch
 
 
-def _load_normalization_stats(stats_path: Optional[Path]) -> Optional[Dict[str, torch.Tensor]]:
+def _load_normalization_stats(stats_path: Optional[Path]) -> Optional[Dict[str, Any]]:
     if stats_path is None:
         return None
     stats = torch.load(stats_path, map_location="cpu")
@@ -65,9 +74,24 @@ def _load_normalization_stats(stats_path: Optional[Path]) -> Optional[Dict[str, 
     return stats
 
 
+def _validate_normalization_action_mode(
+    stats: Optional[Dict[str, Any]],
+    action_mode: str,
+) -> None:
+    if stats is None or "action_mode" not in stats:
+        return
+    stats_action_mode = stats["action_mode"]
+    if stats_action_mode != action_mode:
+        raise ValueError(
+            "normalization stats action_mode mismatch: "
+            f"stats action_mode={stats_action_mode!r}, requested action_mode={action_mode!r}. "
+            "Recompute normalization stats for the requested action_mode."
+        )
+
+
 def _normalize_batch(
     batch: Dict[str, object],
-    stats: Dict[str, torch.Tensor],
+    stats: Dict[str, Any],
 ) -> Dict[str, object]:
     normalized = dict(batch)
     normalized["qpos"] = normalize_tensor(
@@ -96,6 +120,7 @@ def _normalize_batch(
 def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     return {
         "episode_paths": [str(path) for path in args.episode_paths],
+        "action_mode": args.action_mode,
         "chunk_len": args.chunk_len,
         "force_window_len": args.force_window_len,
         "force_window_duration": args.force_window_duration,
@@ -133,19 +158,24 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     }
 
 
-def train(args: argparse.Namespace) -> int:
-    device = torch.device(args.device)
-    normalization_stats = _load_normalization_stats(args.normalization_stats)
-    dataset = ContactForceHDF5Dataset(
+def _build_training_dataset(args: argparse.Namespace) -> ContactForceHDF5Dataset:
+    return ContactForceHDF5Dataset(
         args.episode_paths,
         camera_names=tuple(args.camera_names),
-        action_mode="joint_pos",
+        action_mode=args.action_mode,
         chunk_len=args.chunk_len,
         force_window_len=args.force_window_len,
         force_window_duration=args.force_window_duration,
         image_size=tuple(args.image_size),
         imagenet_normalize=args.imagenet_normalize,
     )
+
+
+def train(args: argparse.Namespace) -> int:
+    device = torch.device(args.device)
+    normalization_stats = _load_normalization_stats(args.normalization_stats)
+    _validate_normalization_action_mode(normalization_stats, args.action_mode)
+    dataset = _build_training_dataset(args)
     if len(dataset) == 0:
         print("error: dataset is empty for the requested settings", file=sys.stderr)
         return 1
@@ -175,6 +205,7 @@ def train(args: argparse.Namespace) -> int:
     model.train()
 
     print(f"dataset_length={len(dataset)}")
+    print(f"action_mode={args.action_mode}")
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
     print(f"log_csv={args.log_csv}")
     print(f"normalization_enabled={normalization_stats is not None}")
@@ -289,6 +320,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Minimal ForceAwareACT training loop.")
     parser.add_argument("episode_paths", type=Path, nargs="*", help="One or more HDF5 episodes.")
     parser.add_argument("--episode-list", type=Path, default=None)
+    parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
