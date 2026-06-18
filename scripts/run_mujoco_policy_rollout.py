@@ -8,7 +8,7 @@ import csv
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 import torch
@@ -38,6 +38,14 @@ ACTION_CHUNK_DIAGNOSTIC_NAMES = (
     "action_chunk_path_length",
     "action_chunk_first_to_last_delta",
 )
+ACTION_MODE_CHOICES = (
+    "joint_pos",
+    "action",
+    "joint_pos_command",
+    "delta_joint_cmd",
+    "delta_joint_pos_command",
+)
+DELTA_ACTION_MODES = ("delta_joint_cmd", "delta_joint_pos_command")
 
 
 def _load_mujoco():
@@ -48,7 +56,7 @@ def _load_mujoco():
     return mujoco
 
 
-def _load_stats(path: Path) -> Dict[str, torch.Tensor]:
+def _load_stats(path: Path) -> Dict[str, Any]:
     stats = torch.load(path, map_location="cpu")
     if not isinstance(stats, dict):
         raise ValueError("normalization stats file must contain a dict")
@@ -56,6 +64,29 @@ def _load_stats(path: Path) -> Dict[str, torch.Tensor]:
         if key not in stats or not torch.is_tensor(stats[key]):
             raise KeyError(f"normalization stats missing tensor: {key}")
     return stats
+
+
+def _validate_stats_action_mode(stats: Dict[str, Any], action_mode: str) -> None:
+    stats_action_mode = stats.get("action_mode")
+    if stats_action_mode is None:
+        if action_mode == "joint_pos":
+            print(
+                "warning: normalization stats do not contain action_mode metadata; "
+                "allowing legacy action_mode='joint_pos' rollout",
+                file=sys.stderr,
+            )
+            return
+        raise ValueError(
+            "normalization stats do not contain action_mode metadata. "
+            f"Refusing command-based rollout with action_mode={action_mode!r}; "
+            "recompute normalization stats for this action mode."
+        )
+    if stats_action_mode != action_mode:
+        raise ValueError(
+            "normalization stats action_mode mismatch: "
+            f"stats action_mode={stats_action_mode!r}, requested action_mode={action_mode!r}. "
+            "Use matching normalization stats for rollout."
+        )
 
 
 def _model_kwargs(checkpoint: dict, force_window_len: int, chunk_len: int) -> dict:
@@ -300,6 +331,34 @@ def _action_chunk_diagnostics(action_chunk: np.ndarray, qpos: np.ndarray) -> dic
     }
 
 
+def _action_chunk_as_target_ctrl(action_chunk: np.ndarray, qpos: np.ndarray, action_mode: str) -> np.ndarray:
+    if action_mode in DELTA_ACTION_MODES:
+        return qpos[None, :] + action_chunk
+    return action_chunk
+
+
+def _interpret_selected_action(
+    selected_action_raw: np.ndarray,
+    current_qpos: np.ndarray,
+    action_mode: str,
+) -> np.ndarray:
+    if action_mode in DELTA_ACTION_MODES:
+        return current_qpos + selected_action_raw
+    if action_mode in ("joint_pos", "action", "joint_pos_command"):
+        return selected_action_raw.copy()
+    raise ValueError(f"unsupported action_mode={action_mode!r}")
+
+
+def _selected_action_delta_norm_raw_to_current(
+    selected_action_raw: np.ndarray,
+    current_qpos: np.ndarray,
+    action_mode: str,
+) -> float:
+    if action_mode in DELTA_ACTION_MODES:
+        return float(np.linalg.norm(selected_action_raw))
+    return float(np.linalg.norm(selected_action_raw - current_qpos))
+
+
 def _selected_action_index(action_chunk_len: int, mode: str) -> int:
     if mode == "first":
         return 0
@@ -350,7 +409,15 @@ def _axial_push_joint_bias(
 
 
 def _fieldnames() -> list[str]:
-    fields = ["step", "time", "mode", "dry_run", "action_select_mode", "selected_action_index"]
+    fields = [
+        "step",
+        "time",
+        "mode",
+        "dry_run",
+        "action_mode",
+        "action_select_mode",
+        "selected_action_index",
+    ]
     fields.extend(f"qpos_{index}" for index in range(7))
     fields.extend(f"qvel_{index}" for index in range(7))
     fields.extend(f"ft_{index}" for index in range(6))
@@ -388,6 +455,10 @@ def _fieldnames() -> list[str]:
             "force_norm",
             *(f"pred_action0_{index}" for index in range(7)),
             *(f"raw_pred_action0_{index}" for index in range(7)),
+            *(f"selected_action_raw_{index}" for index in range(7)),
+            *(f"target_ctrl_{index}" for index in range(7)),
+            *(f"applied_ctrl_{index}" for index in range(7)),
+            *(f"current_qpos_{index}" for index in range(7)),
             *(f"delta_clipped_action0_{index}" for index in range(7)),
             *(f"ema_action0_{index}" for index in range(7)),
             *(f"ctrl_clipped_action0_{index}" for index in range(7)),
@@ -409,6 +480,8 @@ def _fieldnames() -> list[str]:
             "action_delta_norm_raw_to_current",
             "action_delta_norm_after_clip",
             "action_delta_norm_after_ema",
+            "target_ctrl_delta_from_qpos_norm",
+            "applied_ctrl_delta_from_qpos_norm",
             "selected_action_delta_norm_raw_to_current",
             "selected_action_delta_norm_after_clip",
             "selected_action_delta_norm_after_ema",
@@ -446,6 +519,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     torch.manual_seed(args.seed)
     mujoco = _load_mujoco()
     stats = _load_stats(args.normalization_stats)
+    _validate_stats_action_mode(stats, args.action_mode)
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     if not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must contain a dict")
@@ -656,13 +730,16 @@ def run_rollout(args: argparse.Namespace) -> int:
                 axial_push_active_steps += 1
             axial_push_dq_norm = float(np.linalg.norm(axial_push_dq))
             axial_push_dq_norms.append(axial_push_dq_norm)
+            target_ctrl = _interpret_selected_action(selected_raw_action, qpos, args.action_mode)
+            target_ctrl_with_bias = target_ctrl + axial_push_dq
             selected_raw_action_with_bias = selected_raw_action + axial_push_dq
-            if not np.isfinite(selected_raw_action_with_bias).all():
+            if not np.isfinite(target_ctrl_with_bias).all():
                 row_stop_reason = "nonfinite_value"
             if first_selected_raw_action is None:
                 first_selected_raw_action = selected_raw_action.copy()
             final_selected_raw_action = selected_raw_action.copy()
-            action_chunk_diagnostics = _action_chunk_diagnostics(selected_action, qpos)
+            target_ctrl_chunk = _action_chunk_as_target_ctrl(selected_action, qpos, args.action_mode)
+            action_chunk_diagnostics = _action_chunk_diagnostics(target_ctrl_chunk, qpos)
             if first_action_chunk_diagnostics is None:
                 first_action_chunk_diagnostics = action_chunk_diagnostics.copy()
             final_action_chunk_diagnostics = action_chunk_diagnostics.copy()
@@ -670,12 +747,17 @@ def run_rollout(args: argparse.Namespace) -> int:
             delta_clipped_action = nan_action.copy()
             ema_action = nan_action.copy()
             ctrl_clipped_action = nan_action.copy()
-            raw_delta_norm = float(np.linalg.norm(selected_raw_action_with_bias - qpos))
+            selected_raw_delta_norm = _selected_action_delta_norm_raw_to_current(
+                selected_raw_action,
+                qpos,
+                args.action_mode,
+            )
+            raw_delta_norm = float(np.linalg.norm(target_ctrl_with_bias - qpos))
             clipped_delta_norm = float("nan")
             ema_delta_norm = float("nan")
             if args.execute_actions:
                 delta_clipped_action = qpos + np.clip(
-                    selected_raw_action_with_bias - qpos,
+                    target_ctrl_with_bias - qpos,
                     -args.max_delta_q,
                     args.max_delta_q,
                 )
@@ -695,6 +777,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                 data.ctrl[actuator_ids] = ctrl_clipped_action
                 previous_command = ctrl_clipped_action.copy()
             qcmd = np.asarray(data.ctrl[actuator_ids], dtype=np.float64).copy()
+            applied_ctrl_delta_norm = float(np.linalg.norm(qcmd - qpos))
             raw_delta_norms.append(raw_delta_norm)
             clipped_delta_norms.append(clipped_delta_norm)
             ema_delta_norms.append(ema_delta_norm)
@@ -707,13 +790,16 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "time": float(data.time),
                 "mode": args.contact_latent_mode,
                 "dry_run": not args.execute_actions,
+                "action_mode": args.action_mode,
                 "action_select_mode": args.action_select_mode,
                 "selected_action_index": selected_action_index,
                 "force_norm": force_norm,
                 "action_delta_norm_raw_to_current": raw_delta_norm,
                 "action_delta_norm_after_clip": clipped_delta_norm,
                 "action_delta_norm_after_ema": ema_delta_norm,
-                "selected_action_delta_norm_raw_to_current": raw_delta_norm,
+                "target_ctrl_delta_from_qpos_norm": raw_delta_norm,
+                "applied_ctrl_delta_from_qpos_norm": applied_ctrl_delta_norm,
+                "selected_action_delta_norm_raw_to_current": selected_raw_delta_norm,
                 "selected_action_delta_norm_after_clip": clipped_delta_norm,
                 "selected_action_delta_norm_after_ema": ema_delta_norm,
                 "temporal_num_predictions": temporal_num_predictions,
@@ -746,9 +832,11 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "stop_reason": row_stop_reason,
             }
             row.update({f"qpos_{index}": float(value) for index, value in enumerate(qpos)})
+            row.update({f"current_qpos_{index}": float(value) for index, value in enumerate(qpos)})
             row.update({f"qvel_{index}": float(value) for index, value in enumerate(qvel)})
             row.update({f"ft_{index}": float(value) for index, value in enumerate(wrench)})
             row.update({f"qcmd_{index}": float(value) for index, value in enumerate(qcmd)})
+            row.update({f"applied_ctrl_{index}": float(value) for index, value in enumerate(qcmd)})
             row.update(
                 {
                     **{
@@ -791,6 +879,18 @@ def run_rollout(args: argparse.Namespace) -> int:
             )
             row.update(
                 {f"raw_pred_action0_{index}": float(value) for index, value in enumerate(action0)}
+            )
+            row.update(
+                {
+                    f"selected_action_raw_{index}": float(value)
+                    for index, value in enumerate(selected_raw_action)
+                }
+            )
+            row.update(
+                {
+                    f"target_ctrl_{index}": float(value)
+                    for index, value in enumerate(target_ctrl_with_bias)
+                }
             )
             row.update(
                 {
@@ -878,6 +978,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     )
     print(f"first_qcmd={np.array2string(first_qcmd, precision=6, separator=',')}")
     print(f"final_qcmd={np.array2string(final_qcmd, precision=6, separator=',')}")
+    print(f"action_mode={args.action_mode}")
     print(f"action_select_mode={args.action_select_mode}")
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
     if args.action_select_mode == "temporal":
@@ -986,6 +1087,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=Path("../arm_teleop/model/pangu_all_right.xml"),
     )
     parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="prior")
+    parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
     parser.add_argument(
         "--action-select-mode",
         choices=("first", "mid", "last", "temporal"),
