@@ -37,6 +37,7 @@ ACTION_MODE_CHOICES = (
     "delta_joint_cmd",
     "delta_joint_pos_command",
 )
+TRAIN_LATENT_MODE_CHOICES = ("posterior", "zero")
 
 
 def _move_batch_to_device(batch: Dict[str, object], device: torch.device) -> Dict[str, object]:
@@ -121,6 +122,7 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     return {
         "episode_paths": [str(path) for path in args.episode_paths],
         "action_mode": args.action_mode,
+        "train_latent_mode": args.train_latent_mode,
         "chunk_len": args.chunk_len,
         "force_window_len": args.force_window_len,
         "force_window_duration": args.force_window_duration,
@@ -206,6 +208,7 @@ def train(args: argparse.Namespace) -> int:
 
     print(f"dataset_length={len(dataset)}")
     print(f"action_mode={args.action_mode}")
+    print(f"train_latent_mode={args.train_latent_mode}")
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
     print(f"log_csv={args.log_csv}")
     print(f"normalization_enabled={normalization_stats is not None}")
@@ -230,6 +233,9 @@ def train(args: argparse.Namespace) -> int:
                 "beta_contact",
                 "lambda_prior",
                 "prior_loss_mode",
+                "train_latent_mode",
+                "uses_posterior_latent",
+                "uses_zero_latent",
                 "normalization_enabled",
             ],
         )
@@ -241,6 +247,11 @@ def train(args: argparse.Namespace) -> int:
                 batch = _normalize_batch(batch, normalization_stats)
             beta_motion = linear_warmup(step, args.warmup_steps, args.beta_motion_max)
             beta_contact = linear_warmup(step, args.warmup_steps, args.beta_contact_max)
+            uses_posterior_latent = args.train_latent_mode == "posterior"
+            uses_zero_latent = args.train_latent_mode == "zero"
+            loss_beta_motion = beta_motion if uses_posterior_latent else 0.0
+            loss_beta_contact = beta_contact if uses_posterior_latent else 0.0
+            loss_lambda_prior = args.lambda_prior if uses_posterior_latent else 0.0
 
             optimizer.zero_grad(set_to_none=True)
             outputs = model(
@@ -250,16 +261,18 @@ def train(args: argparse.Namespace) -> int:
                 action_chunk=batch["action_chunk"],
                 future_force_chunk=batch["future_force_chunk"],
                 is_training=True,
+                contact_latent_mode=args.train_latent_mode,
             )
             losses = compute_force_aware_act_loss(
                 outputs=outputs,
                 action_chunk=batch["action_chunk"],
                 future_force_chunk=batch["future_force_chunk"],
                 lambda_force=args.lambda_force,
-                beta_motion=beta_motion,
-                beta_contact=beta_contact,
-                lambda_prior=args.lambda_prior,
+                beta_motion=loss_beta_motion,
+                beta_contact=loss_beta_contact,
+                lambda_prior=loss_lambda_prior,
                 prior_loss_mode=args.prior_loss_mode,
+                use_posterior_kl=uses_posterior_latent,
             )
             losses["loss_total"].backward()
             optimizer.step()
@@ -277,6 +290,9 @@ def train(args: argparse.Namespace) -> int:
                     "beta_contact": beta_contact,
                     "lambda_prior": args.lambda_prior,
                     "prior_loss_mode": args.prior_loss_mode,
+                    "train_latent_mode": args.train_latent_mode,
+                    "uses_posterior_latent": uses_posterior_latent,
+                    "uses_zero_latent": uses_zero_latent,
                     "normalization_enabled": normalization_stats is not None,
                 }
             )
@@ -288,10 +304,11 @@ def train(args: argparse.Namespace) -> int:
                 f"loss_force={losses['loss_force'].item():.6g}",
                 f"kl_motion={losses['kl_motion'].item():.6g}",
                 f"kl_contact={losses['kl_contact'].item():.6g}",
+                f"train_latent_mode={args.train_latent_mode}",
             ]
-            if args.lambda_prior > 0:
+            if loss_lambda_prior > 0:
                 loss_parts.append(f"loss_prior={losses['loss_prior'].item():.6g}")
-                loss_parts.append(f"lambda_prior={args.lambda_prior:.6g}")
+                loss_parts.append(f"lambda_prior={loss_lambda_prior:.6g}")
                 loss_parts.append(f"prior_loss_mode={args.prior_loss_mode}")
             loss_parts.extend(
                 [
@@ -321,6 +338,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("episode_paths", type=Path, nargs="*", help="One or more HDF5 episodes.")
     parser.add_argument("--episode-list", type=Path, default=None)
     parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
+    parser.add_argument("--train-latent-mode", choices=TRAIN_LATENT_MODE_CHOICES, default="posterior")
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)

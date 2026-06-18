@@ -164,9 +164,11 @@ class ForceAwareACTPolicy(nn.Module):
         action_chunk: Optional[torch.Tensor] = None,
         future_force_chunk: Optional[torch.Tensor] = None,
         is_training: bool = True,
-        contact_latent_mode: str = "zero",
+        contact_latent_mode: Optional[str] = None,
         deterministic_prior: bool = True,
     ) -> Dict[str, Any]:
+        if contact_latent_mode is None:
+            contact_latent_mode = "posterior" if is_training else "zero"
         self._validate_online_inputs(images, qpos, force_window)
         self._validate_contact_latent_mode(contact_latent_mode, is_training)
         self._validate_training_state(action_chunk, future_force_chunk, is_training)
@@ -184,7 +186,7 @@ class ForceAwareACTPolicy(nn.Module):
             "z_VF": z_vf,
         }
 
-        if is_training:
+        if is_training and contact_latent_mode == "posterior":
             mu_motion, logvar_motion, z_motion = self.motion_posterior(qpos, action_chunk)
             mu_contact, logvar_contact, z_contact = self.contact_posterior(
                 qpos,
@@ -209,6 +211,9 @@ class ForceAwareACTPolicy(nn.Module):
                     "z_contact_prior": z_contact_prior,
                 }
             )
+        elif is_training:
+            z_motion = qpos.new_zeros(batch_size, self.z_dim)
+            z_contact = qpos.new_zeros(batch_size, self.z_dim)
         else:
             z_motion = qpos.new_zeros(batch_size, self.z_dim)
             if contact_latent_mode == "zero":

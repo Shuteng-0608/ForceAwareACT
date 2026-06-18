@@ -13,6 +13,8 @@ from force_aware_act.models import kl_normal
 REQUIRED_OUTPUT_KEYS = (
     "pred_action",
     "pred_force",
+)
+POSTERIOR_OUTPUT_KEYS = (
     "mu_motion",
     "logvar_motion",
     "mu_contact",
@@ -29,6 +31,7 @@ def compute_force_aware_act_loss(
     beta_contact: float = 1.0e-4,
     lambda_prior: float = 0.0,
     prior_loss_mode: str = "mse_mu",
+    use_posterior_kl: bool = True,
 ) -> Dict[str, Union[torch.Tensor, float, str]]:
     """Compute the supervised action/force and posterior KL losses."""
 
@@ -40,8 +43,13 @@ def compute_force_aware_act_loss(
 
     loss_action = functional.l1_loss(pred_action, action_chunk)
     loss_force = functional.l1_loss(pred_force, future_force_chunk)
-    kl_motion = kl_normal(outputs["mu_motion"], outputs["logvar_motion"])
-    kl_contact = kl_normal(outputs["mu_contact"], outputs["logvar_contact"])
+    if use_posterior_kl:
+        _validate_posterior_outputs(outputs)
+        kl_motion = kl_normal(outputs["mu_motion"], outputs["logvar_motion"])
+        kl_contact = kl_normal(outputs["mu_contact"], outputs["logvar_contact"])
+    else:
+        kl_motion = pred_action.new_zeros(())
+        kl_contact = pred_action.new_zeros(())
     loss_total = (
         loss_action
         + lambda_force * loss_force
@@ -50,6 +58,8 @@ def compute_force_aware_act_loss(
     )
     loss_prior = pred_action.new_zeros(())
     if lambda_prior > 0:
+        if not use_posterior_kl:
+            raise ValueError("lambda_prior > 0 requires use_posterior_kl=True")
         _validate_prior_outputs(outputs)
         prior_losses = compute_contact_prior_distillation_loss(
             mu_prior=outputs["mu_contact_prior"],
@@ -73,6 +83,7 @@ def compute_force_aware_act_loss(
         "beta_contact": beta_contact,
         "lambda_prior": lambda_prior,
         "prior_loss_mode": prior_loss_mode,
+        "use_posterior_kl": use_posterior_kl,
     }
 
 
@@ -132,6 +143,14 @@ def _validate_required_outputs(outputs: Mapping[str, Any]) -> None:
     for key in REQUIRED_OUTPUT_KEYS:
         if key not in outputs:
             raise KeyError(f"outputs is missing required key: {key}")
+        if not isinstance(outputs[key], torch.Tensor):
+            raise ValueError(f"outputs[{key!r}] must be a torch.Tensor")
+
+
+def _validate_posterior_outputs(outputs: Mapping[str, Any]) -> None:
+    for key in POSTERIOR_OUTPUT_KEYS:
+        if key not in outputs:
+            raise KeyError(f"outputs is missing required posterior key: {key}")
         if not isinstance(outputs[key], torch.Tensor):
             raise ValueError(f"outputs[{key!r}] must be a torch.Tensor")
 

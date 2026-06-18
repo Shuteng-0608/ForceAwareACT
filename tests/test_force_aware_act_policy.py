@@ -252,6 +252,36 @@ def test_force_aware_act_policy_training_posterior_mode_is_allowed():
     assert outputs["pred_force"].shape == (2, 4, 6)
 
 
+def test_force_aware_act_policy_training_zero_mode_uses_zero_latents_and_no_posteriors(monkeypatch):
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+
+    def raise_if_called(*args, **kwargs):
+        raise AssertionError("posterior encoders should not be called in zero training mode")
+
+    monkeypatch.setattr(model.motion_posterior, "forward", raise_if_called)
+    monkeypatch.setattr(model.contact_posterior, "forward", raise_if_called)
+
+    with torch.no_grad():
+        outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            force_window=inputs["force_window"],
+            action_chunk=inputs["action_chunk"],
+            future_force_chunk=inputs["future_force_chunk"],
+            is_training=True,
+            contact_latent_mode="zero",
+        )
+
+    assert outputs["pred_action"].shape == (2, 4, 7)
+    assert outputs["pred_force"].shape == (2, 4, 6)
+    assert torch.count_nonzero(outputs["z_motion"]) == 0
+    assert torch.count_nonzero(outputs["z_contact"]) == 0
+    assert "mu_motion" not in outputs
+    assert "mu_contact" not in outputs
+
+
 def test_force_aware_act_policy_training_prior_mode_raises():
     model = _make_policy(chunk_len=4)
     inputs = _make_inputs(chunk_len=4)

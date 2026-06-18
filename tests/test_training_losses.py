@@ -66,6 +66,49 @@ def test_force_aware_act_loss_total_matches_weighted_sum():
     torch.testing.assert_close(losses["loss_total"], expected)
 
 
+def test_force_aware_act_loss_zero_latent_mode_disables_kl_terms():
+    outputs = {
+        "pred_action": torch.tensor([[[1.0, 2.0]]]),
+        "pred_force": torch.tensor([[[3.0, 4.0, 5.0]]]),
+    }
+    action_chunk = torch.zeros(1, 1, 2)
+    future_force_chunk = torch.zeros(1, 1, 3)
+
+    losses = compute_force_aware_act_loss(
+        outputs,
+        action_chunk,
+        future_force_chunk,
+        lambda_force=0.5,
+        beta_motion=100.0,
+        beta_contact=100.0,
+        use_posterior_kl=False,
+    )
+
+    expected = losses["loss_action"] + 0.5 * losses["loss_force"]
+    torch.testing.assert_close(losses["loss_total"], expected)
+    torch.testing.assert_close(losses["kl_motion"], torch.zeros(()))
+    torch.testing.assert_close(losses["kl_contact"], torch.zeros(()))
+    assert losses["use_posterior_kl"] is False
+
+
+def test_force_aware_act_loss_zero_latent_mode_rejects_prior_distillation():
+    outputs = {
+        "pred_action": torch.tensor([[[1.0, 2.0]]]),
+        "pred_force": torch.tensor([[[3.0, 4.0, 5.0]]]),
+    }
+    action_chunk = torch.zeros(1, 1, 2)
+    future_force_chunk = torch.zeros(1, 1, 3)
+
+    with pytest.raises(ValueError, match="lambda_prior"):
+        compute_force_aware_act_loss(
+            outputs,
+            action_chunk,
+            future_force_chunk,
+            lambda_prior=0.1,
+            use_posterior_kl=False,
+        )
+
+
 def test_force_aware_act_loss_total_unchanged_when_lambda_prior_zero():
     outputs = _make_outputs()
     action_chunk = torch.zeros(1, 1, 2)

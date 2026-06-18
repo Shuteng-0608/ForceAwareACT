@@ -1,4 +1,5 @@
 from pathlib import Path
+import csv
 from types import SimpleNamespace
 
 import h5py
@@ -14,6 +15,8 @@ from scripts.evaluate_inference_modes import (
 )
 from scripts.train_minimal import (
     _build_training_dataset,
+    parse_args as parse_train_args,
+    train,
     _validate_normalization_action_mode as validate_train_stats_action_mode,
 )
 
@@ -167,3 +170,51 @@ def test_evaluation_dataset_builder_passes_action_mode(tmp_path):
 
     assert dataset.action_mode == "action"
     assert dataset[0]["action_chunk"].shape == (4, 7)
+
+
+def test_train_latent_mode_default_is_posterior():
+    args = parse_train_args(["episode.hdf5"])
+
+    assert args.train_latent_mode == "posterior"
+
+
+def test_train_zero_latent_mode_writes_log_columns(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    output_dir = tmp_path / "train_zero"
+    log_csv = output_dir / "train_log.csv"
+    _write_action_mode_episode(episode_path)
+    args = SimpleNamespace(
+        episode_paths=[episode_path],
+        camera_names=("ee_cam", "base_top_cam"),
+        action_mode="action",
+        train_latent_mode="zero",
+        chunk_len=4,
+        force_window_len=5,
+        force_window_duration=0.1,
+        image_size=(224, 224),
+        imagenet_normalize=False,
+        batch_size=1,
+        num_workers=0,
+        max_steps=1,
+        learning_rate=1.0e-4,
+        lambda_force=0.1,
+        lambda_prior=0.1,
+        prior_loss_mode="mse_mu",
+        beta_motion_max=1.0e-4,
+        beta_contact_max=1.0e-4,
+        warmup_steps=100,
+        output_dir=output_dir,
+        log_csv=log_csv,
+        device="cpu",
+        normalization_stats=None,
+    )
+
+    assert train(args) == 0
+    with log_csv.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert rows[0]["train_latent_mode"] == "zero"
+    assert rows[0]["uses_posterior_latent"] == "False"
+    assert rows[0]["uses_zero_latent"] == "True"
+    assert float(rows[0]["kl_motion"]) == 0.0
+    assert float(rows[0]["kl_contact"]) == 0.0
