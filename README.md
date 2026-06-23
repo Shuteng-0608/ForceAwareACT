@@ -20,6 +20,10 @@ configs/                       Lightweight split files and experiment command re
 docs/                          Design notes and experiment documentation
 ```
 
+For a code-grounded walkthrough of the algorithm implementation, data flow,
+training losses, inference modes, and MuJoCo rollout semantics, see
+`docs/ALGORITHM_FRAMEWORK_README.md`.
+
 ## Data Format
 
 The HDF5 episode reader expects contact-rich manipulation episodes with this schema at a high level:
