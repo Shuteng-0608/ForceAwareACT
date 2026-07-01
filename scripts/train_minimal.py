@@ -357,7 +357,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--warmup-steps", type=int, default=100)
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/minimal_train"))
     parser.add_argument("--log-csv", type=Path, default=Path("outputs/minimal_train/train_log.csv"))
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--device", default="cuda")
     parser.add_argument("--normalization-stats", type=Path, default=None)
     return parser.parse_args(argv)
 
