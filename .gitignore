@@ -14,7 +14,7 @@ wandb/
 outputs/
 checkpoints/
 
-data/
+/data/
 datasets/
 peg_in_hole_hdf5/
 mujoco_data/
