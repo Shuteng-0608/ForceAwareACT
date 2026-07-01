@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 from collections import deque
 from pathlib import Path
@@ -46,6 +47,63 @@ ACTION_MODE_CHOICES = (
     "delta_joint_pos_command",
 )
 DELTA_ACTION_MODES = ("delta_joint_cmd", "delta_joint_pos_command")
+SUMMARY_REQUIRED_KEYS = (
+    "output_dir",
+    "checkpoint",
+    "normalization_stats",
+    "model_xml",
+    "rollout_mode",
+    "action_mode",
+    "action_select_mode",
+    "selected_action_index",
+    "contact_latent_mode",
+    "chunk_len",
+    "force_window_len",
+    "force_window_duration",
+    "policy_rate_hz",
+    "max_rollout_steps",
+    "max_delta_q",
+    "force_stop_threshold",
+    "success",
+    "success_step",
+    "success_time",
+    "success_hold_steps_observed",
+    "success_distance_threshold",
+    "success_lateral_threshold",
+    "success_force_threshold",
+    "success_hold_steps",
+    "success_stop_enabled",
+    "stop_reason",
+    "steps_executed",
+    "final_time",
+    "max_force_norm",
+    "mean_force_norm",
+    "initial_peg_tip_position",
+    "final_peg_tip_position",
+    "initial_hole_center_position",
+    "final_hole_center_position",
+    "initial_peg_to_hole",
+    "final_peg_to_hole",
+    "initial_peg_to_hole_dist",
+    "final_peg_to_hole_dist",
+    "initial_peg_to_hole_axial_error",
+    "final_peg_to_hole_axial_error",
+    "initial_peg_to_hole_lateral_error",
+    "final_peg_to_hole_lateral_error",
+    "min_peg_to_hole_dist",
+    "min_peg_to_hole_dist_step",
+    "min_abs_peg_to_hole_axial_error",
+    "min_abs_peg_to_hole_axial_error_step",
+    "min_peg_to_hole_lateral_error",
+    "min_peg_to_hole_lateral_error_step",
+    "force_gt_5_steps",
+    "force_gt_20_steps",
+    "force_gt_40_steps",
+    "videos_saved",
+    "video_dir",
+    "rollout_log_csv",
+    "summary_json",
+)
 
 
 def _load_mujoco():
@@ -495,6 +553,8 @@ def _fieldnames() -> list[str]:
             "pred_force_norm_max",
             "prior_vs_zero_action_mean_abs_diff",
             "prior_vs_zero_force_mean_abs_diff",
+            "success_condition",
+            "success_hold_counter",
             "stop_reason",
         ]
     )
@@ -512,6 +572,66 @@ def _finite_max(values: Sequence[float]) -> float:
     finite_values = np.asarray(values, dtype=np.float64)
     finite_values = finite_values[np.isfinite(finite_values)]
     return float(finite_values.max()) if len(finite_values) else float("nan")
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _success_condition(
+    peg_to_hole_dist: float,
+    peg_to_hole_lateral_error: float,
+    force_norm: float,
+    distance_threshold: float,
+    lateral_threshold: float,
+    force_threshold: float,
+) -> bool:
+    return bool(
+        np.isfinite(peg_to_hole_dist)
+        and np.isfinite(peg_to_hole_lateral_error)
+        and np.isfinite(force_norm)
+        and peg_to_hole_dist < distance_threshold
+        and peg_to_hole_lateral_error < lateral_threshold
+        and force_norm < force_threshold
+    )
+
+
+def _update_success_hold_counter(
+    hold_counter: int,
+    success_condition: bool,
+) -> int:
+    return hold_counter + 1 if success_condition else 0
+
+
+def _finite_min_step(values: Sequence[tuple[int, float]], abs_value: bool = False) -> tuple[int, float]:
+    finite_values = [(step, value) for step, value in values if np.isfinite(value)]
+    if not finite_values:
+        return -1, float("nan")
+    key = (lambda item: abs(item[1])) if abs_value else (lambda item: item[1])
+    step, value = min(finite_values, key=key)
+    return int(step), float(value)
+
+
+def _count_force_gt(values: Sequence[float], threshold: float) -> int:
+    return int(sum(np.isfinite(value) and value > threshold for value in values))
+
+
+def _validate_summary_schema(summary: dict[str, Any]) -> None:
+    missing = [key for key in SUMMARY_REQUIRED_KEYS if key not in summary]
+    if missing:
+        raise KeyError(f"summary is missing required keys: {', '.join(missing)}")
 
 
 def run_rollout(args: argparse.Namespace) -> int:
@@ -577,6 +697,8 @@ def run_rollout(args: argparse.Namespace) -> int:
 
     rows: list[dict[str, object]] = []
     force_norm_history: list[float] = []
+    distance_history: list[tuple[int, float]] = []
+    axial_error_history: list[tuple[int, float]] = []
     lateral_error_history: list[tuple[int, float]] = []
     first_shapes: Optional[dict[str, tuple[int, ...]]] = None
     first_action: Optional[np.ndarray] = None
@@ -597,6 +719,11 @@ def run_rollout(args: argparse.Namespace) -> int:
     clipped_delta_norms: list[float] = []
     ema_delta_norms: list[float] = []
     stop_reason = "max_rollout_steps"
+    success = False
+    success_step: Optional[int] = None
+    success_time: Optional[float] = None
+    success_hold_counter = 0
+    max_success_hold_counter = 0
     initial_task: Optional[dict[str, np.ndarray | float]] = None
     final_task: Optional[dict[str, np.ndarray | float]] = None
     snapshots_saved = False
@@ -628,10 +755,29 @@ def run_rollout(args: argparse.Namespace) -> int:
             if args.save_videos and step % args.video_every == 0:
                 _append_video_frames(video_writers, raw_frames, video_frame_counts)
             task = _task_diagnostics(data, site_ids, body_ids, args.hole_axis_world)
+            distance_history.append((step, float(task["peg_to_hole_dist"])))
+            axial_error_history.append((step, float(task["peg_to_hole_axial_error"])))
             lateral_error_history.append((step, float(task["peg_to_hole_lateral_error"])))
             if initial_task is None:
                 initial_task = task
             final_task = task
+            step_success_condition = _success_condition(
+                float(task["peg_to_hole_dist"]),
+                float(task["peg_to_hole_lateral_error"]),
+                force_norm,
+                args.success_distance_threshold,
+                args.success_lateral_threshold,
+                args.success_force_threshold,
+            )
+            success_hold_counter = _update_success_hold_counter(
+                success_hold_counter,
+                step_success_condition,
+            )
+            max_success_hold_counter = max(max_success_hold_counter, success_hold_counter)
+            if not success and success_hold_counter >= args.success_hold_steps:
+                success = True
+                success_step = step
+                success_time = float(data.time)
             qpos_tensor = normalize_tensor(
                 torch.from_numpy(qpos).unsqueeze(0), stats["qpos_mean"], stats["qpos_std"]
             )
@@ -662,6 +808,12 @@ def run_rollout(args: argparse.Namespace) -> int:
                 row_stop_reason = "nonfinite_value"
             elif force_norm > args.force_stop_threshold:
                 row_stop_reason = "force_stop_threshold"
+            elif (
+                success
+                and args.success_stop_enabled
+                and success_step == step
+            ):
+                row_stop_reason = "success"
 
             if first_shapes is None:
                 first_shapes = {
@@ -829,6 +981,8 @@ def run_rollout(args: argparse.Namespace) -> int:
                     if zero_force is not None
                     else ""
                 ),
+                "success_condition": step_success_condition,
+                "success_hold_counter": success_hold_counter,
                 "stop_reason": row_stop_reason,
             }
             row.update({f"qpos_{index}": float(value) for index, value in enumerate(qpos)})
@@ -966,6 +1120,79 @@ def run_rollout(args: argparse.Namespace) -> int:
     log_path = args.output_dir / "rollout_log.csv"
     _write_csv(log_path, rows)
 
+    min_dist_step, min_dist = _finite_min_step(distance_history)
+    min_lateral_step, min_lateral_error = _finite_min_step(lateral_error_history)
+    min_abs_axial_step, min_abs_axial = _finite_min_step(axial_error_history, abs_value=True)
+    max_force_norm = _finite_max(force_norm_history)
+    mean_force_norm = (
+        float(np.mean(np.asarray(force_norm_history, dtype=np.float64)))
+        if force_norm_history
+        else float("nan")
+    )
+    videos_saved = args.save_videos and any(video_frame_counts.values())
+    summary_path = args.output_dir / "summary.json"
+    summary = {
+        "output_dir": args.output_dir,
+        "checkpoint": args.checkpoint,
+        "normalization_stats": args.normalization_stats,
+        "model_xml": args.model_xml,
+        "rollout_mode": "execute" if args.execute_actions else "dry_run",
+        "action_mode": args.action_mode,
+        "action_select_mode": args.action_select_mode,
+        "selected_action_index": _selected_action_index(args.chunk_len, args.action_select_mode),
+        "contact_latent_mode": args.contact_latent_mode,
+        "chunk_len": args.chunk_len,
+        "force_window_len": args.force_window_len,
+        "force_window_duration": args.force_window_duration,
+        "policy_rate_hz": args.policy_rate_hz,
+        "max_rollout_steps": args.max_rollout_steps,
+        "max_delta_q": args.max_delta_q,
+        "force_stop_threshold": args.force_stop_threshold,
+        "success": success,
+        "success_step": success_step,
+        "success_time": success_time,
+        "success_hold_steps_observed": max_success_hold_counter,
+        "success_distance_threshold": args.success_distance_threshold,
+        "success_lateral_threshold": args.success_lateral_threshold,
+        "success_force_threshold": args.success_force_threshold,
+        "success_hold_steps": args.success_hold_steps,
+        "success_stop_enabled": args.success_stop_enabled,
+        "stop_reason": stop_reason,
+        "steps_executed": len(rows),
+        "final_time": float(data.time),
+        "max_force_norm": max_force_norm,
+        "mean_force_norm": mean_force_norm,
+        "initial_peg_tip_position": initial_task["peg_tip"],
+        "final_peg_tip_position": final_task["peg_tip"],
+        "initial_hole_center_position": initial_task["hole_center"],
+        "final_hole_center_position": final_task["hole_center"],
+        "initial_peg_to_hole": initial_task["peg_to_hole"],
+        "final_peg_to_hole": final_task["peg_to_hole"],
+        "initial_peg_to_hole_dist": initial_task["peg_to_hole_dist"],
+        "final_peg_to_hole_dist": final_task["peg_to_hole_dist"],
+        "initial_peg_to_hole_axial_error": initial_task["peg_to_hole_axial_error"],
+        "final_peg_to_hole_axial_error": final_task["peg_to_hole_axial_error"],
+        "initial_peg_to_hole_lateral_error": initial_task["peg_to_hole_lateral_error"],
+        "final_peg_to_hole_lateral_error": final_task["peg_to_hole_lateral_error"],
+        "min_peg_to_hole_dist": min_dist,
+        "min_peg_to_hole_dist_step": min_dist_step,
+        "min_abs_peg_to_hole_axial_error": abs(min_abs_axial) if np.isfinite(min_abs_axial) else float("nan"),
+        "min_abs_peg_to_hole_axial_error_step": min_abs_axial_step,
+        "min_peg_to_hole_lateral_error": min_lateral_error,
+        "min_peg_to_hole_lateral_error_step": min_lateral_step,
+        "force_gt_5_steps": _count_force_gt(force_norm_history, 5.0),
+        "force_gt_20_steps": _count_force_gt(force_norm_history, 20.0),
+        "force_gt_40_steps": _count_force_gt(force_norm_history, 40.0),
+        "videos_saved": videos_saved,
+        "video_dir": video_dir if args.save_videos else "",
+        "rollout_log_csv": log_path,
+        "summary_json": summary_path,
+    }
+    _validate_summary_schema(summary)
+    with summary_path.open("w") as summary_file:
+        json.dump(_json_safe(summary), summary_file, indent=2, sort_keys=True)
+        summary_file.write("\n")
+
     print(f"output_dir={args.output_dir}")
     print(f"rollout_mode={'execute' if args.execute_actions else 'dry_run'}")
     print(f"steps_executed={len(rows)}")
@@ -1013,8 +1240,8 @@ def run_rollout(args: argparse.Namespace) -> int:
             f"final_{diagnostic_name}="
             f"{final_action_chunk_diagnostics[diagnostic_name]:.9g}"
         )
-    print(f"max_force_norm={max(force_norm_history):.9g}")
-    print(f"mean_force_norm={float(np.mean(force_norm_history)):.9g}")
+    print(f"max_force_norm={max_force_norm:.9g}")
+    print(f"mean_force_norm={mean_force_norm:.9g}")
     print(
         "initial_peg_tip_position="
         f"{np.array2string(initial_task['peg_tip'], precision=6, separator=',')}"
@@ -1041,14 +1268,6 @@ def run_rollout(args: argparse.Namespace) -> int:
         f"{np.array2string(final_task['peg_to_hole'], precision=6, separator=',')} "
         f"distance={float(final_task['peg_to_hole_dist']):.9g}"
     )
-    finite_lateral_errors = [
-        (step, error) for step, error in lateral_error_history if np.isfinite(error)
-    ]
-    min_lateral_step, min_lateral_error = (
-        min(finite_lateral_errors, key=lambda item: item[1])
-        if finite_lateral_errors
-        else (-1, float("nan"))
-    )
     print(f"initial_peg_to_hole_axial_error={float(initial_task['peg_to_hole_axial_error']):.9g}")
     print(f"final_peg_to_hole_axial_error={float(final_task['peg_to_hole_axial_error']):.9g}")
     print(
@@ -1061,11 +1280,17 @@ def run_rollout(args: argparse.Namespace) -> int:
     )
     print(f"min_peg_to_hole_lateral_error={min_lateral_error:.9g}")
     print(f"min_peg_to_hole_lateral_error_step={min_lateral_step}")
+    print(f"min_peg_to_hole_dist={min_dist:.9g}")
+    print(f"min_peg_to_hole_dist_step={min_dist_step}")
     print(f"final_peg_to_hole_distance={float(final_task['peg_to_hole_dist']):.9g}")
+    print(f"success={success}")
+    print(f"success_step={success_step}")
+    print(f"success_time={success_time}")
+    print(f"success_hold_steps_observed={max_success_hold_counter}")
+    print(f"success_stop_enabled={args.success_stop_enabled}")
     print(f"snapshots_saved={snapshots_saved}")
     if snapshots_saved:
         print(f"snapshot_dir={snapshot_dir}")
-    videos_saved = args.save_videos and any(video_frame_counts.values())
     print(f"videos_saved={videos_saved}")
     if args.save_videos:
         print(f"video_dir={video_dir}")
@@ -1074,6 +1299,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         print(f"video_fps={args.video_fps}")
     print(f"stop_reason={stop_reason}")
     print(f"rollout_log_csv={log_path}")
+    print(f"summary_json={summary_path}")
     return 0
 
 
@@ -1107,6 +1333,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--ema-alpha", type=float, default=0.3)
     parser.add_argument("--max-delta-q", type=float, default=0.05)
     parser.add_argument("--force-stop-threshold", type=float, default=300.0)
+    parser.add_argument("--success-distance-threshold", type=float, default=0.005)
+    parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
+    parser.add_argument("--success-force-threshold", type=float, default=80.0)
+    parser.add_argument("--success-hold-steps", type=int, default=15)
+    parser.add_argument("--disable-success-stop", action="store_true")
     parser.add_argument("--enable-axial-push", action="store_true")
     parser.add_argument("--axial-push-speed", type=float, default=0.0)
     parser.add_argument("--axial-push-start-dist", type=float, default=0.05)
@@ -1150,6 +1381,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.max_delta_q <= 0 or args.force_stop_threshold <= 0:
         print("error: --max-delta-q and --force-stop-threshold must be positive", file=sys.stderr)
         return 2
+    if (
+        args.success_distance_threshold <= 0
+        or args.success_lateral_threshold <= 0
+        or args.success_force_threshold <= 0
+        or args.success_hold_steps <= 0
+    ):
+        print("error: success thresholds and --success-hold-steps must be positive", file=sys.stderr)
+        return 2
+    args.success_stop_enabled = not args.disable_success_stop
     if not np.isfinite(args.axial_push_speed):
         print("error: --axial-push-speed must be finite", file=sys.stderr)
         return 2
