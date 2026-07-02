@@ -5,12 +5,21 @@ import numpy as np
 import pytest
 
 from scripts.plot_hole_grid_results import aggregate_grid_results, main as plot_grid_main
-from scripts.run_mujoco_hole_grid import parse_offset_list, run_grid, run_name
+from scripts.run_mujoco_hole_grid import (
+    generate_task_points,
+    latin_hypercube_points,
+    parse_args as parse_grid_args,
+    parse_offset_list,
+    run_grid,
+    run_name,
+    wilson_ci,
+)
 from scripts.run_mujoco_policy_rollout import (
     SUMMARY_REQUIRED_KEYS,
     apply_hole_body_offset,
     resolve_hole_body,
     resolve_named_site,
+    validate_hole_assembly_structure,
 )
 from scripts.summarize_rollouts import collect_rollouts
 
@@ -38,6 +47,9 @@ def _minimal_xml(parent_euler: str = "0 0 0") -> str:
             <geom name="hole_geom" type="box" size="0.01 0.01 0.01"/>
             <site name="hole_goal_site" pos="0 0 0" size="0.002"/>
           </body>
+          <body name="wrong_body" pos="0.5 0 0">
+            <geom name="wrong_geom" type="box" size="0.01 0.01 0.01"/>
+          </body>
         </body>
       </worldbody>
     </mujoco>
@@ -47,7 +59,7 @@ def _minimal_xml(parent_euler: str = "0 0 0") -> str:
 def test_world_frame_offset_with_world_aligned_parent_moves_site_by_requested_offset():
     _, model, data = _model_from_xml(_minimal_xml())
     site_id = resolve_named_site(model, "hole_goal_site")
-    body_id = resolve_hole_body(model, site_id, None)
+    body_id = resolve_hole_body(model, site_id, "hole_body")
 
     metadata = apply_hole_body_offset(
         model,
@@ -64,7 +76,7 @@ def test_world_frame_offset_with_world_aligned_parent_moves_site_by_requested_of
 def test_world_frame_offset_with_rotated_parent_uses_parent_local_conversion():
     _, model, data = _model_from_xml(_minimal_xml(parent_euler="0 0 90"))
     site_id = resolve_named_site(model, "hole_goal_site")
-    body_id = resolve_hole_body(model, site_id, None)
+    body_id = resolve_hole_body(model, site_id, "hole_body")
 
     metadata = apply_hole_body_offset(
         model,
@@ -85,7 +97,7 @@ def test_world_frame_offset_with_rotated_parent_uses_parent_local_conversion():
 def test_zero_offset_leaves_site_and_body_positions_unchanged():
     _, model, data = _model_from_xml(_minimal_xml())
     site_id = resolve_named_site(model, "hole_goal_site")
-    body_id = resolve_hole_body(model, site_id, None)
+    body_id = resolve_hole_body(model, site_id, "hole_body")
 
     metadata = apply_hole_body_offset(model, data, body_id, site_id, np.zeros(3), "world")
 
@@ -114,6 +126,37 @@ def test_missing_body_error_contains_body_name():
 
     with pytest.raises(ValueError, match="missing_body"):
         resolve_hole_body(model, site_id, "missing_body")
+
+
+def test_explicit_body_validation_accepts_site_and_expected_geom_subtree():
+    _, model, _ = _model_from_xml(_minimal_xml())
+    site_id = resolve_named_site(model, "hole_goal_site")
+    body_id = resolve_hole_body(model, site_id, "hole_body")
+
+    metadata = validate_hole_assembly_structure(
+        model,
+        body_id,
+        site_id,
+        expected_hole_geom_names=("hole_geom",),
+    )
+
+    assert metadata["hole_body_name"] == "hole_body"
+    assert metadata["site_owner_body_name"] == "hole_body"
+    assert metadata["hole_geom_names"] == ["hole_geom"]
+
+
+def test_wrong_body_produces_clear_error_without_fallback():
+    _, model, _ = _model_from_xml(_minimal_xml())
+    site_id = resolve_named_site(model, "hole_goal_site")
+    wrong_body_id = resolve_hole_body(model, site_id, "wrong_body")
+
+    with pytest.raises(ValueError, match="not inside selected hole body"):
+        validate_hole_assembly_structure(
+            model,
+            wrong_body_id,
+            site_id,
+            expected_hole_geom_names=("hole_geom",),
+        )
 
 
 def test_summary_required_keys_include_hole_offset_metadata():
@@ -178,9 +221,7 @@ def test_grid_offset_parsing_and_run_name_are_stable():
 
 
 def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):
-    from scripts.run_mujoco_hole_grid import parse_args
-
-    args = parse_args(
+    args = parse_grid_args(
         [
             "--checkpoint",
             "checkpoint.pt",
@@ -206,6 +247,102 @@ def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):
     commands = [" ".join(run["command"]) for run in manifest["runs"]]
     assert any("--hole-offset-x -0.002" in command for command in commands)
     assert any("--hole-offset-z 0.002" in command for command in commands)
+    assert all("--hole-site-name hole_goal_site" in command for command in commands)
+    assert all("--hole-body-name wall_task" in command for command in commands)
+    assert manifest["policy_config"]["hole_body_name"] == "wall_task"
+
+
+def test_latin_hypercube_sampling_is_deterministic_and_seeded():
+    points_a = latin_hypercube_points(50, -0.002, 0.002, -0.002, 0.002, seed=20260702)
+    points_b = latin_hypercube_points(50, -0.002, 0.002, -0.002, 0.002, seed=20260702)
+    points_c = latin_hypercube_points(50, -0.002, 0.002, -0.002, 0.002, seed=20260703)
+
+    assert points_a == points_b
+    assert points_a != points_c
+    assert len(points_a) == 50
+    assert all(-0.002 <= x <= 0.002 and -0.002 <= z <= 0.002 for x, z in points_a)
+
+
+def test_latin_hypercube_uses_each_one_dimensional_stratum_once():
+    points = latin_hypercube_points(50, -0.002, 0.002, -0.002, 0.002, seed=7)
+    x_strata = sorted(int((x - -0.002) / 0.004 * 50) for x, _ in points)
+    z_strata = sorted(int((z - -0.002) / 0.004 * 50) for _, z in points)
+
+    assert x_strata == list(range(50))
+    assert z_strata == list(range(50))
+
+
+def test_generate_lhs_task_points_count_is_paired_not_cartesian(tmp_path):
+    args = parse_grid_args(
+        [
+            "--sampling-mode",
+            "latin_hypercube",
+            "--num-points",
+            "50",
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+        ]
+    )
+
+    points = generate_task_points(args)
+
+    assert len(points) == 50
+    assert len({(point["hole_offset_x"], point["hole_offset_z"]) for point in points}) == 50
+    assert points[0]["run_name"].startswith("point_001_x_")
+
+
+def test_wilson_interval_edge_cases():
+    low0, high0 = wilson_ci(0, 50)
+    low25, high25 = wilson_ci(25, 50)
+    low50, high50 = wilson_ci(50, 50)
+
+    assert low0 == pytest.approx(0.0)
+    assert 0.0 < high0 < 0.1
+    assert low25 < 0.5 < high25
+    assert 0.9 < low50 < 1.0
+    assert high50 == pytest.approx(1.0)
+
+
+def test_lhs_dry_run_creates_50_commands_no_video_and_reproducible_points(tmp_path):
+    base_args = [
+        "--sampling-mode",
+        "latin_hypercube",
+        "--num-points",
+        "50",
+        "--base-seed",
+        "20260702",
+        "--checkpoint",
+        "checkpoint.pt",
+        "--normalization-stats",
+        "stats.pt",
+        "--model-xml",
+        "model.xml",
+        "--dry-run",
+        "--no-plot-results",
+    ]
+    args_a = parse_grid_args([*base_args, "--output-root", str(tmp_path / "grid_a")])
+    args_b = parse_grid_args([*base_args, "--output-root", str(tmp_path / "grid_b")])
+
+    manifest_a = run_grid(args_a)
+    manifest_b = run_grid(args_b)
+
+    assert len(manifest_a["runs"]) == 50
+    assert len(manifest_b["runs"]) == 50
+    assert all("--save-videos" not in run["command"] for run in manifest_a["runs"])
+    assert [run["x_offset"] for run in manifest_a["runs"]] == [
+        run["x_offset"] for run in manifest_b["runs"]
+    ]
+    task_points_a = (tmp_path / "grid_a" / "task_points.csv").read_text()
+    task_points_b = (tmp_path / "grid_b" / "task_points.csv").read_text()
+    normalized_a = task_points_a.replace(str(tmp_path / "grid_a"), "<ROOT>")
+    normalized_b = task_points_b.replace(str(tmp_path / "grid_b"), "<ROOT>")
+    assert normalized_a == normalized_b
 
 
 def test_heatmap_aggregation_multiple_repeats():
@@ -271,3 +408,7 @@ def test_heatmap_outputs_are_created(tmp_path):
     assert exit_code == 0
     assert (output_dir / "hole_offset_success_rate_heatmap.png").is_file()
     assert (output_dir / "hole_grid_results_table.csv").is_file()
+    assert (output_dir / "hole_position_success_scatter.png").is_file()
+    assert (output_dir / "hole_position_safe_success_scatter.png").is_file()
+    assert (output_dir / "success_rate_by_radial_bin.png").is_file()
+    assert (output_dir / "success_rate_by_z_bin.png").is_file()

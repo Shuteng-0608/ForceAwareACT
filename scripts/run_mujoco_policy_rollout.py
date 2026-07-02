@@ -30,6 +30,11 @@ CAMERA_NAMES = ("ee_cam", "base_top_cam")
 SENSOR_NAMES = ("peg_ft_force", "peg_ft_torque")
 TASK_SITE_NAMES = ("peg_tip_site", "hole_goal_site")
 TASK_BODY_NAMES = ("peg_tool", "wall_task")
+DEFAULT_HOLE_SITE_NAME = "hole_goal_site"
+DEFAULT_HOLE_BODY_NAME = "wall_task"
+EXPECTED_HOLE_GEOM_NAMES = tuple(
+    f"wall_hole_ring_{index:02d}" for index in range(24)
+) + ("hole_back_stop",)
 PUBLIC_INITIAL = np.asarray([-0.046, -0.2, 0.0, 1.6, -1.32, 0.005, 0.005])
 ARM_SIGN = np.asarray([-1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0])
 ACTION_CHUNK_DIAGNOSTIC_NAMES = (
@@ -218,7 +223,7 @@ def _site_name(model, site_id: int) -> str:
     return name or f"site_{site_id}"
 
 
-def _body_subtree_ids(model, body_id: int) -> set[int]:
+def body_subtree_ids(model, body_id: int) -> set[int]:
     body_id = int(body_id)
     subtree = {body_id}
     changed = True
@@ -232,37 +237,82 @@ def _body_subtree_ids(model, body_id: int) -> set[int]:
     return subtree
 
 
-def _body_subtree_geom_count(model, body_id: int) -> int:
-    subtree = _body_subtree_ids(model, body_id)
-    return int(sum(int(geom_body_id) in subtree for geom_body_id in model.geom_bodyid))
-
-
 def resolve_hole_body(model, site_id: int, optional_body_name: Optional[str]) -> int:
     mujoco = _load_mujoco()
-    if optional_body_name:
-        body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, optional_body_name)
-        if body_id < 0:
-            raise ValueError(f"missing requested hole body: {optional_body_name}")
-        if body_id == 0:
-            raise ValueError("cannot apply hole offset to world body")
-        return int(body_id)
-    body_id = int(model.site_bodyid[site_id])
+    body_name = optional_body_name or DEFAULT_HOLE_BODY_NAME
+    body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+    if body_id < 0:
+        raise ValueError(f"missing requested hole body: {body_name}")
     if body_id == 0:
+        raise ValueError("cannot apply hole offset to world body")
+    return int(body_id)
+
+
+def validate_hole_assembly_structure(
+    model,
+    hole_body_id: int,
+    hole_site_id: int,
+    expected_hole_geom_names: Optional[Sequence[str]] = None,
+) -> dict[str, Any]:
+    mujoco = _load_mujoco()
+    if int(hole_body_id) <= 0 or int(hole_body_id) >= model.nbody:
+        raise ValueError(f"invalid hole body id: {hole_body_id}")
+    if int(hole_site_id) < 0 or int(hole_site_id) >= model.nsite:
+        raise ValueError(f"invalid hole site id: {hole_site_id}")
+
+    subtree = body_subtree_ids(model, int(hole_body_id))
+    site_owner_body_id = int(model.site_bodyid[int(hole_site_id)])
+    hole_body_name = _body_name(model, int(hole_body_id))
+    hole_site_name = _site_name(model, int(hole_site_id))
+    if site_owner_body_id not in subtree:
         raise ValueError(
-            f"site {_site_name(model, site_id)!r} is attached to the world body; "
-            "provide --hole-body-name for the physical hole assembly"
+            f"hole site {hole_site_name!r} is owned by body "
+            f"{_body_name(model, site_owner_body_id)!r}, which is not inside selected "
+            f"hole body {hole_body_name!r}"
         )
-    if _body_subtree_geom_count(model, body_id) > 0:
-        return body_id
-    candidate = body_id
-    while int(model.body_parentid[candidate]) != 0:
-        candidate = int(model.body_parentid[candidate])
-        if _body_subtree_geom_count(model, candidate) > 0:
-            return candidate
-    raise ValueError(
-        f"could not infer physical hole body for site {_site_name(model, site_id)!r}; "
-        "provide --hole-body-name for the complete hole assembly"
+
+    expected_hole_geom_names = tuple(
+        EXPECTED_HOLE_GEOM_NAMES if expected_hole_geom_names is None else expected_hole_geom_names
     )
+    hole_geom_names: list[str] = []
+    for geom_name in expected_hole_geom_names:
+        geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
+        if geom_id < 0:
+            raise ValueError(f"expected hole geom is missing: {geom_name}")
+        geom_body_id = int(model.geom_bodyid[geom_id])
+        if geom_body_id not in subtree:
+            raise ValueError(
+                f"expected hole geom {geom_name!r} belongs to body "
+                f"{_body_name(model, geom_body_id)!r}, which is not inside selected "
+                f"hole body {hole_body_name!r}"
+            )
+        hole_geom_names.append(geom_name)
+
+    subtree_names = {_body_name(model, body_id) for body_id in subtree}
+    unrelated_body_names = sorted(
+        name
+        for name in subtree_names
+        if name in {"peg_tool"} or name.startswith("joint_") or name.startswith("link")
+    )
+    if unrelated_body_names:
+        raise ValueError(
+            f"selected hole body {hole_body_name!r} includes unrelated robot bodies: "
+            f"{', '.join(unrelated_body_names)}"
+        )
+
+    parent_id = int(model.body_parentid[int(hole_body_id)])
+    return {
+        "hole_body_name": hole_body_name,
+        "hole_body_id": int(hole_body_id),
+        "hole_site_name": hole_site_name,
+        "hole_site_id": int(hole_site_id),
+        "site_owner_body_name": _body_name(model, site_owner_body_id),
+        "site_owner_body_id": site_owner_body_id,
+        "hole_geom_names": hole_geom_names,
+        "selected_body_parent_name": _body_name(model, parent_id),
+        "selected_body_parent_id": parent_id,
+        "selected_body_subtree_names": sorted(subtree_names),
+    }
 
 
 def world_translation_to_parent_local(
@@ -841,6 +891,12 @@ def run_rollout(args: argparse.Namespace) -> int:
     mujoco.mj_forward(mj_model, data)
     hole_site_id = resolve_named_site(mj_model, args.hole_site_name)
     hole_body_id = resolve_hole_body(mj_model, hole_site_id, args.hole_body_name)
+    hole_structure_metadata = validate_hole_assembly_structure(
+        mj_model,
+        hole_body_id,
+        hole_site_id,
+        EXPECTED_HOLE_GEOM_NAMES,
+    )
     hole_offset = np.asarray(
         [args.hole_offset_x, args.hole_offset_y, args.hole_offset_z],
         dtype=np.float64,
@@ -853,6 +909,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         hole_offset,
         args.hole_offset_frame,
     )
+    hole_offset_metadata.update(hole_structure_metadata)
 
     control_ranges = np.asarray(mj_model.actuator_ctrlrange[actuator_ids], dtype=np.float64)
     physics_steps_per_policy = max(
@@ -1372,6 +1429,9 @@ def run_rollout(args: argparse.Namespace) -> int:
         "hole_site_name": hole_offset_metadata["hole_site_name"],
         "hole_body_name": hole_offset_metadata["hole_body_name"],
         "hole_offset_frame": hole_offset_metadata["hole_offset_frame"],
+        "site_owner_body_name": hole_offset_metadata["site_owner_body_name"],
+        "hole_geom_names": hole_offset_metadata["hole_geom_names"],
+        "selected_body_parent_name": hole_offset_metadata["selected_body_parent_name"],
         "hole_offset_x": float(hole_offset_metadata["requested_hole_offset"][0]),
         "hole_offset_y": float(hole_offset_metadata["requested_hole_offset"][1]),
         "hole_offset_z": float(hole_offset_metadata["requested_hole_offset"][2]),
@@ -1404,6 +1464,8 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
     print(f"hole_site_name={hole_offset_metadata['hole_site_name']}")
     print(f"hole_body_name={hole_offset_metadata['hole_body_name']}")
+    print(f"site_owner_body_name={hole_offset_metadata['site_owner_body_name']}")
+    print(f"hole_geom_names={hole_offset_metadata['hole_geom_names']}")
     print(f"hole_offset_frame={hole_offset_metadata['hole_offset_frame']}")
     print(
         "requested_hole_offset="
@@ -1551,8 +1613,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--success-force-threshold", type=float, default=80.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
     parser.add_argument("--disable-success-stop", action="store_true")
-    parser.add_argument("--hole-site-name", default="hole_goal_site")
-    parser.add_argument("--hole-body-name")
+    parser.add_argument("--hole-site-name", default=DEFAULT_HOLE_SITE_NAME)
+    parser.add_argument("--hole-body-name", default=DEFAULT_HOLE_BODY_NAME)
     parser.add_argument("--hole-offset-x", type=float, default=0.0)
     parser.add_argument("--hole-offset-y", type=float, default=0.0)
     parser.add_argument("--hole-offset-z", type=float, default=0.0)
@@ -1619,6 +1681,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not args.hole_site_name:
         print("error: --hole-site-name must be non-empty", file=sys.stderr)
         return 2
+    if not args.hole_body_name:
+        args.hole_body_name = DEFAULT_HOLE_BODY_NAME
     if not np.isfinite(args.axial_push_speed):
         print("error: --axial-push-speed must be finite", file=sys.stderr)
         return 2

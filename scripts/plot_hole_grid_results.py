@@ -61,10 +61,14 @@ def load_grid_summary(path: Path) -> pd.DataFrame:
     for column in (
         "hole_offset_x",
         "hole_offset_z",
+        "hole_offset_y",
+        "radial_offset",
         "success_time",
         "final_dist",
         "final_lateral",
+        "final_axial",
         "max_force",
+        "mean_force",
         "force_gt_20_steps",
         "force_gt_40_steps",
     ):
@@ -74,6 +78,12 @@ def load_grid_summary(path: Path) -> pd.DataFrame:
         df["success_bool"] = df["success"].map(_to_bool)
     else:
         df["success_bool"] = False
+    if "safe_success" in df.columns:
+        df["safe_success_bool"] = df["safe_success"].map(_to_bool)
+    else:
+        df["safe_success_bool"] = df["success_bool"]
+    if "radial_offset" not in df.columns:
+        df["radial_offset"] = np.sqrt(df["hole_offset_x"] ** 2 + df["hole_offset_z"] ** 2)
     return df
 
 
@@ -160,6 +170,187 @@ def _plot_heatmap(
     plt.close(fig)
 
 
+def _scatter_base(df: pd.DataFrame, title: str):
+    plt = _load_matplotlib()
+    fig, ax = plt.subplots(figsize=(6.4, 5.8))
+    ax.axhline(0.0, color="0.7", linewidth=1.0)
+    ax.axvline(0.0, color="0.7", linewidth=1.0)
+    ax.scatter([0.0], [0.0], marker="+", color="black", s=80, label="nominal")
+    ax.set_xlabel("hole x offset (mm)")
+    ax.set_ylabel("hole z offset (mm)")
+    ax.set_title(title)
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(alpha=0.25)
+    return plt, fig, ax
+
+
+def _plot_success_scatter(
+    df: pd.DataFrame,
+    output_dir: Path,
+    stem: str,
+    success_column: str,
+    title: str,
+    formats: Sequence[str],
+    dpi: int,
+) -> None:
+    plt, fig, ax = _scatter_base(df, title)
+    x_mm = df["hole_offset_x"] * 1000.0
+    z_mm = df["hole_offset_z"] * 1000.0
+    successes = df[success_column].astype(bool)
+    ax.scatter(x_mm[~successes], z_mm[~successes], marker="x", color="tab:red", label="failure")
+    ax.scatter(x_mm[successes], z_mm[successes], marker="o", color="tab:green", label="success")
+    ax.legend(loc="best", fontsize="small")
+    fig.tight_layout()
+    _save_figure(fig, output_dir, stem, formats, dpi)
+    plt.close(fig)
+
+
+def _plot_metric_scatter(
+    df: pd.DataFrame,
+    output_dir: Path,
+    stem: str,
+    value_column: str,
+    title: str,
+    colorbar_label: str,
+    formats: Sequence[str],
+    dpi: int,
+    success_only: bool = False,
+    value_scale: float = 1.0,
+) -> None:
+    plot_df = df[df["success_bool"]] if success_only else df
+    plot_df = plot_df.dropna(subset=[value_column, "hole_offset_x", "hole_offset_z"])
+    if plot_df.empty:
+        return
+    plt, fig, ax = _scatter_base(plot_df, title)
+    scatter = ax.scatter(
+        plot_df["hole_offset_x"] * 1000.0,
+        plot_df["hole_offset_z"] * 1000.0,
+        c=plot_df[value_column] * value_scale,
+        cmap="viridis",
+        s=48,
+    )
+    fig.colorbar(scatter, ax=ax, label=colorbar_label)
+    ax.legend(loc="best", fontsize="small")
+    fig.tight_layout()
+    _save_figure(fig, output_dir, stem, formats, dpi)
+    plt.close(fig)
+
+
+def _radial_bin_label(radial_offset: float) -> str:
+    radial_mm = radial_offset * 1000.0
+    bins = [
+        (0.0, 0.5, "[0,0.5]"),
+        (0.5, 1.0, "(0.5,1.0]"),
+        (1.0, 1.5, "(1.0,1.5]"),
+        (1.5, 2.0, "(1.5,2.0]"),
+        (2.0, np.sqrt(8.0), "(2.0,sqrt8]"),
+    ]
+    for lower, upper, label in bins:
+        if radial_mm <= upper and (radial_mm > lower or lower == 0.0):
+            return label
+    return f">{np.sqrt(8.0):.3g}"
+
+
+def _plot_group_success_rate(
+    df: pd.DataFrame,
+    output_dir: Path,
+    stem: str,
+    labels: Sequence[str],
+    rates: Sequence[float],
+    title: str,
+    formats: Sequence[str],
+    dpi: int,
+) -> None:
+    plt = _load_matplotlib()
+    fig, ax = plt.subplots(figsize=(7.2, 4.4))
+    ax.bar(np.arange(len(labels)), rates, color="tab:blue")
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_xticklabels(labels, rotation=30, ha="right")
+    ax.set_ylim(0.0, 1.0)
+    ax.set_ylabel("success rate")
+    ax.set_title(title)
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    _save_figure(fig, output_dir, stem, formats, dpi)
+    plt.close(fig)
+
+
+def write_scatter_outputs(
+    df: pd.DataFrame,
+    output_dir: Path,
+    formats: Sequence[str],
+    dpi: int,
+) -> None:
+    _plot_success_scatter(
+        df,
+        output_dir,
+        "hole_position_success_scatter",
+        "success_bool",
+        "Hole position success",
+        formats,
+        dpi,
+    )
+    _plot_success_scatter(
+        df,
+        output_dir,
+        "hole_position_safe_success_scatter",
+        "safe_success_bool",
+        "Hole position safe success",
+        formats,
+        dpi,
+    )
+    _plot_metric_scatter(
+        df,
+        output_dir,
+        "hole_position_success_time_scatter",
+        "success_time",
+        "Success time by hole position",
+        "success time (s)",
+        formats,
+        dpi,
+        success_only=True,
+    )
+    _plot_metric_scatter(df, output_dir, "hole_position_max_force_scatter", "max_force", "Max force by hole position", "max force (N)", formats, dpi)
+    _plot_metric_scatter(df, output_dir, "hole_position_final_distance_scatter", "final_dist", "Final distance by hole position", "final distance (mm)", formats, dpi, value_scale=1000.0)
+    _plot_metric_scatter(df, output_dir, "hole_position_final_lateral_scatter", "final_lateral", "Final lateral error by hole position", "final lateral error (mm)", formats, dpi, value_scale=1000.0)
+
+    radial_labels = ["[0,0.5]", "(0.5,1.0]", "(1.0,1.5]", "(1.5,2.0]", "(2.0,sqrt8]"]
+    radial_groups = df.assign(radial_bin=df["radial_offset"].map(_radial_bin_label))
+    radial_rates = [
+        float(radial_groups.loc[radial_groups["radial_bin"] == label, "success_bool"].mean())
+        if not radial_groups.loc[radial_groups["radial_bin"] == label].empty
+        else 0.0
+        for label in radial_labels
+    ]
+    _plot_group_success_rate(
+        df,
+        output_dir,
+        "success_rate_by_radial_bin",
+        radial_labels,
+        radial_rates,
+        "Success rate by radial offset bin",
+        formats,
+        dpi,
+    )
+
+    z_bins = [("-z", df["hole_offset_z"] < 0), ("z=0", df["hole_offset_z"] == 0), ("+z", df["hole_offset_z"] > 0)]
+    z_labels = [label for label, _ in z_bins]
+    z_rates = [
+        float(df.loc[mask, "success_bool"].mean()) if not df.loc[mask].empty else 0.0
+        for _, mask in z_bins
+    ]
+    _plot_group_success_rate(
+        df,
+        output_dir,
+        "success_rate_by_z_bin",
+        z_labels,
+        z_rates,
+        "Success rate by z sign bin",
+        formats,
+        dpi,
+    )
+
+
 def _cell_record(row: Optional[pd.Series]) -> Optional[dict[str, Any]]:
     if row is None:
         return None
@@ -174,6 +365,7 @@ def write_outputs(
     annotate: bool,
 ) -> pd.DataFrame:
     df = load_grid_summary(summary_csv)
+    write_scatter_outputs(df, output_dir, formats, dpi)
     table = aggregate_grid_results(df)
     output_dir.mkdir(parents=True, exist_ok=True)
     table_path = output_dir / "hole_grid_results_table.csv"
