@@ -103,6 +103,18 @@ SUMMARY_REQUIRED_KEYS = (
     "video_dir",
     "rollout_log_csv",
     "summary_json",
+    "hole_site_name",
+    "hole_body_name",
+    "hole_offset_frame",
+    "hole_offset_x",
+    "hole_offset_y",
+    "hole_offset_z",
+    "requested_hole_offset",
+    "actual_hole_offset",
+    "nominal_hole_goal_position",
+    "actual_hole_goal_position",
+    "nominal_hole_body_local_position",
+    "actual_hole_body_local_position",
 )
 
 
@@ -184,6 +196,148 @@ def _resolve_optional_ids(mujoco, model, object_type, names: Sequence[str], kind
     if missing:
         print(f"warning: missing optional {kind}: {', '.join(missing)}", file=sys.stderr)
     return ids
+
+
+def resolve_named_site(model, site_name: str) -> int:
+    mujoco = _load_mujoco()
+    site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+    if site_id < 0:
+        raise ValueError(f"missing required site: {site_name}")
+    return int(site_id)
+
+
+def _body_name(model, body_id: int) -> str:
+    mujoco = _load_mujoco()
+    name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, int(body_id))
+    return name or f"body_{body_id}"
+
+
+def _site_name(model, site_id: int) -> str:
+    mujoco = _load_mujoco()
+    name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_SITE, int(site_id))
+    return name or f"site_{site_id}"
+
+
+def _body_subtree_ids(model, body_id: int) -> set[int]:
+    body_id = int(body_id)
+    subtree = {body_id}
+    changed = True
+    while changed:
+        changed = False
+        for candidate in range(model.nbody):
+            parent = int(model.body_parentid[candidate])
+            if candidate not in subtree and parent in subtree:
+                subtree.add(candidate)
+                changed = True
+    return subtree
+
+
+def _body_subtree_geom_count(model, body_id: int) -> int:
+    subtree = _body_subtree_ids(model, body_id)
+    return int(sum(int(geom_body_id) in subtree for geom_body_id in model.geom_bodyid))
+
+
+def resolve_hole_body(model, site_id: int, optional_body_name: Optional[str]) -> int:
+    mujoco = _load_mujoco()
+    if optional_body_name:
+        body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, optional_body_name)
+        if body_id < 0:
+            raise ValueError(f"missing requested hole body: {optional_body_name}")
+        if body_id == 0:
+            raise ValueError("cannot apply hole offset to world body")
+        return int(body_id)
+    body_id = int(model.site_bodyid[site_id])
+    if body_id == 0:
+        raise ValueError(
+            f"site {_site_name(model, site_id)!r} is attached to the world body; "
+            "provide --hole-body-name for the physical hole assembly"
+        )
+    if _body_subtree_geom_count(model, body_id) > 0:
+        return body_id
+    candidate = body_id
+    while int(model.body_parentid[candidate]) != 0:
+        candidate = int(model.body_parentid[candidate])
+        if _body_subtree_geom_count(model, candidate) > 0:
+            return candidate
+    raise ValueError(
+        f"could not infer physical hole body for site {_site_name(model, site_id)!r}; "
+        "provide --hole-body-name for the complete hole assembly"
+    )
+
+
+def world_translation_to_parent_local(
+    model,
+    data,
+    body_id: int,
+    delta_world: np.ndarray,
+) -> np.ndarray:
+    delta_world = np.asarray(delta_world, dtype=np.float64)
+    if delta_world.shape != (3,) or not np.isfinite(delta_world).all():
+        raise ValueError(f"hole offset must be a finite 3-vector, got {delta_world}")
+    if int(body_id) == 0:
+        raise ValueError("cannot offset world body")
+    parent_id = int(model.body_parentid[int(body_id)])
+    parent_rotation = np.asarray(data.xmat[parent_id], dtype=np.float64).reshape(3, 3)
+    return parent_rotation.T @ delta_world
+
+
+def apply_hole_body_offset(
+    model,
+    data,
+    body_id: int,
+    site_id: int,
+    offset: np.ndarray,
+    offset_frame: str,
+) -> dict[str, Any]:
+    mujoco = _load_mujoco()
+    offset = np.asarray(offset, dtype=np.float64)
+    if offset.shape != (3,) or not np.isfinite(offset).all():
+        raise ValueError(f"hole offset must be a finite 3-vector, got {offset}")
+    if offset_frame not in ("world", "body"):
+        raise ValueError(f"unsupported hole offset frame: {offset_frame}")
+    if int(body_id) == 0:
+        raise ValueError("cannot apply hole offset to world body")
+
+    mujoco.mj_forward(model, data)
+    nominal_body_local_position = np.asarray(model.body_pos[body_id], dtype=np.float64).copy()
+    nominal_site_world_position = np.asarray(data.site_xpos[site_id], dtype=np.float64).copy()
+    if offset_frame == "world":
+        delta_parent = world_translation_to_parent_local(model, data, body_id, offset)
+        expected_site_offset = offset
+    else:
+        delta_parent = offset
+        parent_id = int(model.body_parentid[int(body_id)])
+        parent_rotation = np.asarray(data.xmat[parent_id], dtype=np.float64).reshape(3, 3)
+        expected_site_offset = parent_rotation @ offset
+
+    model.body_pos[body_id] = nominal_body_local_position + delta_parent
+    mujoco.mj_forward(model, data)
+    actual_body_local_position = np.asarray(model.body_pos[body_id], dtype=np.float64).copy()
+    actual_site_world_position = np.asarray(data.site_xpos[site_id], dtype=np.float64).copy()
+    actual_site_offset = actual_site_world_position - nominal_site_world_position
+    validation_error = actual_site_offset - expected_site_offset
+    if float(np.linalg.norm(validation_error)) > 1.0e-7:
+        raise ValueError(
+            "hole offset validation failed: "
+            f"requested_offset={offset.tolist()} "
+            f"actual_offset={actual_site_offset.tolist()} "
+            f"selected_body={_body_name(model, body_id)!r} "
+            f"selected_site={_site_name(model, site_id)!r}"
+        )
+    return {
+        "hole_site_name": _site_name(model, site_id),
+        "hole_site_id": int(site_id),
+        "hole_body_name": _body_name(model, body_id),
+        "hole_body_id": int(body_id),
+        "hole_offset_frame": offset_frame,
+        "requested_hole_offset": offset.copy(),
+        "actual_hole_offset": actual_site_offset,
+        "nominal_hole_goal_position": nominal_site_world_position,
+        "actual_hole_goal_position": actual_site_world_position,
+        "nominal_hole_body_local_position": nominal_body_local_position,
+        "actual_hole_body_local_position": actual_body_local_position,
+        "validation_error": validation_error,
+    }
 
 
 def _sensor_slice(model, sensor_id: int, expected_dim: int, name: str) -> slice:
@@ -506,6 +660,12 @@ def _fieldnames() -> list[str]:
             "wall_task_x",
             "wall_task_y",
             "wall_task_z",
+            "hole_offset_x",
+            "hole_offset_y",
+            "hole_offset_z",
+            "hole_goal_x",
+            "hole_goal_y",
+            "hole_goal_z",
         ]
     )
     fields.extend(
@@ -661,8 +821,9 @@ def run_rollout(args: argparse.Namespace) -> int:
     sensor_ids = _resolve_ids(
         mujoco, mj_model, mujoco.mjtObj.mjOBJ_SENSOR, SENSOR_NAMES, "sensors"
     )
+    task_site_names = (TASK_SITE_NAMES[0], args.hole_site_name)
     site_ids = _resolve_optional_ids(
-        mujoco, mj_model, mujoco.mjtObj.mjOBJ_SITE, TASK_SITE_NAMES, "sites"
+        mujoco, mj_model, mujoco.mjtObj.mjOBJ_SITE, task_site_names, "sites"
     )
     body_ids = _resolve_optional_ids(
         mujoco, mj_model, mujoco.mjtObj.mjOBJ_BODY, TASK_BODY_NAMES, "bodies"
@@ -678,6 +839,20 @@ def run_rollout(args: argparse.Namespace) -> int:
     data.qvel[joint_dofadr] = 0.0
     data.ctrl[actuator_ids] = internal_initial
     mujoco.mj_forward(mj_model, data)
+    hole_site_id = resolve_named_site(mj_model, args.hole_site_name)
+    hole_body_id = resolve_hole_body(mj_model, hole_site_id, args.hole_body_name)
+    hole_offset = np.asarray(
+        [args.hole_offset_x, args.hole_offset_y, args.hole_offset_z],
+        dtype=np.float64,
+    )
+    hole_offset_metadata = apply_hole_body_offset(
+        mj_model,
+        data,
+        hole_body_id,
+        hole_site_id,
+        hole_offset,
+        args.hole_offset_frame,
+    )
 
     control_ranges = np.asarray(mj_model.actuator_ctrlrange[actuator_ids], dtype=np.float64)
     physics_steps_per_policy = max(
@@ -1002,6 +1177,13 @@ def run_rollout(args: argparse.Namespace) -> int:
                         for index, axis in enumerate(("x", "y", "z"))
                     },
                     **{
+                        f"hole_goal_{axis}": float(task["hole_center"][index])
+                        for index, axis in enumerate(("x", "y", "z"))
+                    },
+                    "hole_offset_x": float(hole_offset_metadata["requested_hole_offset"][0]),
+                    "hole_offset_y": float(hole_offset_metadata["requested_hole_offset"][1]),
+                    "hole_offset_z": float(hole_offset_metadata["requested_hole_offset"][2]),
+                    **{
                         f"peg_to_hole_d{axis}": float(task["peg_to_hole"][index])
                         for index, axis in enumerate(("x", "y", "z"))
                     },
@@ -1187,6 +1369,18 @@ def run_rollout(args: argparse.Namespace) -> int:
         "video_dir": video_dir if args.save_videos else "",
         "rollout_log_csv": log_path,
         "summary_json": summary_path,
+        "hole_site_name": hole_offset_metadata["hole_site_name"],
+        "hole_body_name": hole_offset_metadata["hole_body_name"],
+        "hole_offset_frame": hole_offset_metadata["hole_offset_frame"],
+        "hole_offset_x": float(hole_offset_metadata["requested_hole_offset"][0]),
+        "hole_offset_y": float(hole_offset_metadata["requested_hole_offset"][1]),
+        "hole_offset_z": float(hole_offset_metadata["requested_hole_offset"][2]),
+        "requested_hole_offset": hole_offset_metadata["requested_hole_offset"],
+        "actual_hole_offset": hole_offset_metadata["actual_hole_offset"],
+        "nominal_hole_goal_position": hole_offset_metadata["nominal_hole_goal_position"],
+        "actual_hole_goal_position": hole_offset_metadata["actual_hole_goal_position"],
+        "nominal_hole_body_local_position": hole_offset_metadata["nominal_hole_body_local_position"],
+        "actual_hole_body_local_position": hole_offset_metadata["actual_hole_body_local_position"],
     }
     _validate_summary_schema(summary)
     with summary_path.open("w") as summary_file:
@@ -1208,6 +1402,25 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"action_mode={args.action_mode}")
     print(f"action_select_mode={args.action_select_mode}")
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
+    print(f"hole_site_name={hole_offset_metadata['hole_site_name']}")
+    print(f"hole_body_name={hole_offset_metadata['hole_body_name']}")
+    print(f"hole_offset_frame={hole_offset_metadata['hole_offset_frame']}")
+    print(
+        "requested_hole_offset="
+        f"{np.array2string(hole_offset_metadata['requested_hole_offset'], precision=6, separator=',')}"
+    )
+    print(
+        "nominal_hole_goal_position="
+        f"{np.array2string(hole_offset_metadata['nominal_hole_goal_position'], precision=6, separator=',')}"
+    )
+    print(
+        "actual_hole_goal_position="
+        f"{np.array2string(hole_offset_metadata['actual_hole_goal_position'], precision=6, separator=',')}"
+    )
+    print(
+        "actual_hole_offset="
+        f"{np.array2string(hole_offset_metadata['actual_hole_offset'], precision=6, separator=',')}"
+    )
     if args.action_select_mode == "temporal":
         print(f"temporal_agg_decay={args.temporal_agg_decay:.9g}")
         print(f"first_temporal_num_predictions={first_temporal_num_predictions}")
@@ -1338,6 +1551,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--success-force-threshold", type=float, default=80.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
     parser.add_argument("--disable-success-stop", action="store_true")
+    parser.add_argument("--hole-site-name", default="hole_goal_site")
+    parser.add_argument("--hole-body-name")
+    parser.add_argument("--hole-offset-x", type=float, default=0.0)
+    parser.add_argument("--hole-offset-y", type=float, default=0.0)
+    parser.add_argument("--hole-offset-z", type=float, default=0.0)
+    parser.add_argument("--hole-offset-frame", choices=("world", "body"), default="world")
     parser.add_argument("--enable-axial-push", action="store_true")
     parser.add_argument("--axial-push-speed", type=float, default=0.0)
     parser.add_argument("--axial-push-start-dist", type=float, default=0.05)
@@ -1390,6 +1609,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("error: success thresholds and --success-hold-steps must be positive", file=sys.stderr)
         return 2
     args.success_stop_enabled = not args.disable_success_stop
+    hole_offset = np.asarray(
+        [args.hole_offset_x, args.hole_offset_y, args.hole_offset_z],
+        dtype=np.float64,
+    )
+    if not np.isfinite(hole_offset).all():
+        print("error: hole offsets must be finite", file=sys.stderr)
+        return 2
+    if not args.hole_site_name:
+        print("error: --hole-site-name must be non-empty", file=sys.stderr)
+        return 2
     if not np.isfinite(args.axial_push_speed):
         print("error: --axial-push-speed must be finite", file=sys.stderr)
         return 2

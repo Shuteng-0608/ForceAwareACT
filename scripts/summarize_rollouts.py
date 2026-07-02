@@ -40,6 +40,18 @@ OUTPUT_COLUMNS = [
     "checkpoint",
     "rollout_log_csv",
     "summary_json",
+    "hole_site_name",
+    "hole_body_name",
+    "hole_offset_frame",
+    "hole_offset_x",
+    "hole_offset_y",
+    "hole_offset_z",
+    "actual_hole_offset_x",
+    "actual_hole_offset_y",
+    "actual_hole_offset_z",
+    "actual_hole_goal_x",
+    "actual_hole_goal_y",
+    "actual_hole_goal_z",
 ]
 
 
@@ -90,6 +102,12 @@ def _count_gt(values: list[float], threshold: float) -> int:
     return sum(value == value and value > threshold for value in values)
 
 
+def _vector_item(value: Any, index: int, default: float = 0.0) -> float:
+    if isinstance(value, (list, tuple)) and len(value) > index:
+        return _to_float(value[index], default)
+    return default
+
+
 def _row_from_summary(run_dir: Path, summary_path: Path) -> dict[str, Any]:
     with summary_path.open() as summary_file:
         summary = json.load(summary_file)
@@ -123,6 +141,18 @@ def _row_from_summary(run_dir: Path, summary_path: Path) -> dict[str, Any]:
         "checkpoint": summary.get("checkpoint", ""),
         "rollout_log_csv": summary.get("rollout_log_csv", str(run_dir / "rollout_log.csv")),
         "summary_json": str(summary_path),
+        "hole_site_name": summary.get("hole_site_name", ""),
+        "hole_body_name": summary.get("hole_body_name", ""),
+        "hole_offset_frame": summary.get("hole_offset_frame", "world"),
+        "hole_offset_x": summary.get("hole_offset_x", _vector_item(summary.get("requested_hole_offset"), 0)),
+        "hole_offset_y": summary.get("hole_offset_y", _vector_item(summary.get("requested_hole_offset"), 1)),
+        "hole_offset_z": summary.get("hole_offset_z", _vector_item(summary.get("requested_hole_offset"), 2)),
+        "actual_hole_offset_x": _vector_item(summary.get("actual_hole_offset"), 0),
+        "actual_hole_offset_y": _vector_item(summary.get("actual_hole_offset"), 1),
+        "actual_hole_offset_z": _vector_item(summary.get("actual_hole_offset"), 2),
+        "actual_hole_goal_x": _vector_item(summary.get("actual_hole_goal_position"), 0, float("nan")),
+        "actual_hole_goal_y": _vector_item(summary.get("actual_hole_goal_position"), 1, float("nan")),
+        "actual_hole_goal_z": _vector_item(summary.get("actual_hole_goal_position"), 2, float("nan")),
     }
 
 
@@ -182,6 +212,18 @@ def _row_from_csv(run_dir: Path, log_path: Path) -> dict[str, Any]:
         "checkpoint": "",
         "rollout_log_csv": str(log_path),
         "summary_json": "",
+        "hole_site_name": "",
+        "hole_body_name": "",
+        "hole_offset_frame": final.get("hole_offset_frame", "world"),
+        "hole_offset_x": _to_float(final.get("hole_offset_x"), 0.0),
+        "hole_offset_y": _to_float(final.get("hole_offset_y"), 0.0),
+        "hole_offset_z": _to_float(final.get("hole_offset_z"), 0.0),
+        "actual_hole_offset_x": _to_float(final.get("hole_offset_x"), 0.0),
+        "actual_hole_offset_y": _to_float(final.get("hole_offset_y"), 0.0),
+        "actual_hole_offset_z": _to_float(final.get("hole_offset_z"), 0.0),
+        "actual_hole_goal_x": _to_float(final.get("hole_goal_x"), float("nan")),
+        "actual_hole_goal_y": _to_float(final.get("hole_goal_y"), float("nan")),
+        "actual_hole_goal_z": _to_float(final.get("hole_goal_z"), float("nan")),
     }
 
 
