@@ -6,6 +6,18 @@ from pathlib import Path
 
 import pandas as pd
 
+"""
+pgrep -af "python.*scripts/train_minimal.py"
+
+watch -n 10 -d   "python scripts/forceact_eta.py \
+  --log outputs/peg_hole_100/forceaware_motion_cvae_betam5e4_pilot5k/train_log.csv \
+  --max-steps 5000 \
+  --pid 411698"
+
+
+
+"""
+
 
 def hms(seconds: float) -> str:
     seconds = max(0, int(round(seconds)))
