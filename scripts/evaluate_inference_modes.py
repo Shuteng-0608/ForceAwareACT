@@ -20,7 +20,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
-from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
+from force_aware_act.models import ACTPolicyBaseline, ForceAwareACTPolicy  # noqa: E402
 from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
@@ -123,7 +123,24 @@ def _model_kwargs_from_checkpoint(checkpoint: dict, force_window_len: int) -> di
     model_config.setdefault("pretrained_resnet18", False)
     model_config.setdefault("dropout", 0.0)
     model_config.setdefault("max_force_window_len", max(int(force_window_len), 20))
+    if str(config.get("policy_variant", "force_aware_act")) == "act_baseline":
+        model_config.pop("force_dim", None)
+        model_config.pop("max_force_window_len", None)
     return model_config
+
+
+def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
+    config = checkpoint.get("config", {})
+    if not isinstance(config, dict):
+        return "force_aware_act"
+    return str(config.get("policy_variant", "force_aware_act"))
+
+
+def _build_model_from_checkpoint(checkpoint: dict, force_window_len: int, device: torch.device):
+    model_kwargs = _model_kwargs_from_checkpoint(checkpoint, force_window_len)
+    if _policy_variant_from_checkpoint(checkpoint) == "act_baseline":
+        return ACTPolicyBaseline(**model_kwargs).to(device)
+    return ForceAwareACTPolicy(**model_kwargs).to(device)
 
 
 def _scalar(tensor: torch.Tensor) -> float:
@@ -218,6 +235,38 @@ def _batch_and_sample_metrics(
     sample_tensors["force_prior_improvement_vs_zero"] = _safe_improvement(
         sample_tensors["force_l1_zero"], sample_tensors["force_l1_prior"]
     )
+    batch_metrics = {column: _scalar(sample_tensors[column].mean()) for column in METRIC_COLUMNS}
+    sample_metrics = {column: _sample_values(values) for column, values in sample_tensors.items()}
+    return batch_metrics, sample_metrics
+
+
+def _batch_and_sample_metrics_act(
+    model: ACTPolicyBaseline,
+    batch: Dict[str, object],
+) -> tuple[dict[str, float], dict[str, list[float]]]:
+    with torch.no_grad():
+        outputs = model(images=batch["images"], qpos=batch["qpos"])
+
+    action_target = batch["action_chunk"]
+    action_l1 = _mean_except_batch(
+        functional.l1_loss(outputs["pred_action"], action_target, reduction="none")
+    )
+    nan_like = torch.full_like(action_l1, float("nan"))
+    sample_tensors = {
+        "action_l1_zero": action_l1,
+        "action_l1_prior": nan_like,
+        "action_l1_posterior": nan_like,
+        "force_l1_zero": nan_like,
+        "force_l1_prior": nan_like,
+        "force_l1_posterior": nan_like,
+        "mu_prior_to_mu_posterior_mse": nan_like,
+        "mu_prior_to_mu_posterior_l2": nan_like,
+        "mu_prior_to_mu_posterior_cosine": nan_like,
+        "pred_action_zero_prior_mean_abs_diff": nan_like,
+        "pred_force_zero_prior_mean_abs_diff": nan_like,
+        "action_prior_improvement_vs_zero": nan_like,
+        "force_prior_improvement_vs_zero": nan_like,
+    }
     batch_metrics = {column: _scalar(sample_tensors[column].mean()) for column in METRIC_COLUMNS}
     sample_metrics = {column: _sample_values(values) for column, values in sample_tensors.items()}
     return batch_metrics, sample_metrics
@@ -347,9 +396,8 @@ def evaluate(args: argparse.Namespace) -> int:
     checkpoint = torch.load(args.checkpoint, map_location=device)
     if not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must contain a dict")
-    model = ForceAwareACTPolicy(
-        **_model_kwargs_from_checkpoint(checkpoint, args.force_window_len)
-    ).to(device)
+    policy_variant = _policy_variant_from_checkpoint(checkpoint)
+    model = _build_model_from_checkpoint(checkpoint, args.force_window_len, device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
@@ -363,7 +411,10 @@ def evaluate(args: argparse.Namespace) -> int:
             break
         batch = _move_batch_to_device(batch, device)
         batch = _normalize_batch(batch, stats)
-        batch_metrics, sample_metrics = _batch_and_sample_metrics(model, batch)
+        if policy_variant == "act_baseline":
+            batch_metrics, sample_metrics = _batch_and_sample_metrics_act(model, batch)
+        else:
+            batch_metrics, sample_metrics = _batch_and_sample_metrics(model, batch)
         row = {"batch_index": batch_index, **batch_metrics}
         rows.append(row)
         batch_size = len(sample_metrics["force_l1_zero"])
@@ -401,6 +452,7 @@ def evaluate(args: argparse.Namespace) -> int:
         return 1
 
     print(f"dataset_length={len(dataset)}")
+    print(f"policy_variant={policy_variant}")
     print(f"action_mode={args.action_mode}")
     print(f"evaluated_batches={len(rows)}")
     _print_summary(rows)

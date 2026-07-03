@@ -87,6 +87,62 @@ def compute_force_aware_act_loss(
     }
 
 
+def compute_act_baseline_loss(
+    outputs: Mapping[str, Any],
+    action_chunk: torch.Tensor,
+) -> Dict[str, Union[torch.Tensor, float, str]]:
+    """Compute the ACT baseline action reconstruction loss only."""
+
+    if "pred_action" not in outputs:
+        raise KeyError("outputs is missing required key: pred_action")
+    pred_action = outputs["pred_action"]
+    if not isinstance(pred_action, torch.Tensor):
+        raise ValueError("outputs['pred_action'] must be a torch.Tensor")
+    _validate_tensor_shape("pred_action", pred_action, action_chunk.shape)
+    loss_action = functional.l1_loss(pred_action, action_chunk)
+    return {
+        "loss_total": loss_action,
+        "loss_action": loss_action,
+        "policy_variant": "act_baseline",
+    }
+
+
+def compute_force_aware_motion_cvae_loss(
+    outputs: Mapping[str, Any],
+    action_chunk: torch.Tensor,
+    future_force_chunk: torch.Tensor,
+    lambda_force: float = 0.1,
+    beta_motion: float = 1.0e-4,
+) -> Dict[str, Union[torch.Tensor, float, str]]:
+    """Compute Motion-CVAE action/force supervision plus motion KL only."""
+
+    _validate_required_outputs(outputs)
+    for key in ("mu_motion", "logvar_motion"):
+        if key not in outputs:
+            raise KeyError(f"outputs is missing required motion posterior key: {key}")
+        if not isinstance(outputs[key], torch.Tensor):
+            raise ValueError(f"outputs[{key!r}] must be a torch.Tensor")
+
+    pred_action = outputs["pred_action"]
+    pred_force = outputs["pred_force"]
+    _validate_tensor_shape("pred_action", pred_action, action_chunk.shape)
+    _validate_tensor_shape("pred_force", pred_force, future_force_chunk.shape)
+
+    loss_action = functional.l1_loss(pred_action, action_chunk)
+    loss_force = functional.l1_loss(pred_force, future_force_chunk)
+    kl_motion = kl_normal(outputs["mu_motion"], outputs["logvar_motion"])
+    loss_total = loss_action + lambda_force * loss_force + beta_motion * kl_motion
+    return {
+        "loss_total": loss_total,
+        "loss_action": loss_action,
+        "loss_force": loss_force,
+        "kl_motion": kl_motion,
+        "lambda_force": lambda_force,
+        "beta_motion": beta_motion,
+        "policy_variant": "force_aware_motion_cvae",
+    }
+
+
 def compute_contact_prior_distillation_loss(
     mu_prior: torch.Tensor,
     logvar_prior: torch.Tensor,

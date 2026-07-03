@@ -218,3 +218,6 @@ def test_train_zero_latent_mode_writes_log_columns(tmp_path):
     assert rows[0]["uses_zero_latent"] == "True"
     assert float(rows[0]["kl_motion"]) == 0.0
     assert float(rows[0]["kl_contact"]) == 0.0
+    checkpoint = torch.load(output_dir / "checkpoint.pt", map_location="cpu")
+    assert checkpoint["config"]["policy_variant"] == "force_aware_act"
+    assert args.policy_variant == "force_aware_act"

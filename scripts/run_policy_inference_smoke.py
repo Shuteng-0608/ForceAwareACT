@@ -21,7 +21,7 @@ from force_aware_act.data import (  # noqa: E402
     denormalize_tensor,
     normalize_tensor,
 )
-from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
+from force_aware_act.models import ForceAwareACTMotionCVAEPolicy, ForceAwareACTPolicy  # noqa: E402
 
 
 def _load_stats(path: Path) -> Dict[str, torch.Tensor]:
@@ -46,6 +46,20 @@ def _model_kwargs(checkpoint: dict, force_window_len: int) -> dict:
     return model_config
 
 
+def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
+    config = checkpoint.get("config", {})
+    if not isinstance(config, dict):
+        return "force_aware_act"
+    return str(config.get("policy_variant", "force_aware_act"))
+
+
+def _build_model_from_checkpoint(checkpoint: dict, force_window_len: int):
+    model_kwargs = _model_kwargs(checkpoint, force_window_len)
+    if _policy_variant_from_checkpoint(checkpoint) == "force_aware_motion_cvae":
+        return ForceAwareACTMotionCVAEPolicy(**model_kwargs)
+    return ForceAwareACTPolicy(**model_kwargs)
+
+
 def _find_sample(dataset: ContactForceHDF5Dataset, state_index: int) -> dict:
     for dataset_index, episode_index in enumerate(dataset.indices):
         if episode_index.state_index == state_index:
@@ -68,8 +82,21 @@ def _online_batch(sample: dict, stats: Dict[str, torch.Tensor]) -> dict[str, tor
     }
 
 
-def _run_mode(model: ForceAwareACTPolicy, batch: dict[str, torch.Tensor], mode: str) -> dict:
+def _run_mode(
+    model: ForceAwareACTPolicy | ForceAwareACTMotionCVAEPolicy,
+    batch: dict[str, torch.Tensor],
+    mode: str,
+) -> dict:
     with torch.no_grad():
+        if isinstance(model, ForceAwareACTMotionCVAEPolicy):
+            return model(
+                images=batch["images"],
+                qpos=batch["qpos"],
+                force_window=batch["force_window"],
+                action_chunk=None,
+                future_force_chunk=None,
+                is_training=False,
+            )
         return model(
             images=batch["images"],
             qpos=batch["qpos"],
@@ -151,27 +178,32 @@ def smoke(args: argparse.Namespace) -> int:
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     if not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must contain a dict")
-    model = ForceAwareACTPolicy(**_model_kwargs(checkpoint, args.force_window_len))
+    policy_variant = _policy_variant_from_checkpoint(checkpoint)
+    model = _build_model_from_checkpoint(checkpoint, args.force_window_len)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
     outputs = {"zero": _run_mode(model, batch, "zero")}
-    if args.contact_latent_mode == "prior":
+    if args.contact_latent_mode == "prior" and policy_variant != "force_aware_motion_cvae":
         outputs["prior"] = _run_mode(model, batch, "prior")
-    selected_output = outputs[args.contact_latent_mode]
+    selected_mode = (
+        "zero" if policy_variant == "force_aware_motion_cvae" else args.contact_latent_mode
+    )
+    selected_output = outputs[selected_mode]
     predictions = {
         mode: _denormalized_predictions(output, stats) for mode, output in outputs.items()
     }
     actions = {mode: prediction[0] for mode, prediction in predictions.items()}
     forces = {mode: prediction[1] for mode, prediction in predictions.items()}
-    selected_action = actions[args.contact_latent_mode]
-    selected_force = forces[args.contact_latent_mode]
+    selected_action = actions[selected_mode]
+    selected_force = forces[selected_mode]
     force_norms = np.linalg.norm(selected_force[:, :3], axis=1)
 
     print(f"episode_path={args.episode}")
+    print(f"policy_variant={policy_variant}")
     print(f"state_index={args.state_index}")
     print(f"timestamp={sample['t_state']:.9g}")
-    print(f"contact_latent_mode={args.contact_latent_mode}")
+    print(f"contact_latent_mode={selected_mode}")
     print(f"images_shape={tuple(batch['images'].shape)}")
     print(f"qpos_shape={tuple(batch['qpos'].shape)}")
     print(f"force_window_shape={tuple(batch['force_window'].shape)}")

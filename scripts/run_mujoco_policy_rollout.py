@@ -21,7 +21,11 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
-from force_aware_act.models import ForceAwareACTPolicy  # noqa: E402
+from force_aware_act.models import (  # noqa: E402
+    ACTPolicyBaseline,
+    ForceAwareACTMotionCVAEPolicy,
+    ForceAwareACTPolicy,
+)
 
 
 JOINT_NAMES = tuple(f"joint_{index}" for index in range(1, 8))
@@ -178,7 +182,28 @@ def _model_kwargs(checkpoint: dict, force_window_len: int, chunk_len: int) -> di
             f"--chunk-len={chunk_len} does not match checkpoint chunk_len="
             f"{model_config.get('chunk_len')}"
         )
+    policy_variant = _policy_variant_from_checkpoint(checkpoint)
+    if policy_variant == "act_baseline":
+        model_config.pop("force_dim", None)
+        model_config.pop("max_force_window_len", None)
     return model_config
+
+
+def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
+    config = checkpoint.get("config", {})
+    if not isinstance(config, dict):
+        return "force_aware_act"
+    return str(config.get("policy_variant", "force_aware_act"))
+
+
+def _build_policy_from_checkpoint(checkpoint: dict, force_window_len: int, chunk_len: int):
+    kwargs = _model_kwargs(checkpoint, force_window_len, chunk_len)
+    policy_variant = _policy_variant_from_checkpoint(checkpoint)
+    if policy_variant == "act_baseline":
+        return ACTPolicyBaseline(**kwargs)
+    if policy_variant == "force_aware_motion_cvae":
+        return ForceAwareACTMotionCVAEPolicy(**kwargs)
+    return ForceAwareACTPolicy(**kwargs)
 
 
 def _resolve_ids(mujoco, model, object_type, names: Sequence[str], kind: str) -> np.ndarray:
@@ -545,13 +570,24 @@ def _resample_force_window(
 
 
 def _run_mode(
-    model: ForceAwareACTPolicy,
+    model,
     images: torch.Tensor,
     qpos: torch.Tensor,
     force_window: torch.Tensor,
     mode: str,
 ) -> dict:
     with torch.no_grad():
+        if isinstance(model, ACTPolicyBaseline):
+            return model(images=images, qpos=qpos)
+        if isinstance(model, ForceAwareACTMotionCVAEPolicy):
+            return model(
+                images=images,
+                qpos=qpos,
+                force_window=force_window,
+                action_chunk=None,
+                future_force_chunk=None,
+                is_training=False,
+            )
         return model(
             images=images,
             qpos=qpos,
@@ -569,7 +605,15 @@ def _denormalize_predictions(
     stats: Dict[str, torch.Tensor],
 ) -> tuple[np.ndarray, np.ndarray]:
     action = denormalize_tensor(output["pred_action"], stats["action_mean"], stats["action_std"])
-    force = denormalize_tensor(output["pred_force"], stats["force_mean"], stats["force_std"])
+    if "pred_force" in output:
+        force = denormalize_tensor(output["pred_force"], stats["force_mean"], stats["force_std"])
+    else:
+        force = torch.full(
+            (*output["pred_action"].shape[:2], stats["force_mean"].shape[0]),
+            float("nan"),
+            dtype=output["pred_action"].dtype,
+            device=output["pred_action"].device,
+        )
     return action.squeeze(0).cpu().numpy(), force.squeeze(0).cpu().numpy()
 
 
@@ -853,9 +897,8 @@ def run_rollout(args: argparse.Namespace) -> int:
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     if not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must contain a dict")
-    model = ForceAwareACTPolicy(
-        **_model_kwargs(checkpoint, args.force_window_len, args.chunk_len)
-    )
+    policy_variant = _policy_variant_from_checkpoint(checkpoint)
+    model = _build_policy_from_checkpoint(checkpoint, args.force_window_len, args.chunk_len)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
@@ -1024,7 +1067,7 @@ def run_rollout(args: argparse.Namespace) -> int:
             )
             selected_action, selected_force = _denormalize_predictions(selected_output, stats)
             zero_action = zero_force = None
-            if args.contact_latent_mode == "prior":
+            if args.contact_latent_mode == "prior" and policy_variant != "act_baseline":
                 zero_output = _run_mode(model, images, qpos_tensor, force_window_tensor, "zero")
                 zero_action, zero_force = _denormalize_predictions(zero_output, stats)
 
@@ -1373,6 +1416,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     summary = {
         "output_dir": args.output_dir,
         "checkpoint": args.checkpoint,
+        "policy_variant": policy_variant,
         "normalization_stats": args.normalization_stats,
         "model_xml": args.model_xml,
         "rollout_mode": "execute" if args.execute_actions else "dry_run",
@@ -1449,6 +1493,7 @@ def run_rollout(args: argparse.Namespace) -> int:
 
     print(f"output_dir={args.output_dir}")
     print(f"rollout_mode={'execute' if args.execute_actions else 'dry_run'}")
+    print(f"policy_variant={policy_variant}")
     print(f"steps_executed={len(rows)}")
     print(f"final_time={float(data.time):.9g}")
     print(f"first_input_shapes={first_shapes}")

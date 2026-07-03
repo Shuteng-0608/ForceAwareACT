@@ -1,0 +1,226 @@
+{
+  "act_baseline": {
+    "act_boundary_simulation": {
+      "excluded_components": [
+        "force_temporal_encoder",
+        "force_vision_fusion",
+        "force_head",
+        "contact_latent_prior_posterior",
+        "other_unclassified"
+      ],
+      "included_components": [
+        "action_queries_action_head",
+        "motion_latent_modules",
+        "state_projection",
+        "transformer_decoder",
+        "transformer_encoder",
+        "vision_backbone"
+      ],
+      "included_total_parameters": 11595335,
+      "included_trainable_parameters": 11595335
+    },
+    "checkpoint_path": null,
+    "components": {
+      "action_queries_action_head": {
+        "component": "action_queries_action_head",
+        "percentage_of_total": 0.018826536706356478,
+        "total_parameters": 2183,
+        "trainable_parameters": 2183
+      },
+      "contact_latent_prior_posterior": {
+        "component": "contact_latent_prior_posterior",
+        "percentage_of_total": 0.0,
+        "total_parameters": 0,
+        "trainable_parameters": 0
+      },
+      "force_head": {
+        "component": "force_head",
+        "percentage_of_total": 0.0,
+        "total_parameters": 0,
+        "trainable_parameters": 0
+      },
+      "force_temporal_encoder": {
+        "component": "force_temporal_encoder",
+        "percentage_of_total": 0.0,
+        "total_parameters": 0,
+        "trainable_parameters": 0
+      },
+      "force_vision_fusion": {
+        "component": "force_vision_fusion",
+        "percentage_of_total": 0.0,
+        "total_parameters": 0,
+        "trainable_parameters": 0
+      },
+      "motion_latent_modules": {
+        "component": "motion_latent_modules",
+        "percentage_of_total": 0.01876616760102231,
+        "total_parameters": 2176,
+        "trainable_parameters": 2176
+      },
+      "other_unclassified": {
+        "component": "other_unclassified",
+        "percentage_of_total": 0.0,
+        "total_parameters": 0,
+        "trainable_parameters": 0
+      },
+      "state_projection": {
+        "component": "state_projection",
+        "percentage_of_total": 0.1512332330200033,
+        "total_parameters": 17536,
+        "trainable_parameters": 17536
+      },
+      "transformer_decoder": {
+        "component": "transformer_decoder",
+        "percentage_of_total": 1.714344604963979,
+        "total_parameters": 198784,
+        "trainable_parameters": 198784
+      },
+      "transformer_encoder": {
+        "component": "transformer_encoder",
+        "percentage_of_total": 1.1425284392387112,
+        "total_parameters": 132480,
+        "trainable_parameters": 132480
+      },
+      "vision_backbone": {
+        "component": "vision_backbone",
+        "percentage_of_total": 96.95430101846993,
+        "total_parameters": 11242176,
+        "trainable_parameters": 11242176
+      }
+    },
+    "duplicates": [],
+    "model_configuration": {
+      "action_dim": 7,
+      "chunk_len": 10,
+      "d_model": 128,
+      "dim_feedforward": 256,
+      "dropout": 0.0,
+      "freeze_resnet18": false,
+      "nhead": 4,
+      "num_decoder_layers": 1,
+      "num_encoder_layers": 1,
+      "pretrained_resnet18": false,
+      "q_dim": 7,
+      "z_dim": 16
+    },
+    "policy_variant": "act_baseline",
+    "pretrained_weights_downloaded": false,
+    "total_parameters": 11595335,
+    "trainable_parameters": 11595335,
+    "unclassified_parameter_names": []
+  },
+  "force_aware_act": {
+    "act_boundary_simulation": {
+      "excluded_components": [
+        "force_temporal_encoder",
+        "force_vision_fusion",
+        "force_head",
+        "contact_latent_prior_posterior",
+        "other_unclassified"
+      ],
+      "included_components": [
+        "action_queries_action_head",
+        "motion_latent_modules",
+        "state_projection",
+        "transformer_decoder",
+        "transformer_encoder",
+        "vision_backbone"
+      ],
+      "included_total_parameters": 11735655,
+      "included_trainable_parameters": 11735655
+    },
+    "checkpoint_path": null,
+    "components": {
+      "action_queries_action_head": {
+        "component": "action_queries_action_head",
+        "percentage_of_total": 0.017889763490442825,
+        "total_parameters": 2183,
+        "trainable_parameters": 2183
+      },
+      "contact_latent_prior_posterior": {
+        "component": "contact_latent_prior_posterior",
+        "percentage_of_total": 2.161391562997413,
+        "total_parameters": 263744,
+        "trainable_parameters": 263744
+      },
+      "force_head": {
+        "component": "force_head",
+        "percentage_of_total": 0.007129681281120137,
+        "total_parameters": 870,
+        "trainable_parameters": 870
+      },
+      "force_temporal_encoder": {
+        "component": "force_temporal_encoder",
+        "percentage_of_total": 1.1160983368256479,
+        "total_parameters": 136192,
+        "trainable_parameters": 136192
+      },
+      "force_vision_fusion": {
+        "component": "force_vision_fusion",
+        "percentage_of_total": 0.5412657347763481,
+        "total_parameters": 66048,
+        "trainable_parameters": 66048
+      },
+      "motion_latent_modules": {
+        "component": "motion_latent_modules",
+        "percentage_of_total": 1.1677598434879253,
+        "total_parameters": 142496,
+        "trainable_parameters": 142496
+      },
+      "other_unclassified": {
+        "component": "other_unclassified",
+        "percentage_of_total": 0.0,
+        "total_parameters": 0,
+        "trainable_parameters": 0
+      },
+      "state_projection": {
+        "component": "state_projection",
+        "percentage_of_total": 0.14370815051232497,
+        "total_parameters": 17536,
+        "trainable_parameters": 17536
+      },
+      "transformer_decoder": {
+        "component": "transformer_decoder",
+        "percentage_of_total": 1.629042027340443,
+        "total_parameters": 198784,
+        "trainable_parameters": 198784
+      },
+      "transformer_encoder": {
+        "component": "transformer_encoder",
+        "percentage_of_total": 1.0856783633595353,
+        "total_parameters": 132480,
+        "trainable_parameters": 132480
+      },
+      "vision_backbone": {
+        "component": "vision_backbone",
+        "percentage_of_total": 92.1300365359288,
+        "total_parameters": 11242176,
+        "trainable_parameters": 11242176
+      }
+    },
+    "duplicates": [],
+    "model_configuration": {
+      "action_dim": 7,
+      "chunk_len": 10,
+      "d_model": 128,
+      "dim_feedforward": 256,
+      "dropout": 0.0,
+      "force_dim": 6,
+      "freeze_resnet18": false,
+      "max_force_window_len": 20,
+      "nhead": 4,
+      "num_decoder_layers": 1,
+      "num_encoder_layers": 1,
+      "pretrained_resnet18": false,
+      "q_dim": 7,
+      "z_dim": 16
+    },
+    "policy_variant": "force_aware_act",
+    "pretrained_weights_downloaded": false,
+    "total_parameters": 12202509,
+    "trainable_parameters": 12202509,
+    "unclassified_parameter_names": []
+  },
+  "parameter_count_difference_force_minus_act": 607174,
+  "trainable_parameter_count_difference_force_minus_act": 607174
+}

@@ -122,6 +122,7 @@ def get_episode_safe_lengths(
     camera_names: Sequence[str] = ("ee_cam", "base_top_cam"),
     tolerate_length_mismatch: bool = True,
     max_length_mismatch: int = 1,
+    include_force: bool = True,
 ) -> EpisodeSafeLengths:
     """Validate synchronization-group lengths and return safe trimmed lengths."""
 
@@ -139,7 +140,11 @@ def get_episode_safe_lengths(
     image_keys = tuple(f"observations/images/{name}" for name in camera_names) + (
         _first_existing_key(handle, TIMESTAMP_IMAGE_KEYS),
     )
-    force_keys = ("observations/ft_wrench", _first_existing_key(handle, TIMESTAMP_FORCE_KEYS))
+    force_keys = (
+        ("observations/ft_wrench", _first_existing_key(handle, TIMESTAMP_FORCE_KEYS))
+        if include_force
+        else ()
+    )
 
     def lengths_for(keys: Sequence[str]) -> dict[str, int]:
         lengths: dict[str, int] = {}
@@ -163,13 +168,16 @@ def get_episode_safe_lengths(
         tolerate_length_mismatch,
         max_length_mismatch,
     )
-    force_len, trim_force, force_mismatch = _safe_group_length(
-        episode_path,
-        "force",
-        lengths_for(force_keys),
-        tolerate_length_mismatch,
-        max_length_mismatch,
-    )
+    if include_force:
+        force_len, trim_force, force_mismatch = _safe_group_length(
+            episode_path,
+            "force",
+            lengths_for(force_keys),
+            tolerate_length_mismatch,
+            max_length_mismatch,
+        )
+    else:
+        force_len, trim_force, force_mismatch = 0, 0, False
     mismatch_groups = tuple(
         name
         for name, mismatched in (
@@ -235,6 +243,7 @@ class ContactForceHDF5Dataset(Dataset):
         image_size: tuple[int, int] = (224, 224),
         normalize_images: bool = True,
         imagenet_normalize: bool = False,
+        include_force: bool = True,
         tolerate_length_mismatch: bool = True,
         max_length_mismatch: int = 1,
     ) -> None:
@@ -247,6 +256,7 @@ class ContactForceHDF5Dataset(Dataset):
         self.image_size = image_size
         self.normalize_images = normalize_images
         self.imagenet_normalize = imagenet_normalize
+        self.include_force = bool(include_force)
         self.tolerate_length_mismatch = bool(tolerate_length_mismatch)
         self.max_length_mismatch = int(max_length_mismatch)
         self.action_offset = 1 if action_mode == "joint_pos" else 0
@@ -281,7 +291,6 @@ class ContactForceHDF5Dataset(Dataset):
         safe_lengths = self.episode_safe_lengths[sample_index.episode_path]
         with h5py.File(sample_index.episode_path, "r") as handle:
             state_ts = _read_required_array_any(handle, TIMESTAMP_STATE_KEYS)[: safe_lengths.state_len]
-            force_ts = _read_required_array_any(handle, TIMESTAMP_FORCE_KEYS)[: safe_lengths.force_len]
             image_ts = _read_required_array_any(handle, TIMESTAMP_IMAGE_KEYS)[: safe_lengths.image_len]
 
             joint_pos = _read_required_array(handle, "observations/joint_pos")[: safe_lengths.state_len]
@@ -290,22 +299,12 @@ class ContactForceHDF5Dataset(Dataset):
                 : safe_lengths.state_len
             ]
             ee_pose = _read_required_array(handle, "observations/ee_pose")[: safe_lengths.state_len]
-            ft_wrench = _read_required_array(handle, "observations/ft_wrench")[
-                : safe_lengths.force_len
-            ]
 
             state_index = sample_index.state_index
             t_state = float(state_ts[state_index])
             image_index = nearest_index(image_ts, t_state)
 
             images = self._read_images(handle, image_index, safe_lengths.image_len)
-            force_window, force_indices = _sample_past_force_window(
-                force_ts=force_ts,
-                force_values=ft_wrench,
-                target_time=t_state,
-                window_len=self.force_window_len,
-                window_duration=self.force_window_duration,
-            )
 
             action_chunk = self._read_action_chunk(
                 handle=handle,
@@ -314,16 +313,33 @@ class ContactForceHDF5Dataset(Dataset):
                 action_len=self.episode_action_lengths[sample_index.episode_path],
             )
 
-            future_force_indices = np.array(
-                [
-                    nearest_index(force_ts, float(state_ts[state_index + step]))
-                    for step in range(self.chunk_len)
-                ],
-                dtype=np.int64,
-            )
-            future_force_chunk = ft_wrench[future_force_indices]
+            force_window = None
+            force_indices = None
+            future_force_chunk = None
+            if self.include_force:
+                force_ts = _read_required_array_any(handle, TIMESTAMP_FORCE_KEYS)[
+                    : safe_lengths.force_len
+                ]
+                ft_wrench = _read_required_array(handle, "observations/ft_wrench")[
+                    : safe_lengths.force_len
+                ]
+                force_window, force_indices = _sample_past_force_window(
+                    force_ts=force_ts,
+                    force_values=ft_wrench,
+                    target_time=t_state,
+                    window_len=self.force_window_len,
+                    window_duration=self.force_window_duration,
+                )
+                future_force_indices = np.array(
+                    [
+                        nearest_index(force_ts, float(state_ts[state_index + step]))
+                        for step in range(self.chunk_len)
+                    ],
+                    dtype=np.int64,
+                )
+                future_force_chunk = ft_wrench[future_force_indices]
 
-        return {
+        sample = {
             "images": torch.from_numpy(images.astype(np.float32, copy=False)),
             "qpos": torch.from_numpy(joint_pos[state_index].astype(np.float32, copy=False)),
             "qvel": torch.from_numpy(joint_vel[state_index].astype(np.float32, copy=False)),
@@ -331,17 +347,23 @@ class ContactForceHDF5Dataset(Dataset):
                 joint_torque[state_index].astype(np.float32, copy=False)
             ),
             "ee_pose": torch.from_numpy(ee_pose[state_index].astype(np.float32, copy=False)),
-            "force_window": torch.from_numpy(force_window.astype(np.float32, copy=False)),
             "action_chunk": torch.from_numpy(action_chunk.astype(np.float32, copy=False)),
-            "future_force_chunk": torch.from_numpy(
-                future_force_chunk.astype(np.float32, copy=False)
-            ),
             "episode_path": str(sample_index.episode_path),
             "state_index": state_index,
             "t_state": t_state,
             "image_index": image_index,
-            "force_indices": force_indices,
         }
+        if self.include_force:
+            sample.update(
+                {
+                    "force_window": torch.from_numpy(force_window.astype(np.float32, copy=False)),
+                    "future_force_chunk": torch.from_numpy(
+                        future_force_chunk.astype(np.float32, copy=False)
+                    ),
+                    "force_indices": force_indices,
+                }
+            )
+        return sample
 
     def _build_indices(self) -> list[EpisodeIndex]:
         indices: list[EpisodeIndex] = []
@@ -353,6 +375,7 @@ class ContactForceHDF5Dataset(Dataset):
                     camera_names=self.camera_names,
                     tolerate_length_mismatch=self.tolerate_length_mismatch,
                     max_length_mismatch=self.max_length_mismatch,
+                    include_force=self.include_force,
                 )
                 self.episode_safe_lengths[episode_path] = safe_lengths
                 action_len = self._safe_action_length(handle, episode_path, safe_lengths.state_len)

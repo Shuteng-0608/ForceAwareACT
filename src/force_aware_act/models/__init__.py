@@ -1,8 +1,10 @@
 """Model modules for ForceAwareACT."""
 
+from force_aware_act.models.act_policy import ACTPolicyBaseline
 from force_aware_act.models.contact_prior import ContactPriorEncoder
 from force_aware_act.models.cross_attention import ForceVisionCrossAttention
 from force_aware_act.models.force import TemporalForceEncoder
+from force_aware_act.models.force_aware_motion_cvae_policy import ForceAwareACTMotionCVAEPolicy
 from force_aware_act.models.heads import ActionHead, ForceHead
 from force_aware_act.models.policy import ForceAwareACTPolicy
 from force_aware_act.models.posterior import (
@@ -15,6 +17,7 @@ from force_aware_act.models.vision import ResNet18VisionEncoder
 
 __all__ = [
     "ResNet18VisionEncoder",
+    "ACTPolicyBaseline",
     "TemporalForceEncoder",
     "ForceVisionCrossAttention",
     "ContactPriorEncoder",
@@ -25,4 +28,5 @@ __all__ = [
     "ActionHead",
     "ForceHead",
     "ForceAwareACTPolicy",
+    "ForceAwareACTMotionCVAEPolicy",
 ]
