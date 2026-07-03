@@ -140,6 +140,7 @@ class ForceAwareACTMotionCVAEPolicy(nn.Module):
         action_chunk: Optional[torch.Tensor] = None,
         future_force_chunk: Optional[torch.Tensor] = None,
         is_training: bool = True,
+        motion_latent_override: Optional[torch.Tensor] = None,
     ) -> Dict[str, Any]:
         self._validate_online_inputs(images, qpos, force_window)
         self._validate_training_state(action_chunk, future_force_chunk, is_training)
@@ -158,13 +159,18 @@ class ForceAwareACTMotionCVAEPolicy(nn.Module):
         }
 
         if is_training:
-            mu_motion, logvar_motion, z_motion = self.motion_posterior(qpos, action_chunk)
+            if motion_latent_override is not None:
+                raise ValueError("motion_latent_override is only supported when is_training=False")
+            mu_motion, logvar_motion, z_motion = self.encode_motion_posterior(qpos, action_chunk)
             outputs.update(
                 {
                     "mu_motion": mu_motion,
                     "logvar_motion": logvar_motion,
                 }
             )
+        elif motion_latent_override is not None:
+            self._validate_motion_latent_override(motion_latent_override, batch_size)
+            z_motion = motion_latent_override
         else:
             z_motion = qpos.new_zeros(batch_size, self.z_dim)
 
@@ -189,6 +195,19 @@ class ForceAwareACTMotionCVAEPolicy(nn.Module):
             }
         )
         return outputs
+
+    def encode_motion_posterior(
+        self,
+        qpos: torch.Tensor,
+        action_chunk: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Encode qpos and future actions into the motion posterior.
+
+        Returns ``(mu_motion, logvar_motion, z_motion_sample)`` using the same
+        reparameterized posterior sampling path as training.
+        """
+
+        return self.motion_posterior(qpos, action_chunk)
 
     def _assemble_policy_tokens(
         self,
@@ -262,6 +281,19 @@ class ForceAwareACTMotionCVAEPolicy(nn.Module):
             raise ValueError("action_chunk must be None when is_training=False")
         if future_force_chunk is not None:
             raise ValueError("future_force_chunk must be None when is_training=False")
+
+    def _validate_motion_latent_override(
+        self,
+        motion_latent_override: torch.Tensor,
+        batch_size: int,
+    ) -> None:
+        if motion_latent_override.ndim != 2:
+            raise ValueError("motion_latent_override must have shape [B, z_dim]")
+        if motion_latent_override.shape != (batch_size, self.z_dim):
+            raise ValueError(
+                "motion_latent_override must have shape "
+                f"[{batch_size}, {self.z_dim}], got {tuple(motion_latent_override.shape)}"
+            )
 
     def _reset_parameters(self) -> None:
         nn.init.trunc_normal_(self.future_queries, std=0.02)
