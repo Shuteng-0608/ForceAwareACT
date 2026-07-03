@@ -90,6 +90,41 @@ PYTHONPATH=src python scripts/train_minimal.py \
   --log-csv outputs/stage1/train_log.csv
 ```
 
+### Continuous Trajectory Checkpoints
+
+Use `--save-steps` and/or `--save-every` to save intermediate checkpoints from one
+uninterrupted optimization trajectory. For example, this single 30k-step run writes
+snapshots at selected completed optimizer steps while continuing to train the same
+model with the same optimizer, DataLoader sequence, random-state evolution, and
+training configuration:
+
+```bash
+PYTHONPATH=src python scripts/train_minimal.py \
+  --episode-list outputs/peg_hole_100/all100.txt \
+  --policy-variant force_aware_motion_cvae \
+  --action-mode action \
+  --train-latent-mode posterior \
+  --lambda-force 0.1 \
+  --beta-motion-max 5e-4 \
+  --warmup-steps 2000 \
+  --normalization-stats outputs/peg_hole_100/normalization_stats_action_all100.pt \
+  --chunk-len 10 \
+  --force-window-len 20 \
+  --force-window-duration 0.25 \
+  --max-steps 30000 \
+  --batch-size 16 \
+  --device cuda \
+  --save-steps 3000 5000 8000 10000 15000 20000 30000 \
+  --output-dir outputs/peg_hole_100/forceaware_motion_cvae_trajectory30k \
+  --log-csv outputs/peg_hole_100/forceaware_motion_cvae_trajectory30k/train_log.csv
+```
+
+Intermediate files are named `checkpoint_step_00003000.pt`,
+`checkpoint_step_00005000.pt`, and so on; the final checkpoint is still
+`checkpoint.pt`. These trajectory checkpoints are appropriate for studying the
+effect of training duration along the same run. Independently trained 5k and 20k
+runs are not equivalent to checkpoints taken from one continuous 30k trajectory.
+
 ### Stage 2 Contact-Prior Distillation
 
 ```bash

@@ -6,6 +6,7 @@ import pytest
 
 from scripts.plot_hole_grid_results import aggregate_grid_results, main as plot_grid_main
 from scripts.run_mujoco_hole_grid import (
+    _build_rollout_command,
     generate_task_points,
     latin_hypercube_points,
     parse_args as parse_grid_args,
@@ -244,12 +245,56 @@ def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):
     assert manifest_path.is_file()
     assert len(manifest["runs"]) == 9
     assert all(run["status"] == "dry_run" for run in manifest["runs"])
-    commands = [" ".join(run["command"]) for run in manifest["runs"]]
-    assert any("--hole-offset-x -0.002" in command for command in commands)
-    assert any("--hole-offset-z 0.002" in command for command in commands)
-    assert all("--hole-site-name hole_goal_site" in command for command in commands)
-    assert all("--hole-body-name wall_task" in command for command in commands)
+    commands = [run["command"] for run in manifest["runs"]]
+    joined_commands = [" ".join(command) for command in commands]
+    assert any("--hole-offset-x=-0.002" in command for command in commands)
+    assert any("--hole-offset-y=0.0" in command for command in commands)
+    assert any("--hole-offset-z=0.002" in command for command in commands)
+    assert all("--hole-site-name hole_goal_site" in command for command in joined_commands)
+    assert all("--hole-body-name wall_task" in command for command in joined_commands)
     assert manifest["policy_config"]["hole_body_name"] == "wall_task"
+
+
+def test_rollout_command_keeps_negative_scientific_offsets_single_token(tmp_path):
+    source_offsets = {
+        "--hole-offset-x": -6.87416984117234e-05,
+        "--hole-offset-y": 0.0,
+        "--hole-offset-z": -2.525207122118121e-05,
+    }
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+            "--dry-run",
+            "--no-plot-results",
+        ]
+    )
+
+    command = _build_rollout_command(
+        args,
+        tmp_path / "grid" / "scientific_offsets",
+        source_offsets["--hole-offset-x"],
+        source_offsets["--hole-offset-y"],
+        source_offsets["--hole-offset-z"],
+        seed=0,
+    )
+
+    for option, source_value in source_offsets.items():
+        matching_tokens = [token for token in command if token.startswith(f"{option}=")]
+        assert len(matching_tokens) == 1
+        token = matching_tokens[0]
+        assert token == f"{option}={float(source_value)!r}"
+        assert float(token.split("=", 1)[1]) == source_value
+        assert option not in command
+
+    assert "-6.87416984117234e-05" not in command
+    assert "-2.525207122118121e-05" not in command
 
 
 def test_latin_hypercube_sampling_is_deterministic_and_seeded():

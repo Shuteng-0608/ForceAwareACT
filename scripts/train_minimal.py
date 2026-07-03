@@ -124,6 +124,65 @@ def _normalize_batch(
     return normalized
 
 
+def resolve_checkpoint_steps(
+    *,
+    max_steps: int,
+    save_every: int,
+    save_steps: Sequence[int],
+) -> list[int]:
+    if max_steps <= 0:
+        raise ValueError("--max-steps must be positive")
+    if save_every < 0:
+        raise ValueError("--save-every must be non-negative")
+
+    resolved_steps = set()
+    for step in save_steps:
+        if step <= 0:
+            raise ValueError(f"--save-steps values must be positive integers; got {step}")
+        if step > max_steps:
+            raise ValueError(
+                f"--save-steps values must be <= --max-steps ({max_steps}); got {step}"
+            )
+        resolved_steps.add(step)
+
+    if save_every > 0:
+        resolved_steps.update(range(save_every, max_steps + 1, save_every))
+
+    return sorted(resolved_steps)
+
+
+def checkpoint_step_path(output_dir: Path, step: int) -> Path:
+    return output_dir / f"checkpoint_step_{step:08d}.pt"
+
+
+def build_checkpoint_payload(
+    *,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    config: Dict[str, object],
+    step: int,
+) -> Dict[str, object]:
+    return {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "config": config,
+        "step": step,
+    }
+
+
+def save_checkpoint_atomic(payload: Dict[str, object], checkpoint_path: Path) -> None:
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = checkpoint_path.with_suffix(checkpoint_path.suffix + ".tmp")
+    if temporary_path.exists():
+        temporary_path.unlink()
+    try:
+        torch.save(payload, temporary_path)
+        temporary_path.replace(checkpoint_path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
 def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     policy_variant = getattr(args, "policy_variant", DEFAULT_POLICY_VARIANT)
     return {
@@ -147,6 +206,11 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "beta_motion_max": args.beta_motion_max,
         "beta_contact_max": args.beta_contact_max,
         "warmup_steps": args.warmup_steps,
+        "save_every": getattr(args, "save_every", 0),
+        "save_steps": tuple(getattr(args, "save_steps", ())),
+        "intermediate_checkpoint_steps": tuple(
+            getattr(args, "intermediate_checkpoint_steps", ())
+        ),
         "output_dir": str(args.output_dir),
         "log_csv": str(args.log_csv),
         "device": args.device,
@@ -184,6 +248,14 @@ def _build_training_dataset(args: argparse.Namespace) -> ContactForceHDF5Dataset
 def train(args: argparse.Namespace) -> int:
     policy_variant = getattr(args, "policy_variant", DEFAULT_POLICY_VARIANT)
     args.policy_variant = policy_variant
+    intermediate_checkpoint_steps = resolve_checkpoint_steps(
+        max_steps=args.max_steps,
+        save_every=getattr(args, "save_every", 0),
+        save_steps=getattr(args, "save_steps", ()),
+    )
+    args.intermediate_checkpoint_steps = intermediate_checkpoint_steps
+    intermediate_checkpoint_step_set = set(intermediate_checkpoint_steps)
+    config = _config_from_args(args)
     device = torch.device(args.device)
     normalization_stats = _load_normalization_stats(args.normalization_stats)
     _validate_normalization_action_mode(normalization_stats, args.action_mode)
@@ -225,6 +297,7 @@ def train(args: argparse.Namespace) -> int:
     print(f"policy_variant={policy_variant}")
     print(f"train_latent_mode={args.train_latent_mode}")
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
+    print(f"intermediate_checkpoint_steps={intermediate_checkpoint_steps}")
     print(f"log_csv={args.log_csv}")
     print(f"normalization_enabled={normalization_stats is not None}")
     if normalization_stats is not None:
@@ -318,6 +391,17 @@ def train(args: argparse.Namespace) -> int:
             losses["loss_total"].backward()
             optimizer.step()
 
+            if step in intermediate_checkpoint_step_set:
+                checkpoint_path = checkpoint_step_path(args.output_dir, step)
+                checkpoint = build_checkpoint_payload(
+                    model=model,
+                    optimizer=optimizer,
+                    config=config,
+                    step=step,
+                )
+                save_checkpoint_atomic(checkpoint, checkpoint_path)
+                print(f"saved intermediate checkpoint: {checkpoint_path}", flush=True)
+
             log_writer.writerow(
                 {
                     "step": step,
@@ -362,15 +446,15 @@ def train(args: argparse.Namespace) -> int:
                 flush=True,
             )
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint = {
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "config": _config_from_args(args),
-        "step": last_step,
-    }
-    torch.save(checkpoint, args.output_dir / "checkpoint.pt")
-    print(f"saved_checkpoint={args.output_dir / 'checkpoint.pt'}")
+    checkpoint_path = args.output_dir / "checkpoint.pt"
+    checkpoint = build_checkpoint_payload(
+        model=model,
+        optimizer=optimizer,
+        config=config,
+        step=last_step,
+    )
+    save_checkpoint_atomic(checkpoint, checkpoint_path)
+    print(f"saved final checkpoint: {checkpoint_path}")
     return 0
 
 
@@ -401,6 +485,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--beta-motion-max", type=float, default=1.0e-4)
     parser.add_argument("--beta-contact-max", type=float, default=1.0e-4)
     parser.add_argument("--warmup-steps", type=int, default=100)
+    parser.add_argument("--save-every", type=int, default=0)
+    parser.add_argument("--save-steps", type=int, nargs="*", default=[])
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/minimal_train"))
     parser.add_argument("--log-csv", type=Path, default=Path("outputs/minimal_train/train_log.csv"))
     parser.add_argument("--device", default="cuda")
@@ -440,6 +526,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.max_steps <= 0:
         print("error: --max-steps must be positive", file=sys.stderr)
+        return 2
+    try:
+        resolve_checkpoint_steps(
+            max_steps=args.max_steps,
+            save_every=args.save_every,
+            save_steps=args.save_steps,
+        )
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
         return 2
     if args.lambda_prior < 0:
         print("error: --lambda-prior must be non-negative", file=sys.stderr)
