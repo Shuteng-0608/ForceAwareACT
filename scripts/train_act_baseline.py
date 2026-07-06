@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train the structurally force-free ACT zero-latent baseline."""
+"""Train the structurally force-free ACT Motion-CVAE baseline."""
 
 from __future__ import annotations
 
@@ -15,13 +15,21 @@ from torch.utils.data import DataLoader
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
 from force_aware_act.models import ACTPolicyBaseline  # noqa: E402
-from force_aware_act.training import compute_act_baseline_loss  # noqa: E402
+from force_aware_act.training import compute_act_baseline_loss, linear_warmup  # noqa: E402
 from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
+from scripts.train_minimal import (  # noqa: E402
+    build_checkpoint_payload,
+    checkpoint_step_path,
+    resolve_checkpoint_steps,
+    save_checkpoint_atomic,
+)
 
 
 ACTION_MODE_CHOICES = (
@@ -110,9 +118,11 @@ def _model_config_from_args(args: argparse.Namespace) -> Dict[str, object]:
 def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     return {
         "policy_variant": "act_baseline",
+        "act_baseline_version": ACTPolicyBaseline.act_baseline_version,
         "uses_force": False,
         "uses_contact_latent": False,
-        "motion_latent_mode": "zero",
+        "motion_latent_mode": "posterior_train_zero_deploy",
+        "train_latent_mode": "posterior",
         "episode_paths": [str(path) for path in args.episode_paths],
         "action_mode": args.action_mode,
         "chunk_len": args.chunk_len,
@@ -124,6 +134,13 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "max_steps": args.max_steps,
         "learning_rate": args.learning_rate,
         "optimizer": "AdamW",
+        "beta_motion_max": args.beta_motion_max,
+        "warmup_steps": args.warmup_steps,
+        "save_every": getattr(args, "save_every", 0),
+        "save_steps": tuple(getattr(args, "save_steps", ())),
+        "intermediate_checkpoint_steps": tuple(
+            getattr(args, "intermediate_checkpoint_steps", ())
+        ),
         "output_dir": str(args.output_dir),
         "log_csv": str(args.log_csv),
         "device": args.device,
@@ -149,6 +166,14 @@ def _build_training_dataset(args: argparse.Namespace) -> ContactForceHDF5Dataset
 
 
 def train(args: argparse.Namespace) -> int:
+    intermediate_checkpoint_steps = resolve_checkpoint_steps(
+        max_steps=args.max_steps,
+        save_every=getattr(args, "save_every", 0),
+        save_steps=getattr(args, "save_steps", ()),
+    )
+    args.intermediate_checkpoint_steps = intermediate_checkpoint_steps
+    intermediate_checkpoint_step_set = set(intermediate_checkpoint_steps)
+    config = _config_from_args(args)
     device = torch.device(args.device)
     normalization_stats = _load_normalization_stats(args.normalization_stats)
     _validate_normalization_action_mode(normalization_stats, args.action_mode)
@@ -172,9 +197,12 @@ def train(args: argparse.Namespace) -> int:
     print(f"policy_variant=act_baseline")
     print(f"uses_force=False")
     print(f"uses_contact_latent=False")
-    print(f"motion_latent_mode=zero")
+    print(f"act_baseline_version={ACTPolicyBaseline.act_baseline_version}")
+    print(f"motion_latent_mode=posterior_train_zero_deploy")
+    print(f"train_latent_mode=posterior")
     print(f"action_mode={args.action_mode}")
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
+    print(f"intermediate_checkpoint_steps={intermediate_checkpoint_steps}")
     print(f"log_csv={args.log_csv}")
     print(f"normalization_enabled={normalization_stats is not None}")
     if normalization_stats is not None:
@@ -190,10 +218,15 @@ def train(args: argparse.Namespace) -> int:
                 "step",
                 "loss_total",
                 "loss_action",
+                "kl_motion",
+                "beta_motion",
                 "policy_variant",
                 "uses_force",
                 "uses_contact_latent",
                 "motion_latent_mode",
+                "train_latent_mode",
+                "uses_posterior_latent",
+                "uses_zero_latent",
                 "normalization_enabled",
             ],
         )
@@ -204,21 +237,47 @@ def train(args: argparse.Namespace) -> int:
             if normalization_stats is not None:
                 batch = _normalize_batch(batch, normalization_stats)
 
+            beta_motion = linear_warmup(step, args.warmup_steps, args.beta_motion_max)
             optimizer.zero_grad(set_to_none=True)
-            outputs = model(images=batch["images"], qpos=batch["qpos"])
-            losses = compute_act_baseline_loss(outputs=outputs, action_chunk=batch["action_chunk"])
+            outputs = model(
+                images=batch["images"],
+                qpos=batch["qpos"],
+                action_chunk=batch["action_chunk"],
+                is_training=True,
+            )
+            losses = compute_act_baseline_loss(
+                outputs=outputs,
+                action_chunk=batch["action_chunk"],
+                beta_motion=beta_motion,
+            )
             losses["loss_total"].backward()
             optimizer.step()
+
+            if step in intermediate_checkpoint_step_set:
+                checkpoint_path = checkpoint_step_path(args.output_dir, step)
+                checkpoint = build_checkpoint_payload(
+                    model=model,
+                    optimizer=optimizer,
+                    config=config,
+                    step=step,
+                )
+                save_checkpoint_atomic(checkpoint, checkpoint_path)
+                print(f"saved intermediate checkpoint: {checkpoint_path}", flush=True)
 
             log_writer.writerow(
                 {
                     "step": step,
                     "loss_total": losses["loss_total"].item(),
                     "loss_action": losses["loss_action"].item(),
+                    "kl_motion": losses["kl_motion"].item(),
+                    "beta_motion": beta_motion,
                     "policy_variant": "act_baseline",
                     "uses_force": False,
                     "uses_contact_latent": False,
-                    "motion_latent_mode": "zero",
+                    "motion_latent_mode": "posterior_train_zero_deploy",
+                    "train_latent_mode": "posterior",
+                    "uses_posterior_latent": True,
+                    "uses_zero_latent": False,
                     "normalization_enabled": normalization_stats is not None,
                 }
             )
@@ -228,26 +287,29 @@ def train(args: argparse.Namespace) -> int:
                         f"step={step}",
                         f"loss_total={losses['loss_total'].item():.6g}",
                         f"loss_action={losses['loss_action'].item():.6g}",
+                        f"kl_motion={losses['kl_motion'].item():.6g}",
+                        f"beta_motion={beta_motion:.6g}",
                         "policy_variant=act_baseline",
+                        "train_latent_mode=posterior",
                     ]
                 ),
                 flush=True,
             )
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint = {
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "config": _config_from_args(args),
-        "step": last_step,
-    }
-    torch.save(checkpoint, args.output_dir / "checkpoint.pt")
-    print(f"saved_checkpoint={args.output_dir / 'checkpoint.pt'}")
+    checkpoint_path = args.output_dir / "checkpoint.pt"
+    checkpoint = build_checkpoint_payload(
+        model=model,
+        optimizer=optimizer,
+        config=config,
+        step=last_step,
+    )
+    save_checkpoint_atomic(checkpoint, checkpoint_path)
+    print(f"saved final checkpoint: {checkpoint_path}")
     return 0
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="ACT zero-latent baseline training loop.")
+    parser = argparse.ArgumentParser(description="ACT Motion-CVAE baseline training loop.")
     parser.add_argument("episode_paths", type=Path, nargs="*", help="One or more HDF5 episodes.")
     parser.add_argument("--episode-list", type=Path, default=None)
     parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
@@ -259,6 +321,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--learning-rate", type=float, default=1.0e-4)
+    parser.add_argument("--beta-motion-max", type=float, default=1.0e-4)
+    parser.add_argument("--warmup-steps", type=int, default=100)
+    parser.add_argument("--save-every", type=int, default=0)
+    parser.add_argument("--save-steps", type=int, nargs="*", default=[])
     parser.add_argument("--d-model", type=int, default=128)
     parser.add_argument("--z-dim", type=int, default=16)
     parser.add_argument("--nhead", type=int, default=4)
@@ -305,6 +371,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.max_steps <= 0:
         print("error: --max-steps must be positive", file=sys.stderr)
+        return 2
+    try:
+        resolve_checkpoint_steps(
+            max_steps=args.max_steps,
+            save_every=args.save_every,
+            save_steps=args.save_steps,
+        )
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    if args.beta_motion_max < 0:
+        print("error: --beta-motion-max must be non-negative", file=sys.stderr)
+        return 2
+    if args.warmup_steps < 0:
+        print("error: --warmup-steps must be non-negative", file=sys.stderr)
         return 2
     if args.d_model <= 0 or args.z_dim <= 0 or args.nhead <= 0:
         print("error: model dimensions must be positive", file=sys.stderr)

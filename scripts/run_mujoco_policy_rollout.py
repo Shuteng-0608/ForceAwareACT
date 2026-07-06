@@ -25,6 +25,7 @@ from force_aware_act.models import (  # noqa: E402
     ACTPolicyBaseline,
     ForceAwareACTMotionCVAEPolicy,
     ForceAwareACTPolicy,
+    LegacyZeroLatentACTPolicyBaseline,
 )
 
 
@@ -196,11 +197,26 @@ def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
     return str(config.get("policy_variant", "force_aware_act"))
 
 
+def _act_baseline_version_from_checkpoint(checkpoint: dict) -> str:
+    config = checkpoint.get("config", {})
+    if not isinstance(config, dict):
+        return ""
+    return str(config.get("act_baseline_version", ""))
+
+
 def _build_policy_from_checkpoint(checkpoint: dict, force_window_len: int, chunk_len: int):
     kwargs = _model_kwargs(checkpoint, force_window_len, chunk_len)
     policy_variant = _policy_variant_from_checkpoint(checkpoint)
     if policy_variant == "act_baseline":
-        return ACTPolicyBaseline(**kwargs)
+        version = _act_baseline_version_from_checkpoint(checkpoint)
+        if version == ACTPolicyBaseline.act_baseline_version:
+            return ACTPolicyBaseline(**kwargs)
+        print(
+            "warning: loading legacy zero-latent act_baseline checkpoint "
+            "without act_baseline_version='motion_cvae_v1'",
+            file=sys.stderr,
+        )
+        return LegacyZeroLatentACTPolicyBaseline(**kwargs)
     if policy_variant == "force_aware_motion_cvae":
         return ForceAwareACTMotionCVAEPolicy(**kwargs)
     return ForceAwareACTPolicy(**kwargs)
@@ -578,6 +594,8 @@ def _run_mode(
 ) -> dict:
     with torch.no_grad():
         if isinstance(model, ACTPolicyBaseline):
+            return model(images=images, qpos=qpos, action_chunk=None, is_training=False)
+        if isinstance(model, LegacyZeroLatentACTPolicyBaseline):
             return model(images=images, qpos=qpos)
         if isinstance(model, ForceAwareACTMotionCVAEPolicy):
             return model(
@@ -899,7 +917,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         raise ValueError("checkpoint must contain a dict")
     policy_variant = _policy_variant_from_checkpoint(checkpoint)
     model = _build_policy_from_checkpoint(checkpoint, args.force_window_len, args.chunk_len)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
     model.eval()
 
     mj_model = mujoco.MjModel.from_xml_path(str(args.model_xml))
@@ -1071,10 +1089,11 @@ def run_rollout(args: argparse.Namespace) -> int:
                 zero_output = _run_mode(model, images, qpos_tensor, force_window_tensor, "zero")
                 zero_action, zero_force = _denormalize_predictions(zero_output, stats)
 
+            has_predicted_force = "pred_force" in selected_output
             predicted_force_norms = np.linalg.norm(selected_force[:, :3], axis=1)
             finite = bool(
                 np.isfinite(selected_action).all()
-                and np.isfinite(selected_force).all()
+                and (np.isfinite(selected_force).all() if has_predicted_force else True)
                 and np.isfinite(qpos).all()
                 and np.isfinite(wrench).all()
             )

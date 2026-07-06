@@ -1,26 +1,178 @@
-# ACT Baseline Implementation
+# ACT-CVAE Baseline Implementation
 
 ## Summary
 
-This repository now includes a structurally force-free ACT-style zero-latent baseline, implemented as `ACTPolicyBaseline` in `src/force_aware_act/models/act_policy.py`. It is a separate policy class and does not modify `ForceAwareACTPolicy`, existing checkpoints, or existing ForceAwareACT training/rollout defaults.
+`ACTPolicyBaseline` in `src/force_aware_act/models/act_policy.py` is now a structurally force-free ACT-style Motion-CVAE baseline. The earlier baseline was useful as a zero-latent ablation, but it was not a standard ACT-CVAE comparison because it used an exact zero motion latent during both training and deployment and did not instantiate a motion posterior.
+
+The corrected baseline trains with `q(z_motion | qpos_t, action_{t:t+K})`, deploys with exact `z_motion = 0`, and consumes only RGB images plus normalized qpos in the deployment path.
 
 ## Retained Components
 
-The ACT baseline retains:
-
-- multi-camera RGB input with shape `[B, N_cam, 3, H, W]`;
+- multi-camera RGB input `[B, N_cam, 3, H, W]`;
 - `ResNet18VisionEncoder`;
 - `JointMLP` qpos encoder;
-- a zero motion latent tensor `[B, z_dim]`;
+- `MotionPosteriorEncoder` for training-only motion posterior inference;
 - `motion_latent_proj`;
-- policy Transformer encoder;
-- policy Transformer decoder;
+- policy Transformer encoder and decoder;
 - learned `future_queries`;
 - `ActionHead`;
-- action chunk prediction `[B, chunk_len, action_dim]`;
-- L1 action reconstruction loss only.
+- action chunk prediction `[B, chunk_len, action_dim]`.
 
-Matched successful-experiment settings are supported through config rather than hidden model constants:
+## Removed Components
+
+`ACTPolicyBaseline` does not instantiate or consume:
+
+- `force_window`;
+- `TemporalForceEncoder`;
+- `ForceVisionCrossAttention`;
+- `ForceHead` or `pred_force`;
+- `future_force_chunk`;
+- force-derived policy tokens;
+- contact posterior, contact prior, or contact latent projection;
+- contact KL or contact-prior distillation losses.
+
+## Token Sequence
+
+The force-free policy encoder receives:
+
+```text
+visual_tokens, z_q, z_motion
+```
+
+For the matched `224 x 224`, two-camera, `d_model=128`, `chunk_len=10` setting:
+
+```text
+images -> ResNet18VisionEncoder -> visual_tokens [B, 98, 128]
+qpos   -> JointMLP             -> z_q           [B, 128]
+z      -> motion_latent_proj   -> z_motion_tok  [B, 128]
+policy tokens                                 -> [B, 100, 128]
+future_queries                               -> [B, 10, 128]
+decoder_hidden                               -> [B, 10, 128]
+pred_action                                  -> [B, 10, 7]
+```
+
+## Forward API
+
+```python
+outputs = model(
+    images,
+    qpos,
+    action_chunk=None,
+    is_training=True,
+    motion_latent_override=None,
+)
+```
+
+Training requires `action_chunk` and returns `pred_action`, `z_motion`, `mu_motion`, `logvar_motion`, and `decoder_hidden`. Deployment requires `action_chunk=None`, uses exact zeros when no override is provided, and never reads future action labels. `motion_latent_override` is inference-only and enables zero-vs-posterior offline evaluation.
+
+## Loss
+
+The ACT baseline loss is:
+
+```text
+loss_total = loss_action + beta_motion * kl_motion
+loss_action = L1(pred_action, action_chunk)
+kl_motion = mean_batch(sum_latent KL[N(mu, sigma), N(0, I)])
+```
+
+`beta_motion` uses linear warmup from `0` to `beta_motion_max` during `warmup_steps`.
+
+## Training
+
+`scripts/train_act_baseline.py` uses `ContactForceHDF5Dataset(..., include_force=False)`, normalizes qpos/action chunks, calls the model with `is_training=True`, and optimizes action L1 plus motion KL. It logs `loss_total`, `loss_action`, `kl_motion`, `beta_motion`, `train_latent_mode=posterior`, `uses_posterior_latent=True`, `uses_zero_latent=False`, and `normalization_enabled`.
+
+Example smoke command:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/train_act_baseline.py \
+  test_data/episode.hdf5 \
+  --device cpu \
+  --max-steps 2 \
+  --batch-size 1 \
+  --output-dir /tmp/act_baseline_smoke \
+  --log-csv /tmp/act_baseline_smoke/train_log.csv
+```
+
+Long-run trajectory checkpointing matches `scripts/train_minimal.py`: `--save-every 0`
+disables periodic checkpoints, positive values save after the optimizer step at each
+one-based interval, and filenames use `checkpoint_step_XXXXXXXX.pt` with eight
+digits. The final `<output-dir>/checkpoint.pt` is always written, so a run whose
+last step is divisible by `--save-every` writes both the final periodic checkpoint
+and `checkpoint.pt`.
+
+Example 100k command:
+
+```bash
+cd ~/ForceAwareACT_workspace/ForceAwareACT
+conda activate forceact
+
+OUT="outputs/peg_hole_100/act_baseline_motion_cvae_betam5e4_trajectory100k"
+mkdir -p "$OUT"
+
+PYTHONPATH=src python scripts/train_act_baseline.py \
+  --episode-list outputs/peg_hole_100/all100.txt \
+  --normalization-stats outputs/peg_hole_100/normalization_stats_action_all100.pt \
+  --action-mode action \
+  --chunk-len 10 \
+  --image-size 224 224 \
+  --camera-names ee_cam base_top_cam \
+  --beta-motion-max 5e-4 \
+  --warmup-steps 2000 \
+  --max-steps 100000 \
+  --save-every 10000 \
+  --batch-size 16 \
+  --learning-rate 1e-4 \
+  --d-model 128 \
+  --z-dim 16 \
+  --nhead 4 \
+  --num-encoder-layers 1 \
+  --num-decoder-layers 1 \
+  --dim-feedforward 256 \
+  --dropout 0.0 \
+  --device cuda \
+  --output-dir "$OUT" \
+  --log-csv "$OUT/train_log.csv" \
+  2>&1 | tee "$OUT/console.log"
+```
+
+## Checkpoints and Legacy Behavior
+
+New checkpoints include:
+
+```text
+policy_variant = act_baseline
+act_baseline_version = motion_cvae_v1
+uses_force = false
+uses_contact_latent = false
+motion_latent_mode = posterior_train_zero_deploy
+train_latent_mode = posterior
+```
+
+The config also records model dimensions, vision settings, preprocessing settings, optimizer settings, `beta_motion_max`, `warmup_steps`, `save_every`, `save_steps`, and the resolved `intermediate_checkpoint_steps`.
+
+Legacy `act_baseline` checkpoints without `act_baseline_version=motion_cvae_v1` are not loaded into the corrected CVAE class with `strict=False`. Rollout and offline inference instantiate `LegacyZeroLatentACTPolicyBaseline` for those checkpoints and load strictly, with a warning that the checkpoint is the legacy zero-latent baseline. The dedicated zero/posterior evaluator rejects legacy checkpoints because they have no motion posterior.
+
+## Evaluation and Rollout
+
+Use the zero/posterior evaluator:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/evaluate_act_baseline_modes.py \
+  --episode-list episodes.txt \
+  --checkpoint outputs/act_baseline/checkpoints/latest.pt \
+  --normalization-stats outputs/act_baseline/normalization_stats.pt \
+  --action-mode action \
+  --chunk-len 10 \
+  --posterior-mode mean \
+  --device cpu \
+  --output-csv outputs/act_baseline/zero_vs_posterior.csv
+```
+
+MuJoCo rollout still reads force for safety stopping and logging, but does not pass force tensors to ACT. Action denormalization, action selection, `max_delta_q`, EMA, clipping, success logic, hole randomization, and LHS/grid command paths are shared with the force-aware policies.
+
+## Matched Settings
+
+The code supports matching the documented successful ForceAwareACT setting through config:
 
 | Setting | Matched value |
 | --- | --- |
@@ -36,173 +188,38 @@ Matched successful-experiment settings are supported through config rather than 
 | attention heads | `4` |
 | dropout | `0.0` |
 | optimizer/LR | AdamW, `1e-4` |
+| loss | action L1 plus motion KL |
 
-## Removed Components
+## Parameter Audit
 
-The ACT baseline structurally excludes:
-
-- `force_window` model input;
-- `TemporalForceEncoder`;
-- `ForceVisionCrossAttention`;
-- `z_F_online`;
-- `z_VF`;
-- force-derived policy tokens;
-- `ForceHead`;
-- `pred_force`;
-- `future_force_chunk` supervision;
-- `ContactPosteriorEncoder`;
-- `ContactPriorEncoder`;
-- `contact_latent_proj`;
-- `z_contact`;
-- contact KL;
-- contact-prior distillation;
-- future-force loss.
-
-No ACT parameter name or module name contains force/contact prefixes, and the parameter audit reports zero parameters in force/contact groups.
-
-## Token Sequence
-
-The ACT policy encoder receives exactly:
-
-```text
-[ visual_tokens, z_q token, zero-motion-latent token ]
-```
-
-For two 224x224 cameras and `d_model=128`:
-
-```text
-images -> ResNet18VisionEncoder -> visual_tokens [B, 98, 128]
-qpos   -> JointMLP             -> z_q           [B, 128]
-zero z -> motion_latent_proj   -> z_motion_tok  [B, 128]
-policy tokens                                 -> [B, 100, 128]
-```
-
-The decoder receives learned future queries:
-
-```text
-future_queries [1, 10, 128] -> decoder_hidden [B, 10, 128]
-decoder_hidden -> ActionHead -> pred_action [B, 10, 7]
-```
-
-## Training and Inference Shapes
-
-Training inputs consumed by ACT:
-
-| Tensor | Shape | Use |
-| --- | --- | --- |
-| `images` | `[B, N_cam, 3, H, W]` | visual tokens |
-| `qpos` | `[B, 7]` | qpos token |
-| `action_chunk` | `[B, K, 7]` | L1 target |
-
-Inference inputs consumed by ACT:
-
-| Tensor | Shape | Use |
-| --- | --- | --- |
-| `images` | `[B, N_cam, 3, H, W]` | visual tokens |
-| `qpos` | `[B, 7]` | qpos token |
-
-`force_window` and `future_force_chunk` are not accepted by `ACTPolicyBaseline.forward`.
-
-## Loss
-
-The ACT-only loss is:
-
-```python
-loss_action = L1(pred_action, action_chunk)
-loss_total = loss_action
-```
-
-It is implemented as `compute_act_baseline_loss` and returns only ACT metrics:
-
-- `loss_total`;
-- `loss_action`;
-- `policy_variant = "act_baseline"`.
-
-It does not call the ForceAwareACT loss with zero force weights.
-
-## Training Entry Point
-
-Use:
-
-```bash
-PYTHONPATH=src .venv/bin/python scripts/train_act_baseline.py \
-  test_data/episode.hdf5 \
-  --device cpu \
-  --max-steps 2 \
-  --batch-size 1 \
-  --output-dir outputs/act_baseline_smoke \
-  --log-csv outputs/act_baseline_smoke/train_log.csv
-```
-
-The script uses `ContactForceHDF5Dataset(..., include_force=False)`, so ACT training batches do not need or consume force fields. The dataset default remains `include_force=True`, preserving ForceAwareACT behavior.
-
-## Checkpoint Metadata
-
-ACT checkpoints record:
-
-```text
-policy_variant = act_baseline
-uses_force = false
-uses_contact_latent = false
-motion_latent_mode = zero
-```
-
-They also save architecture and preprocessing fields needed to reconstruct the model:
-
-- camera names;
-- image size;
-- ImageNet normalization flag;
-- action mode;
-- chunk length;
-- optimizer and learning rate;
-- model config including `pretrained_resnet18`, `freeze_resnet18`, `d_model`, `z_dim`, `q_dim`, `action_dim`, layers, heads, feedforward width, and dropout.
-
-## Evaluation and Rollout
-
-`scripts/evaluate_inference_modes.py` and `scripts/run_mujoco_policy_rollout.py` inspect checkpoint metadata. If `policy_variant="act_baseline"`, they instantiate `ACTPolicyBaseline` and call it with only:
-
-```python
-model(images=images, qpos=qpos)
-```
-
-MuJoCo rollout still reads force/torque for safety stopping and logging, but does not provide force tensors to the ACT policy. Rollout controls remain shared:
-
-- action denormalization;
-- action interpretation;
-- action selection mode;
-- `max_delta_q`;
-- EMA;
-- actuator clipping;
-- success criterion;
-- force safety stop;
-- initial pose;
-- hole randomization;
-- LHS/grid positions and seed.
-
-`scripts/run_mujoco_hole_grid.py` delegates to `run_mujoco_policy_rollout.py`, so ACT-baseline checkpoints use the same grid/LHS command path.
-
-## Parameter Counts
-
-Using the matched synthetic config:
+With the matched synthetic config:
 
 | Policy | Total params | Trainable params |
 | --- | ---: | ---: |
 | ForceAwareACTPolicy | 12,202,509 | 12,202,509 |
-| ACTPolicyBaseline | 11,595,335 | 11,595,335 |
-| Difference | 607,174 | 607,174 |
+| ACTPolicyBaseline | 11,735,655 | 11,735,655 |
+| Difference | 466,854 | 466,854 |
 
-ACT force/contact groups are all zero:
+Corrected ACT-CVAE component groups:
 
-- force temporal encoder: `0`;
-- force-vision fusion: `0`;
-- force head: `0`;
-- contact latent/prior/posterior: `0`;
-- other/unclassified: `0`.
+| Component | Parameters |
+| --- | ---: |
+| vision backbone | 11,242,176 |
+| state projection | 17,536 |
+| Transformer encoder | 132,480 |
+| Transformer decoder | 198,784 |
+| action queries/head | 2,183 |
+| motion latent modules | 142,496 |
+| force temporal encoder | 0 |
+| force-vision fusion | 0 |
+| force head | 0 |
+| contact latent/prior/posterior | 0 |
+| other/unclassified | 0 |
 
 ## Why Not Zero Force Input
 
-Zero-valued force input is not a true ACT baseline. In the ForceAwareACT architecture, the force encoder remains instantiated, its learned CLS token and positional embeddings remain active, linear/attention biases can produce nonzero activations, and force-derived tokens still enter the policy Transformer. It also leaves the model with larger capacity and different gradient paths. The ACT baseline therefore removes the force and contact structure entirely.
+Zero-valued force input is not a true ACT baseline. In ForceAwareACT, force modules remain instantiated, learned tokens and biases can still produce nonzero activations, force-conditioned tokens still enter the policy Transformer, force-loss wiring may still exist depending on configuration, and parameter capacity remains larger. The corrected ACT-CVAE removes the force/contact structure entirely while retaining the ACT motion posterior comparison.
 
 ## Remaining Ambiguity
 
-The exact documented 20k successful checkpoint is not present in this workspace. The implementation supports the documented matching settings, but final paper comparisons should verify the exact checkpoint metadata and rollout LHS manifest when those artifacts are available.
+The exact documented 20k successful checkpoint is not present in this workspace. The implementation supports the reported matching settings, but final experiment commands should verify checkpoint metadata, dataset split, normalization stats, and LHS manifest on the Linux training/evaluation machine.

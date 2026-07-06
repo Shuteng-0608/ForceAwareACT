@@ -20,7 +20,11 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
-from force_aware_act.models import ACTPolicyBaseline, ForceAwareACTPolicy  # noqa: E402
+from force_aware_act.models import (  # noqa: E402
+    ACTPolicyBaseline,
+    ForceAwareACTPolicy,
+    LegacyZeroLatentACTPolicyBaseline,
+)
 from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
 
@@ -136,10 +140,24 @@ def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
     return str(config.get("policy_variant", "force_aware_act"))
 
 
+def _act_baseline_version_from_checkpoint(checkpoint: dict) -> str:
+    config = checkpoint.get("config", {})
+    if not isinstance(config, dict):
+        return ""
+    return str(config.get("act_baseline_version", ""))
+
+
 def _build_model_from_checkpoint(checkpoint: dict, force_window_len: int, device: torch.device):
     model_kwargs = _model_kwargs_from_checkpoint(checkpoint, force_window_len)
     if _policy_variant_from_checkpoint(checkpoint) == "act_baseline":
-        return ACTPolicyBaseline(**model_kwargs).to(device)
+        if _act_baseline_version_from_checkpoint(checkpoint) == ACTPolicyBaseline.act_baseline_version:
+            return ACTPolicyBaseline(**model_kwargs).to(device)
+        print(
+            "warning: loading legacy zero-latent act_baseline checkpoint "
+            "without act_baseline_version='motion_cvae_v1'",
+            file=sys.stderr,
+        )
+        return LegacyZeroLatentACTPolicyBaseline(**model_kwargs).to(device)
     return ForceAwareACTPolicy(**model_kwargs).to(device)
 
 
@@ -241,11 +259,19 @@ def _batch_and_sample_metrics(
 
 
 def _batch_and_sample_metrics_act(
-    model: ACTPolicyBaseline,
+    model,
     batch: Dict[str, object],
 ) -> tuple[dict[str, float], dict[str, list[float]]]:
     with torch.no_grad():
-        outputs = model(images=batch["images"], qpos=batch["qpos"])
+        if isinstance(model, ACTPolicyBaseline):
+            outputs = model(
+                images=batch["images"],
+                qpos=batch["qpos"],
+                action_chunk=None,
+                is_training=False,
+            )
+        else:
+            outputs = model(images=batch["images"], qpos=batch["qpos"])
 
     action_target = batch["action_chunk"]
     action_l1 = _mean_except_batch(
@@ -398,7 +424,7 @@ def evaluate(args: argparse.Namespace) -> int:
         raise ValueError("checkpoint must contain a dict")
     policy_variant = _policy_variant_from_checkpoint(checkpoint)
     model = _build_model_from_checkpoint(checkpoint, args.force_window_len, device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
     model.eval()
 
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)

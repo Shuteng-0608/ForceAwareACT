@@ -10,6 +10,7 @@ pytest.importorskip("torchvision")
 
 from force_aware_act.data import ContactForceHDF5Dataset
 from force_aware_act.models import ACTPolicyBaseline
+from force_aware_act.training import compute_act_baseline_loss, linear_warmup
 from scripts.audit_model_components import (
     DEFAULT_ACT_SYNTHETIC_CONFIG,
     create_audit,
@@ -47,7 +48,7 @@ def test_act_policy_baseline_forward_accepts_no_force_inputs():
     inputs = _make_inputs(chunk_len=4)
 
     with torch.no_grad():
-        outputs = model(images=inputs["images"], qpos=inputs["qpos"])
+        outputs = model(images=inputs["images"], qpos=inputs["qpos"], is_training=False)
 
     assert outputs["pred_action"].shape == (2, 4, 7)
     assert outputs["visual_tokens"].shape[0] == 2
@@ -55,6 +56,13 @@ def test_act_policy_baseline_forward_accepts_no_force_inputs():
     assert outputs["z_motion"].shape == (2, 8)
     assert torch.count_nonzero(outputs["z_motion"]) == 0
     assert "pred_force" not in outputs
+
+
+def test_act_policy_baseline_instantiates_motion_posterior():
+    model = _make_policy(chunk_len=4)
+
+    assert hasattr(model, "motion_posterior")
+    assert any(name.startswith("motion_posterior.") for name, _ in model.named_parameters())
 
 
 def test_act_policy_baseline_has_no_force_or_contact_modules_or_state_keys():
@@ -70,15 +78,45 @@ def test_act_policy_baseline_has_no_force_or_contact_modules_or_state_keys():
     assert all(not any(token in name for token in forbidden) for name in parameter_names)
 
 
-def test_action_l1_backprop_reaches_act_baseline_components():
+def test_training_requires_action_chunk_and_returns_posterior_stats():
     model = _make_policy(chunk_len=4)
     inputs = _make_inputs(chunk_len=4)
 
-    outputs = model(images=inputs["images"], qpos=inputs["qpos"])
-    loss = functional.l1_loss(outputs["pred_action"], inputs["action_chunk"])
+    with pytest.raises(ValueError, match="action_chunk is required"):
+        model(images=inputs["images"], qpos=inputs["qpos"], is_training=True)
+
+    outputs = model(
+        images=inputs["images"],
+        qpos=inputs["qpos"],
+        action_chunk=inputs["action_chunk"],
+        is_training=True,
+    )
+
+    assert outputs["mu_motion"].shape == (2, 8)
+    assert outputs["logvar_motion"].shape == (2, 8)
+    assert outputs["z_motion"].shape == (2, 8)
+    assert torch.isfinite(outputs["mu_motion"]).all()
+    assert torch.isfinite(outputs["logvar_motion"]).all()
+    assert not torch.equal(outputs["z_motion"], torch.zeros_like(outputs["z_motion"]))
+
+
+def test_action_cvae_backprop_reaches_act_baseline_components():
+    model = _make_policy(chunk_len=4)
+    inputs = _make_inputs(chunk_len=4)
+
+    outputs = model(
+        images=inputs["images"],
+        qpos=inputs["qpos"],
+        action_chunk=inputs["action_chunk"],
+        is_training=True,
+    )
+    losses = compute_act_baseline_loss(outputs, inputs["action_chunk"], beta_motion=0.1)
+    loss = losses["loss_total"]
     loss.backward()
 
     prefixes = {
+        "motion_posterior": False,
+        "motion_latent_proj": False,
         "vision_encoder.backbone": False,
         "joint_encoder": False,
         "policy_encoder": False,
@@ -93,6 +131,68 @@ def test_action_l1_backprop_reaches_act_baseline_components():
                 prefixes[prefix] = True
 
     assert all(prefixes.values())
+
+
+def test_deployment_zero_latent_and_posterior_mean_override():
+    model = _make_policy(chunk_len=4)
+    model.eval()
+    inputs = _make_inputs(chunk_len=4)
+
+    with torch.no_grad():
+        zero_outputs = model(images=inputs["images"], qpos=inputs["qpos"], is_training=False)
+        mu_motion, _logvar_motion, _z = model.encode_motion_posterior(
+            inputs["qpos"],
+            inputs["action_chunk"],
+        )
+        posterior_outputs = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            action_chunk=None,
+            is_training=False,
+            motion_latent_override=mu_motion,
+        )
+
+    torch.testing.assert_close(zero_outputs["z_motion"], torch.zeros_like(zero_outputs["z_motion"]))
+    torch.testing.assert_close(posterior_outputs["z_motion"], mu_motion)
+    assert not torch.allclose(zero_outputs["pred_action"], posterior_outputs["pred_action"])
+
+
+def test_deployment_rejects_action_labels_and_bad_override_shape():
+    model = _make_policy(chunk_len=4)
+    inputs = _make_inputs(chunk_len=4)
+
+    with pytest.raises(ValueError, match="action_chunk must be None"):
+        model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            action_chunk=inputs["action_chunk"],
+            is_training=False,
+        )
+    with pytest.raises(ValueError, match="motion_latent_override"):
+        model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            is_training=False,
+            motion_latent_override=torch.zeros(2, 7),
+        )
+
+
+def test_act_baseline_loss_total_and_warmup_values():
+    outputs = {
+        "pred_action": torch.tensor([[[1.0, 2.0]]]),
+        "mu_motion": torch.tensor([[1.0, 0.0]]),
+        "logvar_motion": torch.zeros(1, 2),
+    }
+    action_chunk = torch.zeros(1, 1, 2)
+    losses = compute_act_baseline_loss(outputs, action_chunk, beta_motion=0.25)
+
+    expected = losses["loss_action"] + 0.25 * losses["kl_motion"]
+    torch.testing.assert_close(losses["loss_total"], expected)
+    assert losses["kl_motion"].item() >= 0.0
+    assert linear_warmup(step=0, warmup_steps=10, max_value=0.5) == 0.0
+    assert linear_warmup(step=5, warmup_steps=10, max_value=0.5) == 0.25
+    assert linear_warmup(step=10, warmup_steps=10, max_value=0.5) == 0.5
+    assert linear_warmup(step=11, warmup_steps=10, max_value=0.5) == 0.5
 
 
 def test_act_checkpoint_save_load_reproduces_eval_outputs(tmp_path):
@@ -114,7 +214,11 @@ def test_act_checkpoint_save_load_reproduces_eval_outputs(tmp_path):
     model.eval()
     inputs = _make_inputs(chunk_len=4)
     with torch.no_grad():
-        expected = model(images=inputs["images"], qpos=inputs["qpos"])["pred_action"]
+        expected = model(
+            images=inputs["images"],
+            qpos=inputs["qpos"],
+            is_training=False,
+        )["pred_action"]
 
     checkpoint_path = tmp_path / "act_checkpoint.pt"
     torch.save(
@@ -122,9 +226,10 @@ def test_act_checkpoint_save_load_reproduces_eval_outputs(tmp_path):
             "model_state_dict": model.state_dict(),
             "config": {
                 "policy_variant": "act_baseline",
+                "act_baseline_version": ACTPolicyBaseline.act_baseline_version,
                 "uses_force": False,
                 "uses_contact_latent": False,
-                "motion_latent_mode": "zero",
+                "motion_latent_mode": "posterior_train_zero_deploy",
                 "model": config,
             },
             "step": 1,
@@ -137,7 +242,9 @@ def test_act_checkpoint_save_load_reproduces_eval_outputs(tmp_path):
     loaded.eval()
 
     with torch.no_grad():
-        actual = loaded(images=inputs["images"], qpos=inputs["qpos"])["pred_action"]
+        actual = loaded(images=inputs["images"], qpos=inputs["qpos"], is_training=False)[
+            "pred_action"
+        ]
 
     torch.testing.assert_close(actual, expected)
 
@@ -160,9 +267,17 @@ def test_act_rollout_run_mode_does_not_pass_force_to_policy():
             )
             self.forward_called = False
 
-        def forward(self, images, qpos):
+        def forward(self, images, qpos, action_chunk=None, is_training=True, motion_latent_override=None):
             self.forward_called = True
-            return super().forward(images=images, qpos=qpos)
+            assert action_chunk is None
+            assert is_training is False
+            return super().forward(
+                images=images,
+                qpos=qpos,
+                action_chunk=action_chunk,
+                is_training=is_training,
+                motion_latent_override=motion_latent_override,
+            )
 
     model = CapturingACTPolicy()
     model.eval()
@@ -196,6 +311,7 @@ def test_act_parameter_audit_has_no_force_contact_or_unclassified_parameters():
     assert audit["components"]["force_vision_fusion"]["total_parameters"] == 0
     assert audit["components"]["force_head"]["total_parameters"] == 0
     assert audit["components"]["contact_latent_prior_posterior"]["total_parameters"] == 0
+    assert audit["components"]["motion_latent_modules"]["total_parameters"] > 0
     assert audit["components"]["other_unclassified"]["total_parameters"] == 0
     assert audit["unclassified_parameter_names"] == []
 

@@ -90,19 +90,29 @@ def compute_force_aware_act_loss(
 def compute_act_baseline_loss(
     outputs: Mapping[str, Any],
     action_chunk: torch.Tensor,
+    beta_motion: float = 1.0e-4,
 ) -> Dict[str, Union[torch.Tensor, float, str]]:
-    """Compute the ACT baseline action reconstruction loss only."""
+    """Compute ACT Motion-CVAE action reconstruction plus motion KL."""
 
     if "pred_action" not in outputs:
         raise KeyError("outputs is missing required key: pred_action")
+    for key in ("mu_motion", "logvar_motion"):
+        if key not in outputs:
+            raise KeyError(f"outputs is missing required motion posterior key: {key}")
+        if not isinstance(outputs[key], torch.Tensor):
+            raise ValueError(f"outputs[{key!r}] must be a torch.Tensor")
     pred_action = outputs["pred_action"]
     if not isinstance(pred_action, torch.Tensor):
         raise ValueError("outputs['pred_action'] must be a torch.Tensor")
     _validate_tensor_shape("pred_action", pred_action, action_chunk.shape)
     loss_action = functional.l1_loss(pred_action, action_chunk)
+    kl_motion = kl_normal(outputs["mu_motion"], outputs["logvar_motion"])
+    loss_total = loss_action + beta_motion * kl_motion
     return {
-        "loss_total": loss_action,
+        "loss_total": loss_total,
         "loss_action": loss_action,
+        "kl_motion": kl_motion,
+        "beta_motion": beta_motion,
         "policy_variant": "act_baseline",
     }
 
