@@ -1,0 +1,39 @@
+{
+  "training_entry_point": {
+    "force_aware_motion_cvae": "scripts/train_minimal.py train(args), selected by --policy-variant force_aware_motion_cvae",
+    "act_baseline_motion_cvae": "scripts/train_act_baseline.py train(args)"
+  },
+  "save_functions": {
+    "resolve_checkpoint_steps": "scripts/train_minimal.py:137-161",
+    "checkpoint_step_path": "scripts/train_minimal.py:164-165",
+    "build_checkpoint_payload": "scripts/train_minimal.py:168-180",
+    "save_checkpoint_atomic": "scripts/train_minimal.py:183-193",
+    "train_minimal_periodic_save": "scripts/train_minimal.py:446-455",
+    "train_minimal_final_save": "scripts/train_minimal.py:505-513",
+    "train_act_baseline_periodic_save": "scripts/train_act_baseline.py:256-265",
+    "train_act_baseline_final_save": "scripts/train_act_baseline.py:299-307"
+  },
+  "periodic_save_condition": "step in intermediate_checkpoint_step_set, where steps are one-based integers produced by range(save_every, max_steps + 1, save_every) plus valid --save-steps.",
+  "final_save_condition": "After normal loop completion, always save output_dir/checkpoint.pt with step=last_step. No final save on uncaught exception/interruption is implemented.",
+  "step_increment_location": "No mutable global_step. The loop variable is one-based: for step in range(1, args.max_steps + 1); last_step = step at loop top.",
+  "optimizer_step_location": "optimizer.step() occurs before both periodic checkpoint save and logging in both active trainers.",
+  "scheduler_step_location": null,
+  "amp_scaler_location": null,
+  "checkpoint_pt_role": "final post-training checkpoint for normal uninterrupted runs; not rolling latest, not best, not a resume-specific alias.",
+  "numbered_checkpoint_role": "periodic numbered checkpoint saved after the optimizer update for that one-based step.",
+  "completed_updates_at_100k_checkpoint": 100000,
+  "completed_updates_at_checkpoint_pt": "100000 for a normal uninterrupted --max-steps 100000 run",
+  "same_model_state_expected": "Yes, for a normal uninterrupted 100k run where 100000 is in the periodic schedule, current code leaves no model mutation between checkpoint_step_00100000.pt and checkpoint.pt saves.",
+  "same_optimizer_state_expected": "Yes, for the same reason; no optimizer mutation occurs between the periodic save and final save.",
+  "same_scheduler_state_expected": "No scheduler is constructed or saved.",
+  "same_scaler_state_expected": "No AMP GradScaler is constructed or saved.",
+  "resume_next_step_rule": "Not implemented. There is no --resume/--resume-from path and no code that interprets stored step for continuing training.",
+  "policy_variants_share_logic": true,
+  "potential_off_by_one_issue": "No off-by-one issue found for current save naming: checkpoint_step_00100000.pt is saved after optimizer update 100000. Ambiguity remains because field name 'step' is not documented in-code as completed update count and there is no resume implementation.",
+  "uncertainties": [
+    "The real Linux checkpoint files are unavailable in this macOS workspace, so tensor equality, optimizer equality, and stored step values were not tested.",
+    "Current local code may not be the exact revision used to produce the historical Linux 100k checkpoints unless that is verified on Linux or by commit provenance.",
+    "Different SHA-256 hashes alone do not prove different tensors; repeated torch.save calls can produce bytewise-different files even for logically identical payloads depending on serialization details."
+  ],
+  "linux_verification_commands": "# Set these on the Linux machine where the real checkpoints exist.\nEXP1=/path/to/forceaware_motion_cvae_betam5e4_trajectory100k\nEXP2=/path/to/act_baseline_motion_cvae_betam5e4_trajectory100k\nexport EXP1 EXP2\n\n# File sizes and hashes.\nfor EXP in \"$EXP1\" \"$EXP2\"; do\n  echo \"== $EXP ==\"\n  ls -lh \"$EXP/checkpoint.pt\" \"$EXP/checkpoint_step_00100000.pt\"\n  sha256sum \"$EXP/checkpoint.pt\" \"$EXP/checkpoint_step_00100000.pt\"\ndone\n\n# Top-level keys, stored step values, policy metadata, and logical state equality.\npython - <<'PY_LINUX_CHECKPOINTS'\nfrom pathlib import Path\nimport os\nimport torch\n\nexperiments = [Path(os.environ[\"EXP1\"]), Path(os.environ[\"EXP2\"])]\n\ndef load(path):\n    return torch.load(path, map_location=\"cpu\", weights_only=False)\n\ndef tensor_mapping_equal(a, b):\n    if set(a) != set(b):\n        return False, {\"only_a\": sorted(set(a) - set(b)), \"only_b\": sorted(set(b) - set(a))}\n    mismatches = []\n    for key in sorted(a):\n        va, vb = a[key], b[key]\n        if torch.is_tensor(va) and torch.is_tensor(vb):\n            if va.shape != vb.shape or va.dtype != vb.dtype or not torch.equal(va, vb):\n                mismatches.append(key)\n        elif va != vb:\n            mismatches.append(key)\n    return not mismatches, mismatches[:20]\n\nfor exp in experiments:\n    latest = load(exp / \"checkpoint.pt\")\n    numbered = load(exp / \"checkpoint_step_00100000.pt\")\n    print(f\"\\n== {exp} ==\")\n    print(\"checkpoint.pt keys:\", sorted(latest.keys()))\n    print(\"checkpoint_step_00100000.pt keys:\", sorted(numbered.keys()))\n    print(\"steps:\", latest.get(\"step\"), numbered.get(\"step\"))\n    print(\"policy variants:\", latest.get(\"config\", {}).get(\"policy_variant\"), numbered.get(\"config\", {}).get(\"policy_variant\"))\n    print(\"configs_equal:\", latest.get(\"config\") == numbered.get(\"config\"))\n    ok, detail = tensor_mapping_equal(latest[\"model_state_dict\"], numbered[\"model_state_dict\"])\n    print(\"model_state_dict_equal:\", ok, detail)\n    print(\"optimizer_state_dict_keys_equal:\", latest[\"optimizer_state_dict\"].keys() == numbered[\"optimizer_state_dict\"].keys())\n    print(\"optimizer_state_dict_equal_repr:\", latest[\"optimizer_state_dict\"] == numbered[\"optimizer_state_dict\"])\n    print(\"has_scheduler_state_dict:\", \"scheduler_state_dict\" in latest, \"scheduler_state_dict\" in numbered)\n    print(\"has_scaler_state_dict:\", \"scaler_state_dict\" in latest, \"scaler_state_dict\" in numbered)\nPY_LINUX_CHECKPOINTS"
+}
