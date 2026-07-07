@@ -4,6 +4,7 @@ from force_aware_act.models.act_policy import ACTPolicyBaseline, LegacyZeroLaten
 from force_aware_act.models.contact_prior import ContactPriorEncoder
 from force_aware_act.models.cross_attention import ForceVisionCrossAttention
 from force_aware_act.models.force import TemporalForceEncoder
+from force_aware_act.models.force_aware_contact_cvae_policy import ForceAwareACTContactCVAEPolicy
 from force_aware_act.models.force_aware_motion_cvae_policy import ForceAwareACTMotionCVAEPolicy
 from force_aware_act.models.heads import ActionHead, ForceHead
 from force_aware_act.models.policy import ForceAwareACTPolicy
@@ -29,5 +30,6 @@ __all__ = [
     "ActionHead",
     "ForceHead",
     "ForceAwareACTPolicy",
+    "ForceAwareACTContactCVAEPolicy",
     "ForceAwareACTMotionCVAEPolicy",
 ]

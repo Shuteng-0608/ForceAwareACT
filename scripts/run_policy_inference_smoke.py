@@ -21,7 +21,11 @@ from force_aware_act.data import (  # noqa: E402
     denormalize_tensor,
     normalize_tensor,
 )
-from force_aware_act.models import ForceAwareACTMotionCVAEPolicy, ForceAwareACTPolicy  # noqa: E402
+from force_aware_act.models import (  # noqa: E402
+    ForceAwareACTContactCVAEPolicy,
+    ForceAwareACTMotionCVAEPolicy,
+    ForceAwareACTPolicy,
+)
 
 
 def _load_stats(path: Path) -> Dict[str, torch.Tensor]:
@@ -55,8 +59,11 @@ def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
 
 def _build_model_from_checkpoint(checkpoint: dict, force_window_len: int):
     model_kwargs = _model_kwargs(checkpoint, force_window_len)
-    if _policy_variant_from_checkpoint(checkpoint) == "force_aware_motion_cvae":
+    policy_variant = _policy_variant_from_checkpoint(checkpoint)
+    if policy_variant == "force_aware_motion_cvae":
         return ForceAwareACTMotionCVAEPolicy(**model_kwargs)
+    if policy_variant == "force_aware_contact_cvae":
+        return ForceAwareACTContactCVAEPolicy(**model_kwargs)
     return ForceAwareACTPolicy(**model_kwargs)
 
 
@@ -184,7 +191,10 @@ def smoke(args: argparse.Namespace) -> int:
     model.eval()
 
     outputs = {"zero": _run_mode(model, batch, "zero")}
-    if args.contact_latent_mode == "prior" and policy_variant != "force_aware_motion_cvae":
+    if args.contact_latent_mode == "prior" and policy_variant in {
+        "force_aware_act",
+        "force_aware_contact_cvae",
+    }:
         outputs["prior"] = _run_mode(model, batch, "prior")
     selected_mode = (
         "zero" if policy_variant == "force_aware_motion_cvae" else args.contact_latent_mode

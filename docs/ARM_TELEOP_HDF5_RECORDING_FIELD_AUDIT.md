@@ -38,7 +38,7 @@ both as per-state observation datasets.
 - Representative episode inspected read-only:
   `mujoco_data/peg_in_hole_hdf5_100/20260610_151602_teleop_008/episode.hdf5`
 
-The external XML had uncommitted visibility-only changes that make
+The external XML had local visibility-only changes that make
 `peg_tip_site` and `hole_center_site` active and invisible. Their positions
 and the peg geometry were not changed by that diff.
 

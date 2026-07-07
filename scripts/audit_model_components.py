@@ -18,6 +18,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from force_aware_act.models import (  # noqa: E402
     ACTPolicyBaseline,
+    ForceAwareACTContactCVAEPolicy,
     ForceAwareACTMotionCVAEPolicy,
     ForceAwareACTPolicy,
 )
@@ -120,8 +121,11 @@ def build_model(
         return ForceAwareACTPolicy(**safe_config).to(torch.device(device))
     if policy_variant == "force_aware_motion_cvae":
         return ForceAwareACTMotionCVAEPolicy(**safe_config).to(torch.device(device))
+    if policy_variant == "force_aware_contact_cvae":
+        return ForceAwareACTContactCVAEPolicy(**safe_config).to(torch.device(device))
     raise ValueError(
-        "policy_variant must be 'force_aware_act', 'force_aware_motion_cvae', or 'act_baseline'"
+        "policy_variant must be 'force_aware_act', 'force_aware_motion_cvae', "
+        "'force_aware_contact_cvae', or 'act_baseline'"
     )
 
 
@@ -225,6 +229,8 @@ def create_audit(
 ) -> dict[str, Any]:
     model = build_model(config, device=device, policy_variant=policy_variant)
     report = parameter_report(model)
+    if policy_variant == "force_aware_contact_cvae":
+        _validate_contact_cvae_invariants(report)
     return {
         "policy_variant": policy_variant,
         "model_configuration": dict(config),
@@ -232,6 +238,22 @@ def create_audit(
         "pretrained_weights_downloaded": False,
         **report,
     }
+
+
+def _validate_contact_cvae_invariants(report: dict[str, Any]) -> None:
+    components = report["components"]
+    if components["motion_latent_modules"]["total_parameters"] != 0:
+        raise ValueError("force_aware_contact_cvae must have motion_latent_modules = 0")
+    for component_name in (
+        "contact_latent_prior_posterior",
+        "force_temporal_encoder",
+        "force_vision_fusion",
+        "force_head",
+    ):
+        if components[component_name]["total_parameters"] <= 0:
+            raise ValueError(f"force_aware_contact_cvae must have {component_name} > 0")
+    if components["other_unclassified"]["total_parameters"] != 0:
+        raise ValueError("force_aware_contact_cvae must have other_unclassified = 0")
 
 
 def create_comparison_audit(device: str = "cpu") -> dict[str, Any]:
@@ -309,7 +331,13 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--config-from-checkpoint", type=Path, default=None)
     parser.add_argument(
         "--policy-variant",
-        choices=("force_aware_act", "force_aware_motion_cvae", "act_baseline", "both"),
+        choices=(
+            "force_aware_act",
+            "force_aware_motion_cvae",
+            "force_aware_contact_cvae",
+            "act_baseline",
+            "both",
+        ),
         default="force_aware_act",
     )
     parser.add_argument("--device", default="cpu")

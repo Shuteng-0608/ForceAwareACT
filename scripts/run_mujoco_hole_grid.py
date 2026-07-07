@@ -692,7 +692,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--normalization-stats", type=Path, required=True)
     parser.add_argument("--model-xml", type=Path, required=True)
-    parser.add_argument("--contact-latent-mode", default="zero")
+    parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="zero")
     parser.add_argument("--action-mode", default="action")
     parser.add_argument("--action-select-mode", default="mid")
     parser.add_argument("--chunk-len", type=int, default=10)

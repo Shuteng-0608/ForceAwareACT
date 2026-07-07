@@ -25,9 +25,14 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import ContactForceHDF5Dataset, normalize_tensor  # noqa: E402
-from force_aware_act.models import ForceAwareACTMotionCVAEPolicy, ForceAwareACTPolicy  # noqa: E402
+from force_aware_act.models import (  # noqa: E402
+    ForceAwareACTContactCVAEPolicy,
+    ForceAwareACTMotionCVAEPolicy,
+    ForceAwareACTPolicy,
+)
 from force_aware_act.training import (  # noqa: E402
     compute_force_aware_act_loss,
+    compute_force_aware_contact_cvae_loss,
     compute_force_aware_motion_cvae_loss,
     linear_warmup,
 )
@@ -42,7 +47,12 @@ ACTION_MODE_CHOICES = (
     "delta_joint_pos_command",
 )
 TRAIN_LATENT_MODE_CHOICES = ("posterior", "zero")
-POLICY_VARIANT_CHOICES = ("force_aware_act", "force_aware_motion_cvae")
+TRAIN_CONTACT_LATENT_MODE_CHOICES = ("posterior",)
+POLICY_VARIANT_CHOICES = (
+    "force_aware_act",
+    "force_aware_motion_cvae",
+    "force_aware_contact_cvae",
+)
 DEFAULT_POLICY_VARIANT = "force_aware_act"
 
 
@@ -185,11 +195,21 @@ def save_checkpoint_atomic(payload: Dict[str, object], checkpoint_path: Path) ->
 
 def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     policy_variant = getattr(args, "policy_variant", DEFAULT_POLICY_VARIANT)
+    train_contact_latent_mode = getattr(args, "train_contact_latent_mode", "posterior")
+    architecture_metadata: Dict[str, object] = {}
+    if policy_variant == "force_aware_contact_cvae":
+        architecture_metadata = {
+            "uses_motion_latent": False,
+            "uses_contact_latent": True,
+            "train_contact_latent_mode": train_contact_latent_mode,
+            "deployment_contact_latent_modes": ["zero", "prior"],
+        }
     return {
         "episode_paths": [str(path) for path in args.episode_paths],
         "action_mode": args.action_mode,
         "policy_variant": policy_variant,
         "train_latent_mode": args.train_latent_mode,
+        "train_contact_latent_mode": train_contact_latent_mode,
         "chunk_len": args.chunk_len,
         "force_window_len": args.force_window_len,
         "force_window_duration": args.force_window_duration,
@@ -229,6 +249,7 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
             "num_decoder_layers": 1,
             "dim_feedforward": 256,
         },
+        **architecture_metadata,
     }
 
 
@@ -287,6 +308,8 @@ def train(args: argparse.Namespace) -> int:
     }
     if policy_variant == "force_aware_motion_cvae":
         model = ForceAwareACTMotionCVAEPolicy(**model_kwargs).to(device)
+    elif policy_variant == "force_aware_contact_cvae":
+        model = ForceAwareACTContactCVAEPolicy(**model_kwargs).to(device)
     else:
         model = ForceAwareACTPolicy(**model_kwargs).to(device)
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
@@ -296,6 +319,8 @@ def train(args: argparse.Namespace) -> int:
     print(f"action_mode={args.action_mode}")
     print(f"policy_variant={policy_variant}")
     print(f"train_latent_mode={args.train_latent_mode}")
+    if policy_variant == "force_aware_contact_cvae":
+        print(f"train_contact_latent_mode={getattr(args, 'train_contact_latent_mode', 'posterior')}")
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
     print(f"intermediate_checkpoint_steps={intermediate_checkpoint_steps}")
     print(f"log_csv={args.log_csv}")
@@ -325,6 +350,8 @@ def train(args: argparse.Namespace) -> int:
                 "uses_posterior_latent",
                 "uses_zero_latent",
                 "normalization_enabled",
+                "policy_variant",
+                "train_contact_latent_mode",
             ],
         )
         log_writer.writeheader()
@@ -336,9 +363,13 @@ def train(args: argparse.Namespace) -> int:
             beta_motion = linear_warmup(step, args.warmup_steps, args.beta_motion_max)
             beta_contact = linear_warmup(step, args.warmup_steps, args.beta_contact_max)
             uses_motion_cvae = policy_variant == "force_aware_motion_cvae"
-            uses_posterior_latent = uses_motion_cvae or args.train_latent_mode == "posterior"
+            uses_contact_cvae = policy_variant == "force_aware_contact_cvae"
+            train_contact_latent_mode = getattr(args, "train_contact_latent_mode", "posterior")
+            uses_posterior_latent = (
+                uses_motion_cvae or uses_contact_cvae or args.train_latent_mode == "posterior"
+            )
             uses_zero_latent = args.train_latent_mode == "zero"
-            loss_beta_motion = beta_motion if uses_posterior_latent else 0.0
+            loss_beta_motion = beta_motion if uses_posterior_latent and not uses_contact_cvae else 0.0
             loss_beta_contact = (
                 0.0 if uses_motion_cvae else beta_contact if uses_posterior_latent else 0.0
             )
@@ -365,6 +396,27 @@ def train(args: argparse.Namespace) -> int:
                 )
                 kl_contact_value = 0.0
                 loss_prior_value = 0.0
+            elif uses_contact_cvae:
+                outputs = model(
+                    images=batch["images"],
+                    qpos=batch["qpos"],
+                    force_window=batch["force_window"],
+                    action_chunk=batch["action_chunk"],
+                    future_force_chunk=batch["future_force_chunk"],
+                    is_training=True,
+                    contact_latent_mode=train_contact_latent_mode,
+                )
+                losses = compute_force_aware_contact_cvae_loss(
+                    outputs=outputs,
+                    action_chunk=batch["action_chunk"],
+                    future_force_chunk=batch["future_force_chunk"],
+                    lambda_force=args.lambda_force,
+                    beta_contact=loss_beta_contact,
+                    lambda_prior=loss_lambda_prior,
+                    prior_loss_mode=args.prior_loss_mode,
+                )
+                kl_contact_value = losses["kl_contact"].item()
+                loss_prior_value = losses["loss_prior"].item()
             else:
                 outputs = model(
                     images=batch["images"],
@@ -408,10 +460,10 @@ def train(args: argparse.Namespace) -> int:
                     "loss_total": losses["loss_total"].item(),
                     "loss_action": losses["loss_action"].item(),
                     "loss_force": losses["loss_force"].item(),
-                    "kl_motion": losses["kl_motion"].item(),
+                    "kl_motion": losses["kl_motion"].item() if "kl_motion" in losses else 0.0,
                     "kl_contact": kl_contact_value,
                     "loss_prior": loss_prior_value,
-                    "beta_motion": beta_motion,
+                    "beta_motion": 0.0 if uses_contact_cvae else beta_motion,
                     "beta_contact": loss_beta_contact,
                     "lambda_prior": loss_lambda_prior,
                     "prior_loss_mode": args.prior_loss_mode,
@@ -419,6 +471,10 @@ def train(args: argparse.Namespace) -> int:
                     "uses_posterior_latent": uses_posterior_latent,
                     "uses_zero_latent": uses_zero_latent,
                     "normalization_enabled": normalization_stats is not None,
+                    "policy_variant": policy_variant,
+                    "train_contact_latent_mode": (
+                        train_contact_latent_mode if uses_contact_cvae else ""
+                    ),
                 }
             )
 
@@ -427,7 +483,7 @@ def train(args: argparse.Namespace) -> int:
                 f"loss_total={losses['loss_total'].item():.6g}",
                 f"loss_action={losses['loss_action'].item():.6g}",
                 f"loss_force={losses['loss_force'].item():.6g}",
-                f"kl_motion={losses['kl_motion'].item():.6g}",
+                f"kl_motion={(losses['kl_motion'].item() if 'kl_motion' in losses else 0.0):.6g}",
                 f"kl_contact={kl_contact_value:.6g}",
                 f"train_latent_mode={args.train_latent_mode}",
             ]
@@ -437,7 +493,7 @@ def train(args: argparse.Namespace) -> int:
                 loss_parts.append(f"prior_loss_mode={args.prior_loss_mode}")
             loss_parts.extend(
                 [
-                    f"beta_motion={beta_motion:.6g}",
+                    f"beta_motion={(0.0 if uses_contact_cvae else beta_motion):.6g}",
                     f"beta_contact={loss_beta_contact:.6g}",
                 ]
             )
@@ -469,6 +525,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default="force_aware_act",
     )
     parser.add_argument("--train-latent-mode", choices=TRAIN_LATENT_MODE_CHOICES, default="posterior")
+    parser.add_argument(
+        "--train-contact-latent-mode",
+        choices=TRAIN_CONTACT_LATENT_MODE_CHOICES,
+        default="posterior",
+    )
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
@@ -548,6 +609,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if policy_variant == "force_aware_motion_cvae" and args.lambda_prior != 0:
         print(
             "error: ForceAwareACT-MotionCVAE has no contact prior; use --lambda-prior 0",
+            file=sys.stderr,
+        )
+        return 2
+    if policy_variant == "force_aware_contact_cvae" and args.train_latent_mode != "posterior":
+        print(
+            "error: ForceAwareACT-ContactCVAE training requires --train-latent-mode posterior",
+            file=sys.stderr,
+        )
+        return 2
+    if (
+        policy_variant == "force_aware_contact_cvae"
+        and getattr(args, "train_contact_latent_mode", "posterior") != "posterior"
+    ):
+        print(
+            "error: ForceAwareACT-ContactCVAE training requires "
+            "--train-contact-latent-mode posterior",
             file=sys.stderr,
         )
         return 2

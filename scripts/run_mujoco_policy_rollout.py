@@ -23,6 +23,7 @@ if str(SRC_ROOT) not in sys.path:
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
 from force_aware_act.models import (  # noqa: E402
     ACTPolicyBaseline,
+    ForceAwareACTContactCVAEPolicy,
     ForceAwareACTMotionCVAEPolicy,
     ForceAwareACTPolicy,
     LegacyZeroLatentACTPolicyBaseline,
@@ -204,6 +205,10 @@ def _act_baseline_version_from_checkpoint(checkpoint: dict) -> str:
     return str(config.get("act_baseline_version", ""))
 
 
+def _policy_has_contact_prior(policy_variant: str) -> bool:
+    return policy_variant in {"force_aware_act", "force_aware_contact_cvae"}
+
+
 def _build_policy_from_checkpoint(checkpoint: dict, force_window_len: int, chunk_len: int):
     kwargs = _model_kwargs(checkpoint, force_window_len, chunk_len)
     policy_variant = _policy_variant_from_checkpoint(checkpoint)
@@ -219,6 +224,8 @@ def _build_policy_from_checkpoint(checkpoint: dict, force_window_len: int, chunk
         return LegacyZeroLatentACTPolicyBaseline(**kwargs)
     if policy_variant == "force_aware_motion_cvae":
         return ForceAwareACTMotionCVAEPolicy(**kwargs)
+    if policy_variant == "force_aware_contact_cvae":
+        return ForceAwareACTContactCVAEPolicy(**kwargs)
     return ForceAwareACTPolicy(**kwargs)
 
 
@@ -1085,7 +1092,7 @@ def run_rollout(args: argparse.Namespace) -> int:
             )
             selected_action, selected_force = _denormalize_predictions(selected_output, stats)
             zero_action = zero_force = None
-            if args.contact_latent_mode == "prior" and policy_variant != "act_baseline":
+            if args.contact_latent_mode == "prior" and _policy_has_contact_prior(policy_variant):
                 zero_output = _run_mode(model, images, qpos_tensor, force_window_tensor, "zero")
                 zero_action, zero_force = _denormalize_predictions(zero_output, stats)
 

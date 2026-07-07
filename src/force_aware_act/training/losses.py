@@ -153,6 +153,60 @@ def compute_force_aware_motion_cvae_loss(
     }
 
 
+def compute_force_aware_contact_cvae_loss(
+    outputs: Mapping[str, Any],
+    action_chunk: torch.Tensor,
+    future_force_chunk: torch.Tensor,
+    lambda_force: float = 0.1,
+    beta_contact: float = 1.0e-4,
+    lambda_prior: float = 0.0,
+    prior_loss_mode: str = "mse_mu",
+) -> Dict[str, Union[torch.Tensor, float, str]]:
+    """Compute Contact-CVAE action/force supervision plus contact KL only."""
+
+    _validate_required_outputs(outputs)
+    for key in ("mu_contact", "logvar_contact"):
+        if key not in outputs:
+            raise KeyError(f"outputs is missing required contact posterior key: {key}")
+        if not isinstance(outputs[key], torch.Tensor):
+            raise ValueError(f"outputs[{key!r}] must be a torch.Tensor")
+
+    pred_action = outputs["pred_action"]
+    pred_force = outputs["pred_force"]
+    _validate_tensor_shape("pred_action", pred_action, action_chunk.shape)
+    _validate_tensor_shape("pred_force", pred_force, future_force_chunk.shape)
+
+    loss_action = functional.l1_loss(pred_action, action_chunk)
+    loss_force = functional.l1_loss(pred_force, future_force_chunk)
+    kl_contact = kl_normal(outputs["mu_contact"], outputs["logvar_contact"])
+    loss_total = loss_action + lambda_force * loss_force + beta_contact * kl_contact
+    loss_prior = pred_action.new_zeros(())
+    if lambda_prior > 0:
+        _validate_prior_outputs(outputs)
+        prior_losses = compute_contact_prior_distillation_loss(
+            mu_prior=outputs["mu_contact_prior"],
+            logvar_prior=outputs["logvar_contact_prior"],
+            mu_posterior=outputs["mu_contact"],
+            logvar_posterior=outputs["logvar_contact"],
+            mode=prior_loss_mode,
+        )
+        loss_prior = prior_losses["loss_prior"]
+        loss_total = loss_total + lambda_prior * loss_prior
+
+    return {
+        "loss_total": loss_total,
+        "loss_action": loss_action,
+        "loss_force": loss_force,
+        "kl_contact": kl_contact,
+        "loss_prior": loss_prior,
+        "lambda_force": lambda_force,
+        "beta_contact": beta_contact,
+        "lambda_prior": lambda_prior,
+        "prior_loss_mode": prior_loss_mode,
+        "policy_variant": "force_aware_contact_cvae",
+    }
+
+
 def compute_contact_prior_distillation_loss(
     mu_prior: torch.Tensor,
     logvar_prior: torch.Tensor,
