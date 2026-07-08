@@ -1,0 +1,36 @@
+# Reconstructed from preserved experiment records and the current implementation.
+# Verify against the original Linux console.log before claiming exact bitwise reproducibility.
+# Optional: activate the Python environment that contains this repository's dependencies.
+# Example: conda activate forceact
+
+cd /path/to/ForceAwareACT
+
+OUT="outputs/peg_hole_100/forceaware_dualzero_trajectory100k"
+mkdir -p "$OUT"
+
+PYTHONPATH=src python scripts/train_minimal.py \
+  --episode-list outputs/peg_hole_100/all100.txt \
+  --normalization-stats outputs/peg_hole_100/normalization_stats_action_all100.pt \
+  --policy-variant force_aware_act \
+  --action-mode action \
+  --train-latent-mode zero \
+  --chunk-len 10 \
+  --force-window-len 20 \
+  --force-window-duration 0.25 \
+  --image-size 224 224 \
+  --camera-names ee_cam base_top_cam \
+  --lambda-force 0.1 \
+  --lambda-prior 0.0 \
+  --prior-loss-mode mse_mu \
+  --beta-motion-max 1e-4 \
+  --beta-contact-max 1e-4 \
+  --warmup-steps 2000 \
+  --max-steps 100000 \
+  --save-every 10000 \
+  --batch-size 16 \
+  --num-workers 0 \
+  --learning-rate 1e-4 \
+  --device cuda \
+  --output-dir "$OUT" \
+  --log-csv "$OUT/train_log.csv" \
+  2>&1 | tee "$OUT/console.log"
