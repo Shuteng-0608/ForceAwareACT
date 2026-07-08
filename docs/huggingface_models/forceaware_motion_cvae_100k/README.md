@@ -12,7 +12,7 @@ tags:
 library_name: pytorch
 datasets:
   - shuteng0608/forceawareact-peg-hole-mujoco
-license: null
+# license: null
 model-index:
   - name: ForceAwareACT Motion CVAE for MuJoCo Peg-in-Hole
     results: []
