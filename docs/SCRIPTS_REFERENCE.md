@@ -79,6 +79,23 @@ Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-deca
 | `analyze_contact_latent.py` | specialized | Analyze dual-latent posterior contact latents and optional prior overlay. | HDF5/list, checkpoint, stats | CSV/plots | dual-latent oriented. |
 | `inspect_inference_case_predictions.py` | diagnostic | Inspect one saved inference case/prediction. | episode, state index, checkpoint, stats | output directory artifacts | contact-mode debugging. |
 | `inspect_worst_case_episode.py` | diagnostic | Inspect signals around one HDF5 state index. | episode, state index | CSV/frames | read-only on HDF5. |
+| `plot_hole_target_map.py` | current | Plot measured hole-position rollout outcomes as a target-style spatial map. | `grid_summary.csv` with `point_index`, `hole_offset_x`, `hole_offset_z`, and `success` | PNG/PDF/SVG target maps | success is green circles, failure is red circles; target rings are concentric mm offsets only. |
+
+`plot_hole_target_map.py` converts hole offsets from metres to millimetres, centers the nominal hole at `(0, 0)`, draws light grey concentric rings at `--ring-step-mm` intervals, and uses identical circular markers with black edges for measured success/failure outcomes. It plots measured rollout samples only; it does not estimate or interpolate a continuous success region.
+
+Typical command:
+
+```bash
+PYTHONPATH=src python scripts/plot_hole_target_map.py --grid-summary-csv outputs/peg_hole_100/hole_lhs_50_xz_10mm_contact_cvae100k_zero_mid_dq002/grid_summary.csv --output-dir outputs/peg_hole_100/hole_lhs_50_xz_10mm_contact_cvae100k_zero_mid_dq002/plots --output-stem contact_cvae_zero_mid_10mm_target --title "Contact-CVAE zero + mid, ±10 mm LHS" --ring-step-mm 2 --formats png pdf --dpi 300
+```
+
+Labeled diagnostic command:
+
+```bash
+PYTHONPATH=src python scripts/plot_hole_target_map.py --grid-summary-csv outputs/peg_hole_100/hole_lhs_50_xz_10mm_contact_cvae100k_zero_mid_dq002/grid_summary.csv --output-dir outputs/peg_hole_100/hole_lhs_50_xz_10mm_contact_cvae100k_zero_mid_dq002/plots --output-stem contact_cvae_zero_mid_10mm_target_labeled --title "Contact-CVAE zero + mid, ±10 mm LHS" --ring-step-mm 2 --show-point-index --show-sampling-boundary --formats png --dpi 300
+```
+
+Important flags: `--max-radius-mm` for an explicit symmetric plot extent, `--marker-size` for point size, `--show-point-index` for per-point labels, `--show-sampling-boundary` for the sampled x/z bounding rectangle, `--formats` for `png`, `pdf`, and/or `svg`, and `--dpi` for raster output.
 
 ## Dataset Inspection
 
