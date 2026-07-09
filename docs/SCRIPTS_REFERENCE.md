@@ -57,6 +57,7 @@ Limitations: posterior modes are oracle-only and non-deployable. `evaluate_motio
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `run_mujoco_policy_rollout.py` | current | Single guarded MuJoCo rollout. | all checkpoint-dispatched policies | checkpoint, stats, XML | rollout CSV, summary JSON, snapshots/videos | no source/data change | yes | no |
 | `run_mujoco_hole_grid.py` | current | Batch grid/random/LHS hole-offset rollout wrapper. | all rollout-supported policies | checkpoint, stats, XML | manifest, task CSV, grid summary, random summary | writes outputs | yes | no |
+| `run_xz_rollout_suite.py` | experiment-specific | Sequential x/z LHS suite for Contact-CVAE zero/prior, Motion-CVAE, DualZero, and ACT baseline with mid/temporal selection. Defaults to 50 points, ±6 mm, and 900 steps; these values are configurable. | configured local checkpoints, stats, XML | per-experiment grid outputs and safe-success target maps | writes outputs | yes | no |
 | `summarize_rollouts.py` | current | Aggregate rollout directories. | policy-agnostic | rollout dirs | summary CSV/table | writes summary | no | no |
 | `plot_hole_grid_results.py` | current | Plot grid/LHS result heatmaps and scatters. | policy-agnostic | `grid_summary.csv` | PNG/PDF/etc and result tables | writes plots | no | no |
 
@@ -65,6 +66,7 @@ Typical commands:
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --action-mode action --action-select-mode mid --output-dir outputs/rollout --execute-actions
 PYTHONPATH=src .venv/bin/python scripts/run_mujoco_hole_grid.py --sampling-mode latin_hypercube --num-points 50 --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --output-root outputs/lhs --continue-on-error
+python scripts/run_xz_rollout_suite.py --num-points 50 --offset-mm 6 --max-rollout-steps 900
 ```
 
 Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-decay`, `--max-delta-q`, `--ema-alpha`, `--force-stop-threshold`, success thresholds, hole offset flags, `--save-videos`, `--skip-existing`, `--dry-run`, `--continue-on-error`.
@@ -79,9 +81,9 @@ Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-deca
 | `analyze_contact_latent.py` | specialized | Analyze dual-latent posterior contact latents and optional prior overlay. | HDF5/list, checkpoint, stats | CSV/plots | dual-latent oriented. |
 | `inspect_inference_case_predictions.py` | diagnostic | Inspect one saved inference case/prediction. | episode, state index, checkpoint, stats | output directory artifacts | contact-mode debugging. |
 | `inspect_worst_case_episode.py` | diagnostic | Inspect signals around one HDF5 state index. | episode, state index | CSV/frames | read-only on HDF5. |
-| `plot_hole_target_map.py` | current | Plot measured hole-position rollout outcomes as a target-style spatial map. | `grid_summary.csv` with `point_index`, `hole_offset_x`, `hole_offset_z`, and `success` | PNG/PDF/SVG target maps | success is green circles, failure is red circles; target rings are concentric mm offsets only. |
+| `plot_hole_target_map.py` | current | Plot measured hole-position rollout outcomes as a target-style spatial map. | `grid_summary.csv` with `point_index`, `hole_offset_x`, `hole_offset_z`, `success`, and optional `safe_success` | PNG/PDF/SVG target maps | safe success is green, task success that is not safe is amber, and failure is red; target rings are concentric mm offsets only. |
 
-`plot_hole_target_map.py` converts hole offsets from metres to millimetres, centers the nominal hole at `(0, 0)`, draws light grey concentric rings at `--ring-step-mm` intervals, and uses identical circular markers with black edges for measured success/failure outcomes. It plots measured rollout samples only; it does not estimate or interpolate a continuous success region.
+`plot_hole_target_map.py` converts hole offsets from metres to millimetres, centers the nominal hole at `(0, 0)`, draws light grey concentric rings at `--ring-step-mm` intervals, and uses identical circular markers with black edges for measured outcomes. When `safe_success` is available, safe successes are green, task successes that are not safe are amber, failures are red, and the title reports the safe-success count and rate. Historical CSVs without `safe_success` retain the original green-success/red-failure display and task-success title. It plots measured rollout samples only; it does not estimate or interpolate a continuous success region.
 
 Typical command:
 

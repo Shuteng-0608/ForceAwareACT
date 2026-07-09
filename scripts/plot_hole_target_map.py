@@ -26,6 +26,7 @@ class TargetMapData:
     x_mm: pd.Series
     z_mm: pd.Series
     success: pd.Series
+    safe_success: Optional[pd.Series] = None
 
     @property
     def total_points(self) -> int:
@@ -38,6 +39,19 @@ class TargetMapData:
     @property
     def failed_points(self) -> int:
         return self.total_points - self.successful_points
+
+    @property
+    def safe_successful_points(self) -> Optional[int]:
+        if self.safe_success is None:
+            return None
+        return int(self.safe_success.sum())
+
+    @property
+    def unsafe_successful_points(self) -> Optional[int]:
+        safe_points = self.safe_successful_points
+        if safe_points is None:
+            return None
+        return self.successful_points - safe_points
 
     @property
     def success_rate(self) -> float:
@@ -140,12 +154,15 @@ def resolve_columns(frame: pd.DataFrame) -> dict[str, str]:
         "x": ("hole_offset_x", "x_offset", "offset_x"),
         "z": ("hole_offset_z", "z_offset", "offset_z"),
         "success": ("success", "task_success", "success_bool"),
+        "safe_success": ("safe_success", "safe_task_success", "safe_success_bool"),
     }
     resolved: dict[str, str] = {}
     columns = set(frame.columns)
     for key, candidates in aliases.items():
         matches = [column for column in candidates if column in columns]
         if not matches:
+            if key == "safe_success":
+                continue
             if key == "x":
                 raise ValueError("grid summary CSV missing required x-offset column: hole_offset_x")
             if key == "z":
@@ -194,6 +211,18 @@ def load_target_data(csv_path: Path) -> TargetMapData:
     x_m = _numeric_column(frame, columns["x"], "hole_offset_x")
     z_m = _numeric_column(frame, columns["z"], "hole_offset_z")
     success = parse_success_series(frame[columns["success"]])
+    safe_success = None
+    if "safe_success" in columns:
+        safe_success = parse_success_series(frame[columns["safe_success"]])
+        invalid_safe_success = safe_success & ~success
+        if bool(invalid_safe_success.any()):
+            point_examples = ", ".join(
+                repr(value) for value in point_index[invalid_safe_success].head(5).tolist()
+            )
+            raise ValueError(
+                "safe_success column marks task-failure row(s) as safe success; "
+                f"point_index example(s): {point_examples}"
+            )
     if len(success) == 0:
         raise ValueError("grid summary CSV contains no valid rows")
 
@@ -202,6 +231,7 @@ def load_target_data(csv_path: Path) -> TargetMapData:
         x_mm=(x_m * 1000.0).reset_index(drop=True),
         z_mm=(z_m * 1000.0).reset_index(drop=True),
         success=success.reset_index(drop=True),
+        safe_success=None if safe_success is None else safe_success.reset_index(drop=True),
     )
 
 
@@ -297,7 +327,12 @@ def create_target_figure(
         )
 
     failures = ~data.success
-    successes = data.success
+    safe_successes = data.success if data.safe_success is None else data.safe_success
+    unsafe_successes = (
+        pd.Series(False, index=data.success.index, dtype=bool)
+        if data.safe_success is None
+        else data.success & ~data.safe_success
+    )
     if bool(failures.any()):
         ax.scatter(
             data.x_mm[failures],
@@ -310,16 +345,33 @@ def create_target_figure(
             label=f"Failure ({data.failed_points})",
             zorder=4,
         )
-    if bool(successes.any()):
+    if bool(safe_successes.any()):
+        safe_label = (
+            f"Success ({data.successful_points})"
+            if data.safe_success is None
+            else f"Safe success ({data.safe_successful_points})"
+        )
         ax.scatter(
-            data.x_mm[successes],
-            data.z_mm[successes],
+            data.x_mm[safe_successes],
+            data.z_mm[safe_successes],
             s=marker_size,
             marker="o",
             facecolor="#2ca02c",
             edgecolor="black",
             linewidth=0.55,
-            label=f"Success ({data.successful_points})",
+            label=safe_label,
+            zorder=5,
+        )
+    if bool(unsafe_successes.any()):
+        ax.scatter(
+            data.x_mm[unsafe_successes],
+            data.z_mm[unsafe_successes],
+            s=marker_size,
+            marker="o",
+            facecolor="#ffbf00",
+            edgecolor="black",
+            linewidth=0.55,
+            label=f"Task success, not safe ({data.unsafe_successful_points})",
             zorder=5,
         )
 
@@ -345,7 +397,18 @@ def create_target_figure(
     ax.grid(False)
     ax.legend(loc="upper right", frameon=True, framealpha=0.95, fontsize=9)
 
-    stats_title = f"{data.successful_points}/{data.total_points} successful — {data.success_rate * 100.0:.1f}%"
+    if data.safe_success is None:
+        stats_title = (
+            f"{data.successful_points}/{data.total_points} successful "
+            f"— {data.success_rate * 100.0:.1f}%"
+        )
+    else:
+        safe_points = data.safe_successful_points
+        assert safe_points is not None
+        stats_title = (
+            f"{safe_points}/{data.total_points} safe successful "
+            f"— {safe_points / data.total_points * 100.0:.1f}%"
+        )
     ax.set_title(f"{title}\n{stats_title}" if title else stats_title)
     fig.tight_layout()
     return fig
@@ -374,6 +437,9 @@ def _print_report(input_csv: Path, data: TargetMapData, plot_limit_mm: float, ou
     print(f"input_csv={input_csv}")
     print(f"total_points={data.total_points}")
     print(f"successful_points={data.successful_points}")
+    if data.safe_success is not None:
+        print(f"safe_successful_points={data.safe_successful_points}")
+        print(f"unsafe_successful_points={data.unsafe_successful_points}")
     print(f"failed_points={data.failed_points}")
     print(f"success_rate={data.success_rate:.6g}")
     print(f"x_min_mm={float(data.x_mm.min()):.6g}")

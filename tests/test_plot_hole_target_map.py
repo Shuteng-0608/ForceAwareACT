@@ -4,6 +4,7 @@ import pytest
 
 from scripts.plot_hole_target_map import (
     compute_symmetric_plot_limit,
+    create_target_figure,
     load_target_data,
     main as plot_target_main,
     normalize_formats,
@@ -28,6 +29,32 @@ def _rows(success_values=(True, False)):
             zip((-0.002, 0.003), (0.001, -0.004), success_values),
             start=1,
         )
+    ]
+
+
+def _safe_success_rows():
+    return [
+        {
+            "point_index": 1,
+            "hole_offset_x": -0.002,
+            "hole_offset_z": 0.001,
+            "success": True,
+            "safe_success": True,
+        },
+        {
+            "point_index": 2,
+            "hole_offset_x": 0.003,
+            "hole_offset_z": -0.004,
+            "success": True,
+            "safe_success": False,
+        },
+        {
+            "point_index": 3,
+            "hole_offset_x": 0.001,
+            "hole_offset_z": 0.002,
+            "success": False,
+            "safe_success": False,
+        },
     ]
 
 
@@ -120,6 +147,111 @@ def test_unknown_success_strings_raise_clear_error():
 
     with pytest.raises(ValueError, match="unknown value"):
         parse_success_series(pd.Series(["maybe"]))
+
+
+def test_safe_success_data_is_loaded_and_counted(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    _write_grid_summary(
+        csv_path,
+        _safe_success_rows(),
+        fieldnames=["point_index", "hole_offset_x", "hole_offset_z", "success", "safe_success"],
+    )
+
+    data = load_target_data(csv_path)
+
+    assert data.successful_points == 2
+    assert data.safe_successful_points == 1
+    assert data.unsafe_successful_points == 1
+
+
+def test_safe_success_categories_appear_in_legend(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    _write_grid_summary(
+        csv_path,
+        _safe_success_rows(),
+        fieldnames=["point_index", "hole_offset_x", "hole_offset_z", "success", "safe_success"],
+    )
+    data = load_target_data(csv_path)
+
+    figure = create_target_figure(
+        data,
+        title="",
+        ring_step_mm=2.0,
+        plot_limit_mm=6.0,
+        marker_size=40.0,
+        show_point_index=False,
+        show_sampling_boundary=False,
+    )
+    try:
+        labels = figure.axes[0].get_legend_handles_labels()[1]
+    finally:
+        import matplotlib.pyplot as plt
+
+        plt.close(figure)
+
+    assert "Failure (1)" in labels
+    assert "Safe success (1)" in labels
+    assert "Task success, not safe (1)" in labels
+
+
+def test_safe_success_rate_appears_in_title(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    _write_grid_summary(
+        csv_path,
+        _safe_success_rows(),
+        fieldnames=["point_index", "hole_offset_x", "hole_offset_z", "success", "safe_success"],
+    )
+    data = load_target_data(csv_path)
+
+    figure = create_target_figure(
+        data,
+        title="Synthetic",
+        ring_step_mm=2.0,
+        plot_limit_mm=6.0,
+        marker_size=40.0,
+        show_point_index=False,
+        show_sampling_boundary=False,
+    )
+    try:
+        title = figure.axes[0].get_title()
+    finally:
+        import matplotlib.pyplot as plt
+
+        plt.close(figure)
+
+    assert title == "Synthetic\n1/3 safe successful — 33.3%"
+
+
+def test_safe_success_cannot_be_true_for_task_failure(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    rows = [
+        {
+            "point_index": 1,
+            "hole_offset_x": 0.0,
+            "hole_offset_z": 0.0,
+            "success": False,
+            "safe_success": True,
+        }
+    ]
+    _write_grid_summary(
+        csv_path,
+        rows,
+        fieldnames=["point_index", "hole_offset_x", "hole_offset_z", "success", "safe_success"],
+    )
+
+    with pytest.raises(ValueError, match="task-failure"):
+        load_target_data(csv_path)
+
+
+def test_missing_safe_success_column_preserves_legacy_behavior(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    _write_grid_summary(csv_path, _rows())
+
+    data = load_target_data(csv_path)
+
+    assert data.safe_success is None
+    assert data.safe_successful_points is None
+    assert data.unsafe_successful_points is None
 
 
 @pytest.mark.parametrize(
