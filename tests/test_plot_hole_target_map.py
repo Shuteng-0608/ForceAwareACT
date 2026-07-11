@@ -222,6 +222,168 @@ def test_safe_success_rate_appears_in_title(tmp_path):
     assert title == "Synthetic\n1/3 safe successful — 33.3%"
 
 
+def test_safe_force_threshold_recomputes_categories_from_max_force(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    rows = [
+        {
+            "point_index": 1,
+            "hole_offset_x": -0.002,
+            "hole_offset_z": 0.001,
+            "success": True,
+            "safe_success": True,
+            "max_force": 49.9,
+        },
+        {
+            "point_index": 2,
+            "hole_offset_x": 0.003,
+            "hole_offset_z": -0.004,
+            "success": True,
+            "safe_success": True,
+            "max_force": 50.0,
+        },
+        {
+            "point_index": 3,
+            "hole_offset_x": 0.001,
+            "hole_offset_z": 0.002,
+            "success": False,
+            "safe_success": False,
+            "max_force": 5.0,
+        },
+    ]
+    _write_grid_summary(
+        csv_path,
+        rows,
+        fieldnames=[
+            "point_index",
+            "hole_offset_x",
+            "hole_offset_z",
+            "success",
+            "safe_success",
+            "max_force",
+        ],
+    )
+
+    data = load_target_data(csv_path, safe_force_threshold_n=50.0)
+
+    assert data.safe_success.tolist() == [True, False, False]
+    assert data.safe_successful_points == 1
+    assert data.unsafe_successful_points == 1
+    assert data.safe_force_threshold_n == 50.0
+
+
+def test_safe_force_threshold_is_shown_in_title_and_legend(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    rows = [
+        {
+            "point_index": 1,
+            "hole_offset_x": -0.002,
+            "hole_offset_z": 0.001,
+            "success": True,
+            "max_force": 20.0,
+        },
+        {
+            "point_index": 2,
+            "hole_offset_x": 0.003,
+            "hole_offset_z": -0.004,
+            "success": True,
+            "max_force": 70.0,
+        },
+    ]
+    _write_grid_summary(
+        csv_path,
+        rows,
+        fieldnames=[
+            "point_index",
+            "hole_offset_x",
+            "hole_offset_z",
+            "success",
+            "max_force",
+        ],
+    )
+    data = load_target_data(csv_path, safe_force_threshold_n=50.0)
+
+    figure = create_target_figure(
+        data,
+        title="Synthetic",
+        ring_step_mm=2.0,
+        plot_limit_mm=6.0,
+        marker_size=40.0,
+        show_point_index=False,
+        show_sampling_boundary=False,
+    )
+    try:
+        labels = figure.axes[0].get_legend_handles_labels()[1]
+        title = figure.axes[0].get_title()
+    finally:
+        import matplotlib.pyplot as plt
+
+        plt.close(figure)
+
+    assert "Safe success <50 N (1)" in labels
+    assert "Task success, >=50 N (1)" in labels
+    assert title == "Synthetic\n1/2 safe successful (<50 N) — 50.0%"
+
+
+@pytest.mark.parametrize("threshold", [0.0, -1.0, float("inf")])
+def test_safe_force_threshold_must_be_positive_and_finite(tmp_path, threshold):
+    csv_path = tmp_path / "grid_summary.csv"
+    _write_grid_summary(csv_path, _rows())
+
+    with pytest.raises(ValueError, match="safe-force-threshold"):
+        load_target_data(csv_path, safe_force_threshold_n=threshold)
+
+
+def test_safe_force_threshold_requires_max_force_column(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    _write_grid_summary(csv_path, _rows())
+
+    with pytest.raises(ValueError, match="max-force"):
+        load_target_data(csv_path, safe_force_threshold_n=50.0)
+
+
+def test_safe_force_threshold_cli_creates_plot(tmp_path):
+    csv_path = tmp_path / "grid_summary.csv"
+    output_dir = tmp_path / "plots"
+    rows = [
+        {
+            "point_index": 1,
+            "hole_offset_x": 0.0,
+            "hole_offset_z": 0.0,
+            "success": True,
+            "max_force": 40.0,
+        }
+    ]
+    _write_grid_summary(
+        csv_path,
+        rows,
+        fieldnames=[
+            "point_index",
+            "hole_offset_x",
+            "hole_offset_z",
+            "success",
+            "max_force",
+        ],
+    )
+
+    exit_code = plot_target_main(
+        [
+            "--grid-summary-csv",
+            str(csv_path),
+            "--output-dir",
+            str(output_dir),
+            "--safe-force-threshold",
+            "50",
+            "--formats",
+            "png",
+            "--dpi",
+            "80",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (output_dir / "hole_target_map.png").is_file()
+
+
 def test_safe_success_cannot_be_true_for_task_failure(tmp_path):
     csv_path = tmp_path / "grid_summary.csv"
     rows = [

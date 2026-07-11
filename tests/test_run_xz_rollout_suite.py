@@ -7,6 +7,8 @@ from scripts.run_xz_rollout_suite import (
     build_grid_command,
     build_parser,
     output_dir_from_args,
+    resolved_point_set_seed,
+    resolved_rollout_seed_base,
     selected_models,
     target_map_limit_mm,
     validate_inputs,
@@ -76,9 +78,27 @@ def test_grid_command_forwards_protocol_and_prior_mode():
     assert command[command.index("--x-max") + 1] == "0.004000"
     assert command[command.index("--max-rollout-steps") + 1] == "600"
     assert command[command.index("--contact-latent-mode") + 1] == "prior"
+    assert command[command.index("--point-set-seed") + 1] == "20260702"
+    assert command[command.index("--rollout-seed-base") + 1] == "20260702"
     assert "hole_lhs_25_xz_4mm_contact_cvae100k_prior" in command[
         command.index("--output-root") + 1
     ]
+
+
+def test_grid_command_forwards_separated_seeds():
+    args = _args(
+        "--point-set-seed",
+        "101",
+        "--rollout-seed-base",
+        "900",
+    )
+
+    command = build_grid_command(args, _model("motion_cvae"), "mid")
+
+    assert resolved_point_set_seed(args) == 101
+    assert resolved_rollout_seed_base(args) == 900
+    assert command[command.index("--point-set-seed") + 1] == "101"
+    assert command[command.index("--rollout-seed-base") + 1] == "900"
 
 
 def test_default_target_map_limit_contains_square_sampling_range():

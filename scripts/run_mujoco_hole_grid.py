@@ -27,6 +27,9 @@ POSITION_SUMMARY_COLUMNS = [
     "point_index",
     "sampling_mode",
     "base_seed",
+    "point_set_seed",
+    "rollout_seed_base",
+    "rollout_seed",
     "hole_offset_x",
     "hole_offset_y",
     "hole_offset_z",
@@ -48,6 +51,21 @@ POSITION_SUMMARY_COLUMNS = [
     "summary_json",
     "rollout_log_csv",
 ]
+
+
+def resolve_point_set_seed(args: argparse.Namespace) -> int:
+    """Return the seed used only to generate random/LHS task points."""
+    return int(args.point_set_seed if args.point_set_seed is not None else args.base_seed)
+
+
+def resolve_rollout_seed_base(args: argparse.Namespace) -> int:
+    """Return the first per-run seed, preserving legacy coupled behavior."""
+    point_set_seed = resolve_point_set_seed(args)
+    return int(
+        args.rollout_seed_base
+        if args.rollout_seed_base is not None
+        else point_set_seed
+    )
 
 
 def parse_offset_list(value: str) -> list[float]:
@@ -164,9 +182,23 @@ def generate_task_points(args: argparse.Namespace) -> list[dict[str, Any]]:
 
     validate_sampling_bounds(args)
     if args.sampling_mode == "random":
-        points = random_points(args.num_points, args.x_min, args.x_max, args.z_min, args.z_max, args.base_seed)
+        points = random_points(
+            args.num_points,
+            args.x_min,
+            args.x_max,
+            args.z_min,
+            args.z_max,
+            resolve_point_set_seed(args),
+        )
     elif args.sampling_mode == "latin_hypercube":
-        points = latin_hypercube_points(args.num_points, args.x_min, args.x_max, args.z_min, args.z_max, args.base_seed)
+        points = latin_hypercube_points(
+            args.num_points,
+            args.x_min,
+            args.x_max,
+            args.z_min,
+            args.z_max,
+            resolve_point_set_seed(args),
+        )
     else:
         raise ValueError(f"unknown sampling mode: {args.sampling_mode}")
     for index, (x_offset, z_offset) in enumerate(points, start=1):
@@ -216,6 +248,8 @@ def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
 
 
 def write_task_points_csv(path: Path, task_points: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    point_set_seed = resolve_point_set_seed(args)
+    rollout_seed_base = resolve_rollout_seed_base(args)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as csv_file:
         writer = csv.DictWriter(
@@ -227,6 +261,9 @@ def write_task_points_csv(path: Path, task_points: list[dict[str, Any]], args: a
                 "hole_offset_z",
                 "sampling_mode",
                 "base_seed",
+                "point_set_seed",
+                "rollout_seed_base",
+                "rollout_seed",
                 "repeat_index",
                 "run_name",
                 "output_dir",
@@ -241,7 +278,10 @@ def write_task_points_csv(path: Path, task_points: list[dict[str, Any]], args: a
                     "hole_offset_y": point["hole_offset_y"],
                     "hole_offset_z": point["hole_offset_z"],
                     "sampling_mode": args.sampling_mode,
-                    "base_seed": args.base_seed,
+                    "base_seed": point_set_seed,
+                    "point_set_seed": point_set_seed,
+                    "rollout_seed_base": rollout_seed_base,
+                    "rollout_seed": rollout_seed_base + point["point_index"] - 1,
                     "repeat_index": point["repeat_index"],
                     "run_name": point["run_name"],
                     "output_dir": str(args.output_root / point["run_name"]),
@@ -292,6 +332,9 @@ def _summary_row_from_manifest_run(run: dict[str, Any], success_force_threshold:
         "point_index": run.get("point_index"),
         "sampling_mode": run.get("sampling_mode"),
         "base_seed": run.get("base_seed"),
+        "point_set_seed": run.get("point_set_seed", run.get("base_seed")),
+        "rollout_seed_base": run.get("rollout_seed_base", run.get("base_seed")),
+        "rollout_seed": run.get("rollout_seed", run.get("seed")),
         "hole_offset_x": x_offset,
         "hole_offset_y": y_offset,
         "hole_offset_z": z_offset,
@@ -396,6 +439,8 @@ def write_random_position_summary(path: Path, manifest: dict[str, Any], rows: li
             "z_max": manifest["z_max"],
         },
         "base_seed": manifest["base_seed"],
+        "point_set_seed": manifest.get("point_set_seed", manifest["base_seed"]),
+        "rollout_seed_base": manifest.get("rollout_seed_base", manifest["base_seed"]),
         "planned_runs": manifest["total_planned_runs"],
         "completed_runs": len(completed),
         "process_error_runs": len(process_errors),
@@ -516,6 +561,8 @@ def _plot_results(summary_csv: Path, output_root: Path, formats: str) -> None:
 
 
 def run_grid(args: argparse.Namespace) -> dict[str, Any]:
+    point_set_seed = resolve_point_set_seed(args)
+    rollout_seed_base = resolve_rollout_seed_base(args)
     task_points = generate_task_points(args)
     args.output_root.mkdir(parents=True, exist_ok=True)
     write_task_points_csv(args.output_root / "task_points.csv", task_points, args)
@@ -528,7 +575,10 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
         "x_max": args.x_max,
         "z_min": args.z_min,
         "z_max": args.z_max,
-        "base_seed": args.base_seed,
+        # Keep base_seed as the point-set seed for historical readers.
+        "base_seed": point_set_seed,
+        "point_set_seed": point_set_seed,
+        "rollout_seed_base": rollout_seed_base,
         "x_offsets": parse_offset_list(args.x_offsets),
         "y_offset": args.y_offset,
         "z_offsets": parse_offset_list(args.z_offsets),
@@ -539,7 +589,10 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
                 **point,
                 "output_dir": args.output_root / point["run_name"],
                 "sampling_mode": args.sampling_mode,
-                "base_seed": args.base_seed,
+                "base_seed": point_set_seed,
+                "point_set_seed": point_set_seed,
+                "rollout_seed_base": rollout_seed_base,
+                "rollout_seed": rollout_seed_base + point["point_index"] - 1,
             }
             for point in task_points
         ],
@@ -577,7 +630,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
         x_offset = point["hole_offset_x"]
         y_offset = point["hole_offset_y"]
         z_offset = point["hole_offset_z"]
-        seed = args.base_seed + len(manifest["runs"])
+        seed = rollout_seed_base + len(manifest["runs"])
         output_dir = args.output_root / point["run_name"]
         command = _build_rollout_command(
             args,
@@ -590,12 +643,15 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
         run_entry: dict[str, Any] = {
             "point_index": point["point_index"],
             "sampling_mode": args.sampling_mode,
-            "base_seed": args.base_seed,
+            "base_seed": point_set_seed,
+            "point_set_seed": point_set_seed,
+            "rollout_seed_base": rollout_seed_base,
             "x_offset": x_offset,
             "y_offset": y_offset,
             "z_offset": z_offset,
             "repeat_index": point["repeat_index"],
             "seed": seed,
+            "rollout_seed": seed,
             "output_dir": output_dir,
             "command": command,
             "return_code": None,
@@ -711,11 +767,34 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--z-offsets", default="-0.002,0.0,0.002")
     parser.add_argument("--success-distance-threshold", type=float, default=0.005)
     parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
-    parser.add_argument("--success-force-threshold", type=float, default=80.0)
+    parser.add_argument("--success-force-threshold", type=float, default=40.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=1)
-    parser.add_argument("--base-seed", type=int, default=0)
+    parser.add_argument(
+        "--base-seed",
+        type=int,
+        default=0,
+        help=(
+            "Legacy coupled seed. Used for point generation and as the first "
+            "rollout seed unless the separated seed options are provided."
+        ),
+    )
+    parser.add_argument(
+        "--point-set-seed",
+        type=int,
+        default=None,
+        help="Seed used only for random/LHS task-point generation.",
+    )
+    parser.add_argument(
+        "--rollout-seed-base",
+        type=int,
+        default=None,
+        help=(
+            "First rollout seed. Point i uses rollout-seed-base + i - 1. "
+            "Defaults to the resolved point-set seed for legacy behavior."
+        ),
+    )
     parser.add_argument("--save-videos", action="store_true")
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

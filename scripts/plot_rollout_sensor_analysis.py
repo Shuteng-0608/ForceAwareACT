@@ -25,7 +25,7 @@ class Thresholds:
     very_high_force: float = 40.0
     success_distance: float = 0.005
     success_lateral: float = 0.006
-    success_force: float = 80.0
+    success_force: float = 40.0
     success_hold_steps: int = 15
 
 
@@ -837,7 +837,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--very-high-force-threshold", type=float, default=40.0)
     parser.add_argument("--success-distance-threshold", type=float, default=0.005)
     parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
-    parser.add_argument("--success-force-threshold", type=float, default=80.0)
+    parser.add_argument("--success-force-threshold", type=float, default=40.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
     parser.add_argument("--smooth-window", type=int, default=1)
     parser.add_argument("--formats", default="png")

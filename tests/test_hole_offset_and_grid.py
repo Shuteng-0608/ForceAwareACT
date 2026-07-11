@@ -2,6 +2,7 @@ import csv
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from scripts.plot_hole_grid_results import aggregate_grid_results, main as plot_grid_main
@@ -11,6 +12,8 @@ from scripts.run_mujoco_hole_grid import (
     latin_hypercube_points,
     parse_args as parse_grid_args,
     parse_offset_list,
+    resolve_point_set_seed,
+    resolve_rollout_seed_base,
     run_grid,
     run_name,
     wilson_ci,
@@ -388,6 +391,91 @@ def test_lhs_dry_run_creates_50_commands_no_video_and_reproducible_points(tmp_pa
     normalized_a = task_points_a.replace(str(tmp_path / "grid_a"), "<ROOT>")
     normalized_b = task_points_b.replace(str(tmp_path / "grid_b"), "<ROOT>")
     assert normalized_a == normalized_b
+
+
+def test_point_set_and_rollout_seeds_are_independent_and_recorded(tmp_path):
+    common = [
+        "--sampling-mode",
+        "latin_hypercube",
+        "--num-points",
+        "3",
+        "--point-set-seed",
+        "101",
+        "--checkpoint",
+        "checkpoint.pt",
+        "--normalization-stats",
+        "stats.pt",
+        "--model-xml",
+        "model.xml",
+        "--dry-run",
+        "--no-plot-results",
+    ]
+    args_a = parse_grid_args(
+        [
+            *common,
+            "--rollout-seed-base",
+            "500",
+            "--output-root",
+            str(tmp_path / "a"),
+        ]
+    )
+    args_b = parse_grid_args(
+        [
+            *common,
+            "--rollout-seed-base",
+            "900",
+            "--output-root",
+            str(tmp_path / "b"),
+        ]
+    )
+
+    manifest_a = run_grid(args_a)
+    manifest_b = run_grid(args_b)
+
+    assert resolve_point_set_seed(args_a) == 101
+    assert resolve_rollout_seed_base(args_a) == 500
+    assert manifest_a["point_set_seed"] == manifest_b["point_set_seed"] == 101
+    assert [run["x_offset"] for run in manifest_a["runs"]] == [
+        run["x_offset"] for run in manifest_b["runs"]
+    ]
+    assert [run["z_offset"] for run in manifest_a["runs"]] == [
+        run["z_offset"] for run in manifest_b["runs"]
+    ]
+    assert [run["rollout_seed"] for run in manifest_a["runs"]] == [500, 501, 502]
+    assert [run["rollout_seed"] for run in manifest_b["runs"]] == [900, 901, 902]
+    task_points = pd.read_csv(tmp_path / "a" / "task_points.csv")
+    assert task_points["point_set_seed"].tolist() == [101, 101, 101]
+    assert task_points["rollout_seed"].tolist() == [500, 501, 502]
+
+
+def test_legacy_base_seed_remains_coupled(tmp_path):
+    args = parse_grid_args(
+        [
+            "--sampling-mode",
+            "latin_hypercube",
+            "--num-points",
+            "2",
+            "--base-seed",
+            "77",
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "legacy"),
+            "--dry-run",
+            "--no-plot-results",
+        ]
+    )
+
+    manifest = run_grid(args)
+
+    assert manifest["base_seed"] == 77
+    assert manifest["point_set_seed"] == 77
+    assert manifest["rollout_seed_base"] == 77
+    assert [run["rollout_seed"] for run in manifest["runs"]] == [77, 78]
 
 
 def test_heatmap_aggregation_multiple_repeats():

@@ -56,8 +56,10 @@ Limitations: posterior modes are oracle-only and non-deployable. `evaluate_motio
 | script | status | purpose | policies | inputs | outputs | modifies data | MuJoCo | GPU |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `run_mujoco_policy_rollout.py` | current | Single guarded MuJoCo rollout. | all checkpoint-dispatched policies | checkpoint, stats, XML | rollout CSV, summary JSON, snapshots/videos | no source/data change | yes | no |
-| `run_mujoco_hole_grid.py` | current | Batch grid/random/LHS hole-offset rollout wrapper. | all rollout-supported policies | checkpoint, stats, XML | manifest, task CSV, grid summary, random summary | writes outputs | yes | no |
-| `run_xz_rollout_suite.py` | experiment-specific | Sequential x/z LHS suite for Contact-CVAE zero/prior, Motion-CVAE, DualZero, and ACT baseline with mid/temporal selection. Defaults to 50 points, ±6 mm, and 900 steps; these values are configurable. | configured local checkpoints, stats, XML | per-experiment grid outputs and safe-success target maps | writes outputs | yes | no |
+| `run_mujoco_hole_grid.py` | current | Batch grid/random/LHS hole-offset rollout wrapper. `--point-set-seed` controls point generation and `--rollout-seed-base` independently controls per-point rollout seeds; legacy `--base-seed` remains supported. | all rollout-supported policies | checkpoint, stats, XML | manifest, task CSV, grid summary, random summary | writes outputs | yes | no |
+| `run_xz_rollout_suite.py` | experiment-specific | Sequential x/z LHS suite for Contact-CVAE zero/prior, Motion-CVAE, DualZero, and ACT baseline with mid/temporal selection. Defaults to 50 points, ±6 mm, and 900 steps; point-set and rollout seeds can be controlled independently. | configured local checkpoints, stats, XML | per-experiment grid outputs and safe-success target maps | writes outputs | yes | no |
+| `run_xz_multiseed_rollout_suite.py` | experiment-specific | Run `run_xz_rollout_suite.py` across independent point-set and rollout-seed dimensions, then aggregate task/safe-success rates, Wilson intervals, and run-level variation. `--point-set-seeds` and `--rollout-seed-bases` form a Cartesian product under isolated `pointset_<seed>/rollout_<seed>/` directories. Legacy `--seeds` remains supported. Defaults to `mid`; complete configurations are skipped and partial configurations resume through `--skip-existing`. | explicit seed lists, configured local checkpoints, stats, XML | seed directories, `per_seed_summary.csv`, `aggregate_summary.csv` | writes outputs | yes | no |
+| `monitor_xz_rollout_suite.py` | diagnostic | Read-only progress monitor for an x/z multi-seed suite. Reports the active model, point-set seed, rollout-seed base, point index, completed configurations, partial work, and queued configurations. Uses `suite_plan.json` automatically or accepts the protocol flags manually for already-running legacy jobs. | suite output directory and optional protocol flags | terminal progress report | no | no | no |
 | `summarize_rollouts.py` | current | Aggregate rollout directories. | policy-agnostic | rollout dirs | summary CSV/table | writes summary | no | no |
 | `plot_hole_grid_results.py` | current | Plot grid/LHS result heatmaps and scatters. | policy-agnostic | `grid_summary.csv` | PNG/PDF/etc and result tables | writes plots | no | no |
 
@@ -67,7 +69,16 @@ Typical commands:
 PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --action-mode action --action-select-mode mid --output-dir outputs/rollout --execute-actions
 PYTHONPATH=src .venv/bin/python scripts/run_mujoco_hole_grid.py --sampling-mode latin_hypercube --num-points 50 --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --output-root outputs/lhs --continue-on-error
 python scripts/run_xz_rollout_suite.py --num-points 50 --offset-mm 6 --max-rollout-steps 900
+python scripts/run_xz_multiseed_rollout_suite.py --seeds 20260702 20260703 20260704 20260705 20260706 --offset-mm 4 --output-base outputs/peg_hole_100/new_goal_multiseed
+python scripts/run_xz_multiseed_rollout_suite.py --point-set-seeds 20260702 20260703 --rollout-seed-bases 31000 32000 --action-select-modes mid --offset-mm 4 --output-base outputs/peg_hole_100/separated_seed_rollouts
+python scripts/monitor_xz_rollout_suite.py --output-base outputs/peg_hole_100/separated_seed_rollouts --watch --interval 10
 ```
+
+For separated seeds, point `i` uses `rollout_seed_base + i - 1`. The same
+point-set seed therefore produces identical task points across models and
+rollout-seed bases, while each output directory records both seed dimensions.
+New multi-seed runs write `suite_plan.json` before starting MuJoCo, allowing the
+monitor to reconstruct the full queue from `--output-base` alone.
 
 Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-decay`, `--max-delta-q`, `--ema-alpha`, `--force-stop-threshold`, success thresholds, hole offset flags, `--save-videos`, `--skip-existing`, `--dry-run`, `--continue-on-error`.
 
@@ -81,9 +92,9 @@ Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-deca
 | `analyze_contact_latent.py` | specialized | Analyze dual-latent posterior contact latents and optional prior overlay. | HDF5/list, checkpoint, stats | CSV/plots | dual-latent oriented. |
 | `inspect_inference_case_predictions.py` | diagnostic | Inspect one saved inference case/prediction. | episode, state index, checkpoint, stats | output directory artifacts | contact-mode debugging. |
 | `inspect_worst_case_episode.py` | diagnostic | Inspect signals around one HDF5 state index. | episode, state index | CSV/frames | read-only on HDF5. |
-| `plot_hole_target_map.py` | current | Plot measured hole-position rollout outcomes as a target-style spatial map. | `grid_summary.csv` with `point_index`, `hole_offset_x`, `hole_offset_z`, `success`, and optional `safe_success` | PNG/PDF/SVG target maps | safe success is green, task success that is not safe is amber, and failure is red; target rings are concentric mm offsets only. |
+| `plot_hole_target_map.py` | current | Plot measured hole-position rollout outcomes as a target-style spatial map. | `grid_summary.csv` with `point_index`, `hole_offset_x`, `hole_offset_z`, `success`, optional `safe_success`, and `max_force` when overriding the threshold | PNG/PDF/SVG target maps | safe success is green, task success that is not safe is amber, and failure is red; `--safe-force-threshold N` recomputes safe success as `success AND max_force < N` without modifying the CSV. |
 
-`plot_hole_target_map.py` converts hole offsets from metres to millimetres, centers the nominal hole at `(0, 0)`, draws light grey concentric rings at `--ring-step-mm` intervals, and uses identical circular markers with black edges for measured outcomes. When `safe_success` is available, safe successes are green, task successes that are not safe are amber, failures are red, and the title reports the safe-success count and rate. Historical CSVs without `safe_success` retain the original green-success/red-failure display and task-success title. It plots measured rollout samples only; it does not estimate or interpolate a continuous success region.
+`plot_hole_target_map.py` converts hole offsets from metres to millimetres, centers the nominal hole at `(0, 0)`, draws light grey concentric rings at `--ring-step-mm` intervals, and uses identical circular markers with black edges for measured outcomes. When `safe_success` is available, safe successes are green, task successes that are not safe are amber, failures are red, and the title reports the safe-success count and rate. `--safe-force-threshold N` overrides the stored classification for plotting by applying the strict rule `success AND max_force < N`; the title and legend display the selected threshold. Historical CSVs without `safe_success` retain the original green-success/red-failure display and task-success title. It plots measured rollout samples only; it does not estimate or interpolate a continuous success region.
 
 Typical command:
 

@@ -1681,7 +1681,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--force-stop-threshold", type=float, default=300.0)
     parser.add_argument("--success-distance-threshold", type=float, default=0.005)
     parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
-    parser.add_argument("--success-force-threshold", type=float, default=80.0)
+    parser.add_argument("--success-force-threshold", type=float, default=40.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
     parser.add_argument("--disable-success-stop", action="store_true")
     parser.add_argument("--hole-site-name", default=DEFAULT_HOLE_SITE_NAME)

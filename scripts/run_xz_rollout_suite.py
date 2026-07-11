@@ -122,7 +122,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=6.0,
         help="Symmetric x/z offset bound in millimetres. Default: 6.",
     )
-    parser.add_argument("--base-seed", type=int, default=20260702)
+    parser.add_argument(
+        "--base-seed",
+        type=int,
+        default=20260702,
+        help="Legacy coupled seed retained for backward compatibility.",
+    )
+    parser.add_argument(
+        "--point-set-seed",
+        type=int,
+        default=None,
+        help="Seed used only to generate the random/LHS task points.",
+    )
+    parser.add_argument(
+        "--rollout-seed-base",
+        type=int,
+        default=None,
+        help=(
+            "First per-point rollout seed. Point i uses this value + i - 1. "
+            "Defaults to the resolved point-set seed."
+        ),
+    )
     parser.add_argument("--output-base", type=Path, default=OUTPUT_ROOT)
     parser.add_argument(
         "--normalization-stats",
@@ -148,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force-stop-threshold", type=float, default=1000.0)
     parser.add_argument("--success-distance-threshold", type=float, default=0.005)
     parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
-    parser.add_argument("--success-force-threshold", type=float, default=80.0)
+    parser.add_argument("--success-force-threshold", type=float, default=40.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
     parser.add_argument("--y-offset", type=float, default=0.0)
     parser.add_argument("--hole-site-name", default="hole_goal_site")
@@ -211,6 +231,19 @@ def build_parser() -> argparse.ArgumentParser:
 def selected_models(keys: Iterable[str]) -> list[ModelSpec]:
     wanted = set(keys)
     return [spec for spec in MODEL_SPECS if spec.key in wanted]
+
+
+def resolved_point_set_seed(args: argparse.Namespace) -> int:
+    return int(args.point_set_seed if args.point_set_seed is not None else args.base_seed)
+
+
+def resolved_rollout_seed_base(args: argparse.Namespace) -> int:
+    point_set_seed = resolved_point_set_seed(args)
+    return int(
+        args.rollout_seed_base
+        if args.rollout_seed_base is not None
+        else point_set_seed
+    )
 
 
 def _number_token(value: float) -> str:
@@ -328,6 +361,10 @@ def build_grid_command(args: argparse.Namespace, model: ModelSpec, action_select
         f"{offset_m:.6f}",
         "--base-seed",
         str(args.base_seed),
+        "--point-set-seed",
+        str(resolved_point_set_seed(args)),
+        "--rollout-seed-base",
+        str(resolved_rollout_seed_base(args)),
         "--checkpoint",
         str(model.checkpoint),
         "--normalization-stats",

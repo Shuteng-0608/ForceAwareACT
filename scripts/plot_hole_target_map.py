@@ -27,6 +27,7 @@ class TargetMapData:
     z_mm: pd.Series
     success: pd.Series
     safe_success: Optional[pd.Series] = None
+    safe_force_threshold_n: Optional[float] = None
 
     @property
     def total_points(self) -> int:
@@ -84,6 +85,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ring-step-mm", type=float, default=2.0)
     parser.add_argument("--max-radius-mm", type=float, default=None)
     parser.add_argument("--marker-size", type=float, default=56.0)
+    parser.add_argument(
+        "--safe-force-threshold",
+        type=float,
+        default=None,
+        metavar="N",
+        help=(
+            "Recompute safe success as task success and max_force < N. "
+            "The input CSV is not modified."
+        ),
+    )
     parser.add_argument("--show-point-index", action="store_true")
     parser.add_argument("--show-sampling-boundary", action="store_true")
     parser.add_argument("--formats", nargs="+", default=["png", "pdf"])
@@ -189,7 +200,14 @@ def _numeric_column(frame: pd.DataFrame, column: str, label: str) -> pd.Series:
     return numeric.astype(float)
 
 
-def load_target_data(csv_path: Path) -> TargetMapData:
+def load_target_data(
+    csv_path: Path,
+    safe_force_threshold_n: Optional[float] = None,
+) -> TargetMapData:
+    if safe_force_threshold_n is not None and (
+        safe_force_threshold_n <= 0.0 or not math.isfinite(safe_force_threshold_n)
+    ):
+        raise ValueError("--safe-force-threshold must be positive and finite")
     if not csv_path.is_file():
         raise FileNotFoundError(f"grid summary CSV does not exist: {csv_path}")
     try:
@@ -212,7 +230,16 @@ def load_target_data(csv_path: Path) -> TargetMapData:
     z_m = _numeric_column(frame, columns["z"], "hole_offset_z")
     success = parse_success_series(frame[columns["success"]])
     safe_success = None
-    if "safe_success" in columns:
+    if safe_force_threshold_n is not None:
+        force_candidates = ("max_force", "max_force_norm")
+        force_matches = [column for column in force_candidates if column in frame.columns]
+        if not force_matches:
+            raise ValueError(
+                "--safe-force-threshold requires a max-force column: max_force"
+            )
+        max_force = _numeric_column(frame, force_matches[0], "max_force")
+        safe_success = success & (max_force < safe_force_threshold_n)
+    elif "safe_success" in columns:
         safe_success = parse_success_series(frame[columns["safe_success"]])
         invalid_safe_success = safe_success & ~success
         if bool(invalid_safe_success.any()):
@@ -232,6 +259,7 @@ def load_target_data(csv_path: Path) -> TargetMapData:
         z_mm=(z_m * 1000.0).reset_index(drop=True),
         success=success.reset_index(drop=True),
         safe_success=None if safe_success is None else safe_success.reset_index(drop=True),
+        safe_force_threshold_n=safe_force_threshold_n,
     )
 
 
@@ -349,7 +377,12 @@ def create_target_figure(
         safe_label = (
             f"Success ({data.successful_points})"
             if data.safe_success is None
-            else f"Safe success ({data.safe_successful_points})"
+            else (
+                f"Safe success <{data.safe_force_threshold_n:g} N "
+                f"({data.safe_successful_points})"
+                if data.safe_force_threshold_n is not None
+                else f"Safe success ({data.safe_successful_points})"
+            )
         )
         ax.scatter(
             data.x_mm[safe_successes],
@@ -371,7 +404,12 @@ def create_target_figure(
             facecolor="#ffbf00",
             edgecolor="black",
             linewidth=0.55,
-            label=f"Task success, not safe ({data.unsafe_successful_points})",
+            label=(
+                f"Task success, >={data.safe_force_threshold_n:g} N "
+                f"({data.unsafe_successful_points})"
+                if data.safe_force_threshold_n is not None
+                else f"Task success, not safe ({data.unsafe_successful_points})"
+            ),
             zorder=5,
         )
 
@@ -405,8 +443,13 @@ def create_target_figure(
     else:
         safe_points = data.safe_successful_points
         assert safe_points is not None
+        threshold_text = (
+            f" (<{data.safe_force_threshold_n:g} N)"
+            if data.safe_force_threshold_n is not None
+            else ""
+        )
         stats_title = (
-            f"{safe_points}/{data.total_points} safe successful "
+            f"{safe_points}/{data.total_points} safe successful{threshold_text} "
             f"— {safe_points / data.total_points * 100.0:.1f}%"
         )
     ax.set_title(f"{title}\n{stats_title}" if title else stats_title)
@@ -440,6 +483,8 @@ def _print_report(input_csv: Path, data: TargetMapData, plot_limit_mm: float, ou
     if data.safe_success is not None:
         print(f"safe_successful_points={data.safe_successful_points}")
         print(f"unsafe_successful_points={data.unsafe_successful_points}")
+    if data.safe_force_threshold_n is not None:
+        print(f"safe_force_threshold_n={data.safe_force_threshold_n:g}")
     print(f"failed_points={data.failed_points}")
     print(f"success_rate={data.success_rate:.6g}")
     print(f"x_min_mm={float(data.x_mm.min()):.6g}")
@@ -455,7 +500,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     formats = normalize_formats(args.formats)
-    data = load_target_data(args.grid_summary_csv)
+    data = load_target_data(
+        args.grid_summary_csv,
+        safe_force_threshold_n=args.safe_force_threshold,
+    )
     plot_limit_mm = compute_symmetric_plot_limit(
         data.x_mm,
         data.z_mm,

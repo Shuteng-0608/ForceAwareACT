@@ -12,7 +12,7 @@ The defaults are:
 
 - `--success-distance-threshold 0.005`
 - `--success-lateral-threshold 0.006`
-- `--success-force-threshold 80.0`
+- `--success-force-threshold 40.0`
 - `--success-hold-steps 15`
 
 Success is recorded only after the candidate condition holds for `success_hold_steps`
