@@ -521,6 +521,53 @@ $OUT/console.log
 
 当前 trainer 没有 resume CLI。启动长训练前应确认运行时长、保存空间和输出目录，避免覆盖已有实验记录。
 
+### 7.1 训练过程监控
+
+训练启动后，先查找 `train_minimal.py` 进程：
+
+```bash
+pgrep -af "python.*scripts/train_minimal.py"
+```
+
+输出中第一列是 PID，例如：
+
+```text
+411698 python scripts/train_minimal.py ...
+```
+
+将该 PID 传给训练监控脚本，并每 10 秒刷新一次：
+
+```bash
+TRAIN_PID=411698
+
+watch -n 10 -d "python scripts/forceact_eta.py \
+  --log $OUT/train_log.csv \
+  --max-steps 100000 \
+  --pid $TRAIN_PID \
+  --recent-window 100"
+```
+
+参数说明：
+
+| 参数 | 说明 |
+|---|---|
+| `watch -n 10` | 每 10 秒重新运行一次监控命令。 |
+| `watch -d` | 高亮相邻两次输出发生变化的部分。 |
+| `--log` | 正式训练正在写入的 `train_log.csv`。 |
+| `--max-steps` | 训练目标步数，必须与正式训练的 `--max-steps` 相同。 |
+| `--pid` | 当前训练进程的 PID，用于读取进程运行时间并估算 ETA。 |
+| `--recent-window` | 计算近期 loss 均值所使用的最近行数，默认值为 100。 |
+
+监控页面会显示进程状态、当前 step、完成比例、平均单步耗时、吞吐率、预计剩余时间、预计结束时间，以及主要 loss 的最新值和近期均值。
+
+如果 `pgrep` 返回多个训练进程，应根据完整命令中的输出目录确认正确 PID，不要随意使用第一条。监控脚本只读取日志和进程状态，不会控制、暂停或终止训练；按 `Ctrl+C` 只会退出 `watch`，不会停止训练进程。
+
+如需直接查看原始训练输出，可在另一个终端运行：
+
+```bash
+tail -f "$OUT/console.log"
+```
+
 ## 8. 可选：validation 和 test 离线评估
 
 只有选择泛化评估路线时，`val/test` 才具有独立集合含义。Contact-CVAE 可比较 zero、prior 和 posterior-oracle 三种 contact latent 模式。

@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import os
+import random
 import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Sequence
 
+import numpy as np
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
@@ -54,6 +58,49 @@ POLICY_VARIANT_CHOICES = (
     "force_aware_contact_cvae",
 )
 DEFAULT_POLICY_VARIANT = "force_aware_act"
+DEFAULT_TRAINING_SEED = 0
+DATALOADER_SEED_OFFSET = 1
+
+
+def configure_reproducibility(seed: int, deterministic: bool = False) -> None:
+    """Configure process RNGs and optional deterministic execution."""
+
+    if deterministic:
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.use_deterministic_algorithms(True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    random.seed(seed)
+    np.random.seed(seed % (2**32))
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def seed_dataloader_worker(_worker_id: int) -> None:
+    """Seed Python and NumPy from the worker seed assigned by DataLoader."""
+
+    worker_seed = torch.initial_seed() % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+
+
+def compute_initial_model_sha256(model: torch.nn.Module) -> str:
+    """Return a deterministic fingerprint of a model state dictionary."""
+
+    digest = hashlib.sha256()
+    state_dict = model.state_dict()
+    for key in sorted(state_dict):
+        tensor = state_dict[key].detach().cpu().contiguous()
+        digest.update(key.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(tensor.dtype).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(str(tuple(tensor.shape)).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(tensor.numpy().tobytes(order="C"))
+    return digest.hexdigest()
 
 
 def _move_batch_to_device(batch: Dict[str, object], device: torch.device) -> Dict[str, object]:
@@ -171,12 +218,22 @@ def build_checkpoint_payload(
     optimizer: torch.optim.Optimizer,
     config: Dict[str, object],
     step: int,
+    training_seed: int = DEFAULT_TRAINING_SEED,
+    dataloader_seed: int = DEFAULT_TRAINING_SEED + DATALOADER_SEED_OFFSET,
+    deterministic_enabled: bool = False,
+    initial_model_sha256: Optional[str] = None,
 ) -> Dict[str, object]:
+    if initial_model_sha256 is None:
+        initial_model_sha256 = compute_initial_model_sha256(model)
     return {
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "config": config,
         "step": step,
+        "training_seed": training_seed,
+        "dataloader_seed": dataloader_seed,
+        "deterministic_enabled": deterministic_enabled,
+        "initial_model_sha256": initial_model_sha256,
     }
 
 
@@ -196,6 +253,8 @@ def save_checkpoint_atomic(payload: Dict[str, object], checkpoint_path: Path) ->
 def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     policy_variant = getattr(args, "policy_variant", DEFAULT_POLICY_VARIANT)
     train_contact_latent_mode = getattr(args, "train_contact_latent_mode", "posterior")
+    training_seed = getattr(args, "seed", DEFAULT_TRAINING_SEED)
+    deterministic_enabled = getattr(args, "deterministic", False)
     architecture_metadata: Dict[str, object] = {}
     if policy_variant == "force_aware_contact_cvae":
         architecture_metadata = {
@@ -218,6 +277,9 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "imagenet_normalize": args.imagenet_normalize,
         "batch_size": args.batch_size,
         "num_workers": args.num_workers,
+        "training_seed": training_seed,
+        "dataloader_seed": training_seed + DATALOADER_SEED_OFFSET,
+        "deterministic_enabled": deterministic_enabled,
         "max_steps": args.max_steps,
         "learning_rate": args.learning_rate,
         "lambda_force": args.lambda_force,
@@ -269,6 +331,10 @@ def _build_training_dataset(args: argparse.Namespace) -> ContactForceHDF5Dataset
 def train(args: argparse.Namespace) -> int:
     policy_variant = getattr(args, "policy_variant", DEFAULT_POLICY_VARIANT)
     args.policy_variant = policy_variant
+    training_seed = getattr(args, "seed", DEFAULT_TRAINING_SEED)
+    deterministic_enabled = getattr(args, "deterministic", False)
+    dataloader_seed = training_seed + DATALOADER_SEED_OFFSET
+    configure_reproducibility(training_seed, deterministic_enabled)
     intermediate_checkpoint_steps = resolve_checkpoint_steps(
         max_steps=args.max_steps,
         save_every=getattr(args, "save_every", 0),
@@ -285,11 +351,15 @@ def train(args: argparse.Namespace) -> int:
         print("error: dataset is empty for the requested settings", file=sys.stderr)
         return 1
 
+    dataloader_generator = torch.Generator(device="cpu")
+    dataloader_generator.manual_seed(dataloader_seed)
     dataloader = DataLoader(
         dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
+        generator=dataloader_generator,
+        worker_init_fn=seed_dataloader_worker,
     )
 
     model_kwargs = {
@@ -306,16 +376,26 @@ def train(args: argparse.Namespace) -> int:
         "dropout": 0.0,
         "max_force_window_len": max(args.force_window_len, 20),
     }
+    # Keep initialization independent of any RNG consumption during dataset or
+    # DataLoader construction.
+    configure_reproducibility(training_seed, deterministic_enabled)
     if policy_variant == "force_aware_motion_cvae":
         model = ForceAwareACTMotionCVAEPolicy(**model_kwargs).to(device)
     elif policy_variant == "force_aware_contact_cvae":
         model = ForceAwareACTContactCVAEPolicy(**model_kwargs).to(device)
     else:
         model = ForceAwareACTPolicy(**model_kwargs).to(device)
+    initial_model_sha256 = compute_initial_model_sha256(model)
+    config["initial_model_sha256"] = initial_model_sha256
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
     model.train()
 
     print(f"dataset_length={len(dataset)}")
+    print(f"training_seed={training_seed}")
+    print(f"dataloader_seed={dataloader_seed}")
+    print(f"deterministic_enabled={deterministic_enabled}")
+    print(f"initial_model_sha256={initial_model_sha256}")
+    print(f"deterministic_algorithms_enabled={torch.are_deterministic_algorithms_enabled()}")
     print(f"action_mode={args.action_mode}")
     print(f"policy_variant={policy_variant}")
     print(f"train_latent_mode={args.train_latent_mode}")
@@ -450,6 +530,10 @@ def train(args: argparse.Namespace) -> int:
                     optimizer=optimizer,
                     config=config,
                     step=step,
+                    training_seed=training_seed,
+                    dataloader_seed=dataloader_seed,
+                    deterministic_enabled=deterministic_enabled,
+                    initial_model_sha256=initial_model_sha256,
                 )
                 save_checkpoint_atomic(checkpoint, checkpoint_path)
                 print(f"saved intermediate checkpoint: {checkpoint_path}", flush=True)
@@ -508,6 +592,10 @@ def train(args: argparse.Namespace) -> int:
         optimizer=optimizer,
         config=config,
         step=last_step,
+        training_seed=training_seed,
+        dataloader_seed=dataloader_seed,
+        deterministic_enabled=deterministic_enabled,
+        initial_model_sha256=initial_model_sha256,
     )
     save_checkpoint_atomic(checkpoint, checkpoint_path)
     print(f"saved final checkpoint: {checkpoint_path}")
@@ -538,6 +626,20 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--imagenet-normalize", action="store_true")
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_TRAINING_SEED,
+        help=(
+            "Seed for model initialization and stochastic training operations; "
+            "the reproducible DataLoader seed is seed + 1."
+        ),
+    )
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Enable strict deterministic PyTorch, cuDNN, and cuBLAS execution.",
+    )
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--learning-rate", type=float, default=1.0e-4)
     parser.add_argument("--lambda-force", type=float, default=0.1)

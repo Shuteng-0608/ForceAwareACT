@@ -317,6 +317,10 @@ def test_train_zero_latent_mode_writes_log_columns(tmp_path):
     assert float(rows[0]["kl_contact"]) == 0.0
     checkpoint = torch.load(output_dir / "checkpoint.pt", map_location="cpu")
     assert checkpoint["config"]["policy_variant"] == "force_aware_act"
+    assert checkpoint["config"]["training_seed"] == 0
+    assert checkpoint["config"]["dataloader_seed"] == 1
+    assert checkpoint["config"]["deterministic_enabled"] is False
+    assert checkpoint["config"]["initial_model_sha256"] == checkpoint["initial_model_sha256"]
     assert args.policy_variant == "force_aware_act"
 
 
