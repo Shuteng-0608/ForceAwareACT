@@ -321,6 +321,11 @@ def test_train_zero_latent_mode_writes_log_columns(tmp_path):
     assert checkpoint["config"]["dataloader_seed"] == 1
     assert checkpoint["config"]["deterministic_enabled"] is False
     assert checkpoint["config"]["initial_model_sha256"] == checkpoint["initial_model_sha256"]
+    assert checkpoint["config"]["torch_num_threads"] == checkpoint["torch_num_threads"]
+    assert (
+        checkpoint["config"]["torch_num_interop_threads"]
+        == checkpoint["torch_num_interop_threads"]
+    )
     assert args.policy_variant == "force_aware_act"
 
 

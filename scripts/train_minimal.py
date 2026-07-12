@@ -62,6 +62,48 @@ DEFAULT_TRAINING_SEED = 0
 DATALOADER_SEED_OFFSET = 1
 
 
+def positive_int(value: str) -> int:
+    """Parse a strictly positive integer for argparse."""
+
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
+def configure_cpu_threads(
+    torch_num_threads: Optional[int] = None,
+    torch_num_interop_threads: Optional[int] = None,
+) -> tuple[int, int]:
+    """Apply optional PyTorch CPU thread limits and return resolved values."""
+
+    if torch_num_threads is not None and torch_num_threads <= 0:
+        raise ValueError("torch_num_threads must be a positive integer")
+    if torch_num_interop_threads is not None and torch_num_interop_threads <= 0:
+        raise ValueError("torch_num_interop_threads must be a positive integer")
+
+    # Inter-op configuration must happen before inter-op parallel work begins.
+    if torch_num_interop_threads is not None:
+        torch.set_num_interop_threads(torch_num_interop_threads)
+    if torch_num_threads is not None:
+        torch.set_num_threads(torch_num_threads)
+    return torch.get_num_threads(), torch.get_num_interop_threads()
+
+
+def _configure_cpu_threads_from_args(args: argparse.Namespace) -> tuple[int, int]:
+    if getattr(args, "_cpu_threads_configured", False):
+        return args.resolved_torch_num_threads, args.resolved_torch_num_interop_threads
+
+    resolved = configure_cpu_threads(
+        getattr(args, "torch_num_threads", None),
+        getattr(args, "torch_num_interop_threads", None),
+    )
+    args.resolved_torch_num_threads = resolved[0]
+    args.resolved_torch_num_interop_threads = resolved[1]
+    args._cpu_threads_configured = True
+    return resolved
+
+
 def configure_reproducibility(seed: int, deterministic: bool = False) -> None:
     """Configure process RNGs and optional deterministic execution."""
 
@@ -222,9 +264,15 @@ def build_checkpoint_payload(
     dataloader_seed: int = DEFAULT_TRAINING_SEED + DATALOADER_SEED_OFFSET,
     deterministic_enabled: bool = False,
     initial_model_sha256: Optional[str] = None,
+    torch_num_threads: Optional[int] = None,
+    torch_num_interop_threads: Optional[int] = None,
 ) -> Dict[str, object]:
     if initial_model_sha256 is None:
         initial_model_sha256 = compute_initial_model_sha256(model)
+    if torch_num_threads is None:
+        torch_num_threads = torch.get_num_threads()
+    if torch_num_interop_threads is None:
+        torch_num_interop_threads = torch.get_num_interop_threads()
     return {
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
@@ -234,6 +282,8 @@ def build_checkpoint_payload(
         "dataloader_seed": dataloader_seed,
         "deterministic_enabled": deterministic_enabled,
         "initial_model_sha256": initial_model_sha256,
+        "torch_num_threads": torch_num_threads,
+        "torch_num_interop_threads": torch_num_interop_threads,
     }
 
 
@@ -255,6 +305,12 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     train_contact_latent_mode = getattr(args, "train_contact_latent_mode", "posterior")
     training_seed = getattr(args, "seed", DEFAULT_TRAINING_SEED)
     deterministic_enabled = getattr(args, "deterministic", False)
+    torch_num_threads = getattr(args, "resolved_torch_num_threads", torch.get_num_threads())
+    torch_num_interop_threads = getattr(
+        args,
+        "resolved_torch_num_interop_threads",
+        torch.get_num_interop_threads(),
+    )
     architecture_metadata: Dict[str, object] = {}
     if policy_variant == "force_aware_contact_cvae":
         architecture_metadata = {
@@ -280,6 +336,8 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "training_seed": training_seed,
         "dataloader_seed": training_seed + DATALOADER_SEED_OFFSET,
         "deterministic_enabled": deterministic_enabled,
+        "torch_num_threads": torch_num_threads,
+        "torch_num_interop_threads": torch_num_interop_threads,
         "max_steps": args.max_steps,
         "learning_rate": args.learning_rate,
         "lambda_force": args.lambda_force,
@@ -329,6 +387,7 @@ def _build_training_dataset(args: argparse.Namespace) -> ContactForceHDF5Dataset
 
 
 def train(args: argparse.Namespace) -> int:
+    torch_num_threads, torch_num_interop_threads = _configure_cpu_threads_from_args(args)
     policy_variant = getattr(args, "policy_variant", DEFAULT_POLICY_VARIANT)
     args.policy_variant = policy_variant
     training_seed = getattr(args, "seed", DEFAULT_TRAINING_SEED)
@@ -396,6 +455,8 @@ def train(args: argparse.Namespace) -> int:
     print(f"deterministic_enabled={deterministic_enabled}")
     print(f"initial_model_sha256={initial_model_sha256}")
     print(f"deterministic_algorithms_enabled={torch.are_deterministic_algorithms_enabled()}")
+    print(f"torch_num_threads={torch_num_threads}")
+    print(f"torch_num_interop_threads={torch_num_interop_threads}")
     print(f"action_mode={args.action_mode}")
     print(f"policy_variant={policy_variant}")
     print(f"train_latent_mode={args.train_latent_mode}")
@@ -534,6 +595,8 @@ def train(args: argparse.Namespace) -> int:
                     dataloader_seed=dataloader_seed,
                     deterministic_enabled=deterministic_enabled,
                     initial_model_sha256=initial_model_sha256,
+                    torch_num_threads=torch_num_threads,
+                    torch_num_interop_threads=torch_num_interop_threads,
                 )
                 save_checkpoint_atomic(checkpoint, checkpoint_path)
                 print(f"saved intermediate checkpoint: {checkpoint_path}", flush=True)
@@ -596,6 +659,8 @@ def train(args: argparse.Namespace) -> int:
         dataloader_seed=dataloader_seed,
         deterministic_enabled=deterministic_enabled,
         initial_model_sha256=initial_model_sha256,
+        torch_num_threads=torch_num_threads,
+        torch_num_interop_threads=torch_num_interop_threads,
     )
     save_checkpoint_atomic(checkpoint, checkpoint_path)
     print(f"saved final checkpoint: {checkpoint_path}")
@@ -626,6 +691,18 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--imagenet-normalize", action="store_true")
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument(
+        "--torch-num-threads",
+        type=positive_int,
+        default=None,
+        help="Set PyTorch intra-op CPU threads; omitted preserves the current default.",
+    )
+    parser.add_argument(
+        "--torch-num-interop-threads",
+        type=positive_int,
+        default=None,
+        help="Set PyTorch inter-op CPU threads; omitted preserves the current default.",
+    )
     parser.add_argument(
         "--seed",
         type=int,
@@ -659,6 +736,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    _configure_cpu_threads_from_args(args)
     policy_variant = getattr(args, "policy_variant", DEFAULT_POLICY_VARIANT)
     args.policy_variant = policy_variant
     args.episode_paths = resolve_episode_paths(
