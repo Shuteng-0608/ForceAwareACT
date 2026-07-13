@@ -235,6 +235,8 @@ def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):
             "model.xml",
             "--output-root",
             str(tmp_path / "grid"),
+            "--device",
+            "cpu",
             "--x-offsets=-0.002,0,0.002",
             "--z-offsets=-0.002,0,0.002",
             "--dry-run",
@@ -255,7 +257,33 @@ def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):
     assert any("--hole-offset-z=0.002" in command for command in commands)
     assert all("--hole-site-name hole_goal_site" in command for command in joined_commands)
     assert all("--hole-body-name wall_task" in command for command in joined_commands)
+    assert all("--device cpu" in command for command in joined_commands)
+    assert manifest["device"] == "cpu"
+    assert manifest["policy_config"]["device"] == "cpu"
+    assert all(run["device"] == "cpu" for run in manifest["runs"])
     assert manifest["policy_config"]["hole_body_name"] == "wall_task"
+
+
+def test_grid_rollout_command_forwards_requested_device(tmp_path):
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+            "--device",
+            "cuda",
+        ]
+    )
+
+    command = _build_rollout_command(args, tmp_path / "run", 0.0, 0.0, 0.0, seed=0)
+
+    device_index = command.index("--device")
+    assert command[device_index + 1] == "cuda"
 
 
 def test_rollout_command_keeps_negative_scientific_offsets_single_token(tmp_path):

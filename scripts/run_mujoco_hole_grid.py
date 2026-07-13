@@ -476,6 +476,8 @@ def _build_rollout_command(args: argparse.Namespace, output_dir: Path, x_offset:
         str(args.checkpoint),
         "--normalization-stats",
         str(args.normalization_stats),
+        "--device",
+        args.device,
         "--model-xml",
         str(args.model_xml),
         "--contact-latent-mode",
@@ -579,6 +581,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
         "base_seed": point_set_seed,
         "point_set_seed": point_set_seed,
         "rollout_seed_base": rollout_seed_base,
+        "device": args.device,
         "x_offsets": parse_offset_list(args.x_offsets),
         "y_offset": args.y_offset,
         "z_offsets": parse_offset_list(args.z_offsets),
@@ -599,6 +602,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
         "policy_config": {
             "checkpoint": args.checkpoint,
             "normalization_stats": args.normalization_stats,
+            "device": args.device,
             "model_xml": args.model_xml,
             "contact_latent_mode": args.contact_latent_mode,
             "action_mode": args.action_mode,
@@ -654,6 +658,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
             "rollout_seed": seed,
             "output_dir": output_dir,
             "command": command,
+            "device": args.device,
             "return_code": None,
             "status": "planned",
             "start_time": None,
@@ -747,6 +752,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--z-max", type=float, default=0.002)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--normalization-stats", type=Path, required=True)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--model-xml", type=Path, required=True)
     parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="zero")
     parser.add_argument("--action-mode", default="action")

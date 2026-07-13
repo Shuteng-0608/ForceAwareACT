@@ -63,6 +63,7 @@ SUMMARY_REQUIRED_KEYS = (
     "checkpoint",
     "normalization_stats",
     "model_xml",
+    "inference_device",
     "rollout_mode",
     "action_mode",
     "action_select_mode",
@@ -127,6 +128,22 @@ SUMMARY_REQUIRED_KEYS = (
     "nominal_hole_body_local_position",
     "actual_hole_body_local_position",
 )
+
+
+def _resolve_inference_device(requested_device: str) -> torch.device:
+    cuda_available = torch.cuda.is_available()
+    if requested_device == "auto":
+        return torch.device("cuda" if cuda_available else "cpu")
+    if requested_device == "cuda" and not cuda_available:
+        raise RuntimeError("--device=cuda was requested, but CUDA is not available")
+    return torch.device(requested_device)
+
+
+def _stats_to_device(stats: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
+    return {
+        key: value.to(device) if torch.is_tensor(value) else value
+        for key, value in stats.items()
+    }
 
 
 def _load_mujoco():
@@ -460,6 +477,7 @@ def _render_images(
     data,
     camera_ids: np.ndarray,
     image_size: int,
+    device: torch.device,
 ) -> tuple[torch.Tensor, np.ndarray]:
     frames = []
     for camera_id in camera_ids:
@@ -467,7 +485,7 @@ def _render_images(
         rgb = np.asarray(renderer.render(), dtype=np.uint8)
         frames.append(rgb)
     images = np.stack(frames, axis=0).astype(np.float32) / 255.0
-    tensor = torch.from_numpy(images).permute(0, 3, 1, 2)
+    tensor = torch.from_numpy(images).permute(0, 3, 1, 2).to(device)
     resized = functional.interpolate(
         tensor,
         size=(image_size, image_size),
@@ -599,7 +617,7 @@ def _run_mode(
     force_window: torch.Tensor,
     mode: str,
 ) -> dict:
-    with torch.no_grad():
+    with torch.inference_mode():
         if isinstance(model, ACTPolicyBaseline):
             return model(images=images, qpos=qpos, action_chunk=None, is_training=False)
         if isinstance(model, LegacyZeroLatentACTPolicyBaseline):
@@ -914,18 +932,34 @@ def _validate_summary_schema(summary: dict[str, Any]) -> None:
 
 
 def run_rollout(args: argparse.Namespace) -> int:
+    inference_device = _resolve_inference_device(args.device)
+    cuda_available = torch.cuda.is_available()
+    print(f"requested_device={args.device}")
+    print(f"resolved_device={inference_device}")
+    print(f"cuda_available={cuda_available}")
+    if inference_device.type == "cuda":
+        print(f"cuda_device_name={torch.cuda.get_device_name(inference_device)}")
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     mujoco = _load_mujoco()
     stats = _load_stats(args.normalization_stats)
     _validate_stats_action_mode(stats, args.action_mode)
+    stats = _stats_to_device(stats, inference_device)
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     if not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must contain a dict")
     policy_variant = _policy_variant_from_checkpoint(checkpoint)
     model = _build_policy_from_checkpoint(checkpoint, args.force_window_len, args.chunk_len)
     model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    model.to(inference_device)
     model.eval()
+    model_parameter_device = next(model.parameters()).device
+    if model_parameter_device.type != inference_device.type:
+        raise RuntimeError(
+            "policy parameter device mismatch: "
+            f"expected {inference_device}, got {model_parameter_device}"
+        )
+    print(f"model_parameter_device={model_parameter_device}")
 
     mj_model = mujoco.MjModel.from_xml_path(str(args.model_xml))
     data = mujoco.MjData(mj_model)
@@ -1047,7 +1081,9 @@ def run_rollout(args: argparse.Namespace) -> int:
                 args.force_window_duration,
                 args.force_window_len,
             ).astype(np.float32)
-            images_chw, raw_frames = _render_images(renderer, data, camera_ids, args.image_size)
+            images_chw, raw_frames = _render_images(
+                renderer, data, camera_ids, args.image_size, inference_device
+            )
             images = images_chw.unsqueeze(0)
             if args.save_camera_snapshots and step % args.snapshot_every == 0:
                 _save_snapshots(snapshot_dir, step, raw_frames)
@@ -1079,10 +1115,12 @@ def run_rollout(args: argparse.Namespace) -> int:
                 success_step = step
                 success_time = float(data.time)
             qpos_tensor = normalize_tensor(
-                torch.from_numpy(qpos).unsqueeze(0), stats["qpos_mean"], stats["qpos_std"]
+                torch.from_numpy(qpos).to(inference_device).unsqueeze(0),
+                stats["qpos_mean"],
+                stats["qpos_std"],
             )
             force_window_tensor = normalize_tensor(
-                torch.from_numpy(force_window_np).unsqueeze(0),
+                torch.from_numpy(force_window_np).to(inference_device).unsqueeze(0),
                 stats["force_mean"],
                 stats["force_std"],
             )
@@ -1445,6 +1483,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         "policy_variant": policy_variant,
         "normalization_stats": args.normalization_stats,
         "model_xml": args.model_xml,
+        "inference_device": str(inference_device),
         "rollout_mode": "execute" if args.execute_actions else "dry_run",
         "action_mode": args.action_mode,
         "action_select_mode": args.action_select_mode,
@@ -1653,6 +1692,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run ForceAwareACT in a local MuJoCo environment.")
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--normalization-stats", type=Path, required=True)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument(
         "--model-xml",
         type=Path,

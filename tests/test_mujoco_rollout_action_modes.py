@@ -1,15 +1,97 @@
 import numpy as np
 import pytest
+import torch
+
+from force_aware_act.data import normalize_tensor
 
 from scripts.run_mujoco_policy_rollout import (
     SUMMARY_REQUIRED_KEYS,
     _interpret_selected_action,
+    _resolve_inference_device,
+    _run_mode,
+    _stats_to_device,
     _success_condition,
     _update_success_hold_counter,
     _selected_action_delta_norm_raw_to_current,
     _validate_stats_action_mode,
     _validate_summary_schema,
 )
+
+
+class _ColocationCheckingPolicy(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.ones(1))
+
+    def forward(self, images, qpos, force_window, **kwargs):
+        expected_device = self.weight.device
+        assert images.device == expected_device
+        assert qpos.device == expected_device
+        assert force_window.device == expected_device
+        return {
+            "pred_action": qpos.new_zeros((qpos.shape[0], 2, 7)),
+            "pred_force": force_window.new_zeros((qpos.shape[0], 2, 6)),
+        }
+
+
+def _assert_inference_colocation(device: torch.device) -> None:
+    model = _ColocationCheckingPolicy().to(device).eval()
+    stats = _stats_to_device(
+        {
+            "qpos_mean": torch.zeros(7),
+            "qpos_std": torch.ones(7),
+            "force_mean": torch.zeros(6),
+            "force_std": torch.ones(6),
+        },
+        device,
+    )
+    images = torch.zeros((1, 2, 3, 16, 16), device=device)
+    qpos = normalize_tensor(
+        torch.zeros((1, 7), device=device),
+        stats["qpos_mean"],
+        stats["qpos_std"],
+    )
+    force_window = normalize_tensor(
+        torch.zeros((1, 20, 6), device=device),
+        stats["force_mean"],
+        stats["force_std"],
+    )
+
+    output = _run_mode(model, images, qpos, force_window, "zero")
+
+    model_device = next(model.parameters()).device
+    assert model_device.type == device.type
+    assert all(value.device == model_device for value in stats.values())
+    assert output["pred_action"].device == model_device
+    assert output["pred_force"].device == model_device
+    assert output["pred_action"].is_inference()
+
+
+def test_explicit_cpu_device_resolution_and_inference_colocation():
+    device = _resolve_inference_device("cpu")
+
+    assert device == torch.device("cpu")
+    _assert_inference_colocation(device)
+
+
+def test_auto_device_resolution(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    assert _resolve_inference_device("auto") == torch.device("cuda")
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    assert _resolve_inference_device("auto") == torch.device("cpu")
+
+
+def test_explicit_cuda_fails_clearly_when_unavailable(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+    with pytest.raises(RuntimeError, match="CUDA is not available"):
+        _resolve_inference_device("cuda")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+def test_cuda_inference_colocation():
+    _assert_inference_colocation(_resolve_inference_device("cuda"))
 
 
 def test_absolute_action_mode_target_ctrl_is_prediction():
