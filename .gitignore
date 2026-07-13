@@ -25,6 +25,7 @@ mujoco_data/
 *.pth
 *.ckpt
 *.csv
+!configs/experiments/fibonacci_disk_100_r4mm.csv
 *.png
 *.egg-info/
 src/*.egg-info/

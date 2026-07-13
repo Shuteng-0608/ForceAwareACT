@@ -26,8 +26,10 @@ Preview commands without running:
 from __future__ import annotations
 
 import argparse
+import csv
 import math
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -153,6 +155,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--python-executable", default=sys.executable)
     parser.add_argument("--mujoco-gl", default=None)
     parser.add_argument("--sampling-mode", choices=("latin_hypercube", "random", "grid"), default="latin_hypercube")
+    parser.add_argument(
+        "--task-points-csv",
+        type=Path,
+        default=None,
+        help="Use a fixed point CSV (offset columns in metres) instead of generated points.",
+    )
     parser.add_argument("--action-mode", default="action")
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
@@ -259,6 +267,51 @@ def delta_q_token(max_delta_q: float) -> str:
     return "dq" + format(max_delta_q, ".12g").replace(".", "").replace("-", "m")
 
 
+def _fixed_point_metadata(path: Path) -> tuple[int, float]:
+    if not path.is_file():
+        raise FileNotFoundError(f"task-points CSV does not exist: {path}")
+    with path.open(encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        if reader.fieldnames is None:
+            raise ValueError(f"task-points CSV has no header: {path}")
+        required = {"hole_offset_x", "hole_offset_z"}
+        missing = sorted(required - set(reader.fieldnames))
+        if missing:
+            raise ValueError(
+                f"task-points CSV missing required column(s): {', '.join(missing)}"
+            )
+        count = 0
+        maximum_radius_m = 0.0
+        for row_number, row in enumerate(reader, start=2):
+            try:
+                x_offset = float(row["hole_offset_x"])
+                z_offset = float(row["hole_offset_z"])
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    f"task-points CSV row {row_number} contains a non-numeric x/z offset"
+                ) from error
+            if not math.isfinite(x_offset) or not math.isfinite(z_offset):
+                raise ValueError(
+                    f"task-points CSV row {row_number} contains a non-finite x/z offset"
+                )
+            count += 1
+            maximum_radius_m = max(maximum_radius_m, math.hypot(x_offset, z_offset))
+    if count == 0:
+        raise ValueError(f"task-points CSV contains no points: {path}")
+    return count, maximum_radius_m * 1000.0
+
+
+def effective_num_points(args: argparse.Namespace) -> int:
+    if args.task_points_csv is None:
+        return int(args.num_points)
+    return _fixed_point_metadata(args.task_points_csv)[0]
+
+
+def fixed_point_token(path: Path) -> str:
+    token = re.sub(r"[^A-Za-z0-9]+", "_", path.stem).strip("_").lower()
+    return token or "fixed_points"
+
+
 def output_dir_for(
     model: ModelSpec,
     action_select_mode: str,
@@ -268,12 +321,14 @@ def output_dir_for(
     offset_mm: float = 6.0,
     max_rollout_steps: int = 900,
     max_delta_q: float = 0.02,
+    point_set_token: str | None = None,
 ) -> Path:
     suffix = f"{action_select_mode}_{delta_q_token(max_delta_q)}"
     if action_select_mode == "temporal":
         suffix = f"temporal_{TEMPORAL_DECAY_NAME}_{delta_q_token(max_delta_q)}"
+    protocol_token = point_set_token or f"lhs_{num_points}_xz_{offset_token(offset_mm)}"
     return output_base / (
-        f"hole_lhs_{num_points}_xz_{offset_token(offset_mm)}_"
+        f"hole_{protocol_token}_"
         f"{model.output_token}_{suffix}_maxsteps{max_rollout_steps}"
     )
 
@@ -287,17 +342,26 @@ def output_dir_from_args(
         model,
         action_select_mode,
         args.output_base,
-        num_points=args.num_points,
+        num_points=effective_num_points(args),
         offset_mm=args.offset_mm,
         max_rollout_steps=args.max_rollout_steps,
         max_delta_q=args.max_delta_q,
+        point_set_token=(
+            fixed_point_token(args.task_points_csv)
+            if args.task_points_csv is not None
+            else None
+        ),
     )
 
 
 def target_map_limit_mm(args: argparse.Namespace) -> float:
     if args.target_map_max_radius_mm is not None:
         return float(args.target_map_max_radius_mm)
-    required_radius = math.sqrt(2.0) * args.offset_mm
+    required_radius = (
+        _fixed_point_metadata(args.task_points_csv)[1]
+        if args.task_points_csv is not None
+        else math.sqrt(2.0) * args.offset_mm
+    )
     return math.ceil(required_radius / args.target_map_ring_step_mm) * args.target_map_ring_step_mm
 
 
@@ -315,11 +379,20 @@ def validate_inputs(args: argparse.Namespace, models: Sequence[ModelSpec]) -> No
     if args.target_map_max_radius_mm is not None:
         if args.target_map_max_radius_mm <= 0 or not math.isfinite(args.target_map_max_radius_mm):
             raise ValueError("--target-map-max-radius-mm must be positive and finite")
-        required_radius = math.sqrt(2.0) * args.offset_mm
+        required_radius = (
+            _fixed_point_metadata(args.task_points_csv)[1]
+            if args.task_points_csv is not None
+            else math.sqrt(2.0) * args.offset_mm
+        )
         if args.target_map_max_radius_mm + 1.0e-9 < required_radius:
+            coverage = (
+                "the sampled points"
+                if args.task_points_csv is not None
+                else "the full square sampling range"
+            )
             raise ValueError(
-                "--target-map-max-radius-mm would not contain the full square "
-                f"sampling range; need at least {required_radius:g} mm"
+                f"--target-map-max-radius-mm would not contain {coverage}; "
+                f"need at least {required_radius:g} mm"
             )
     if args.target_map_marker_size <= 0 or not math.isfinite(args.target_map_marker_size):
         raise ValueError("--target-map-marker-size must be positive and finite")
@@ -335,6 +408,8 @@ def validate_inputs(args: argparse.Namespace, models: Sequence[ModelSpec]) -> No
             "unsupported target-map format(s): " + ", ".join(unsupported_formats)
         )
     required = [args.normalization_stats, args.model_xml, *[spec.checkpoint for spec in models]]
+    if args.task_points_csv is not None:
+        _fixed_point_metadata(args.task_points_csv)
     missing = [path for path in required if not path.exists()]
     if missing:
         joined = "\n".join(str(path) for path in missing)
@@ -348,9 +423,9 @@ def build_grid_command(args: argparse.Namespace, model: ModelSpec, action_select
         args.python_executable,
         "scripts/run_mujoco_hole_grid.py",
         "--sampling-mode",
-        args.sampling_mode,
+        "file" if args.task_points_csv is not None else args.sampling_mode,
         "--num-points",
-        str(args.num_points),
+        str(effective_num_points(args)),
         "--x-min",
         f"{-offset_m:.6f}",
         "--x-max",
@@ -412,6 +487,8 @@ def build_grid_command(args: argparse.Namespace, model: ModelSpec, action_select
         "--output-root",
         str(output_root),
     ]
+    if args.task_points_csv is not None:
+        cmd.extend(["--task-points-csv", str(args.task_points_csv)])
     if args.mujoco_gl:
         cmd.extend(["--mujoco-gl", args.mujoco_gl])
     if args.skip_existing:
@@ -437,6 +514,17 @@ def plot_title_for(model: ModelSpec, action_select_mode: str, offset_mm: float) 
     return f"{name} + {action_select_mode}, +/-{offset_mm:g} mm LHS"
 
 
+def plot_title_from_args(
+    args: argparse.Namespace,
+    model: ModelSpec,
+    action_select_mode: str,
+) -> str:
+    if args.task_points_csv is None:
+        return plot_title_for(model, action_select_mode, args.offset_mm)
+    name = plot_title_for(model, action_select_mode, args.offset_mm).split(" + ", 1)[0]
+    return f"{name} + {action_select_mode}, {fixed_point_token(args.task_points_csv)}"
+
+
 def plot_stem_for(model: ModelSpec, action_select_mode: str, offset_mm: float) -> str:
     return (
         f"{model.output_token}_{action_select_mode}_{offset_token(offset_mm)}"
@@ -453,7 +541,7 @@ def build_target_map_commands(
     grid_summary_csv = output_root / "grid_summary.csv"
     plots_dir = output_root / "plots"
     stem = plot_stem_for(model, action_select_mode, args.offset_mm)
-    title = plot_title_for(model, action_select_mode, args.offset_mm)
+    title = plot_title_from_args(args, model, action_select_mode)
     plot_limit_mm = target_map_limit_mm(args)
     base_cmd = [
         args.python_executable,
@@ -497,12 +585,13 @@ def build_target_map_commands(
             "--marker-size",
             str(args.target_map_marker_size),
             "--show-point-index",
-            "--show-sampling-boundary",
             "--formats",
             "png",
             "--dpi",
             str(args.target_map_dpi),
         ]
+        if args.task_points_csv is None:
+            labeled_cmd.append("--show-sampling-boundary")
         commands.append((f"{command_label(model, action_select_mode)}:target-map-labeled", labeled_cmd))
     return commands
 

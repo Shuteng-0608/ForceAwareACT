@@ -221,7 +221,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--min-duration", type=float, default=3.0)
     parser.add_argument("--max-duration", type=float, default=30.0)
     parser.add_argument("--max-gap-factor", type=float, default=3.0)
-    parser.add_argument("--max-force", type=float, default=80.0, help="Peak translational force warning threshold (N).")
+    parser.add_argument("--max-force", type=float, default=60.0, help="Peak translational force warning threshold (N).")
     parser.add_argument("--max-joint-speed", type=float, default=1.0)
     parser.add_argument("--max-command-step", type=float, default=0.05)
     parser.add_argument("--image-samples", type=int, default=8)

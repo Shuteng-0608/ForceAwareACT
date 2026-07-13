@@ -159,7 +159,82 @@ def validate_sampling_bounds(args: argparse.Namespace) -> None:
         raise ValueError("--num-points must be positive")
 
 
+def resolved_sampling_mode(args: argparse.Namespace) -> str:
+    return "file" if args.task_points_csv is not None else args.sampling_mode
+
+
+def read_task_points_csv(path: Path, default_y_offset: float = 0.0) -> list[dict[str, Any]]:
+    """Load fixed rollout points whose hole_offset coordinates are in metres."""
+    if not path.is_file():
+        raise FileNotFoundError(f"task-points CSV does not exist: {path}")
+    with path.open(encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        if reader.fieldnames is None:
+            raise ValueError(f"task-points CSV has no header: {path}")
+        required = {"hole_offset_x", "hole_offset_z"}
+        missing = sorted(required - set(reader.fieldnames))
+        if missing:
+            raise ValueError(
+                f"task-points CSV missing required column(s): {', '.join(missing)}"
+            )
+        rows = list(reader)
+    if not rows:
+        raise ValueError(f"task-points CSV contains no points: {path}")
+
+    task_points: list[dict[str, Any]] = []
+    seen_coordinates: set[tuple[float, float, float]] = set()
+    for expected_index, row in enumerate(rows, start=1):
+        raw_index = row.get("point_index", "")
+        if raw_index is None or not raw_index.strip():
+            point_index = expected_index
+        else:
+            try:
+                numeric_index = float(raw_index)
+                point_index = int(numeric_index)
+            except ValueError as error:
+                raise ValueError(
+                    f"task-points CSV row {expected_index} has invalid point_index: {raw_index!r}"
+                ) from error
+            if numeric_index != point_index or point_index != expected_index:
+                raise ValueError(
+                    "task-points CSV point_index must be consecutive integers starting at 1; "
+                    f"row {expected_index} contains {raw_index!r}"
+                )
+        try:
+            x_offset = float(row["hole_offset_x"])
+            z_offset = float(row["hole_offset_z"])
+            raw_y = row.get("hole_offset_y", "")
+            y_offset = default_y_offset if raw_y is None or not raw_y.strip() else float(raw_y)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"task-points CSV row {expected_index} contains a non-numeric offset"
+            ) from error
+        coordinates = (x_offset, y_offset, z_offset)
+        if not all(math.isfinite(value) for value in coordinates):
+            raise ValueError(
+                f"task-points CSV row {expected_index} contains a non-finite offset"
+            )
+        if coordinates in seen_coordinates:
+            raise ValueError(
+                f"task-points CSV row {expected_index} duplicates an earlier coordinate"
+            )
+        seen_coordinates.add(coordinates)
+        task_points.append(
+            {
+                "point_index": point_index,
+                "hole_offset_x": x_offset,
+                "hole_offset_y": y_offset,
+                "hole_offset_z": z_offset,
+                "repeat_index": 1,
+                "run_name": point_run_name(point_index, x_offset, z_offset, 1),
+            }
+        )
+    return task_points
+
+
 def generate_task_points(args: argparse.Namespace) -> list[dict[str, Any]]:
+    if args.task_points_csv is not None:
+        return read_task_points_csv(args.task_points_csv, args.y_offset)
     task_points = []
     if args.sampling_mode == "grid":
         x_offsets = parse_offset_list(args.x_offsets)
@@ -277,7 +352,7 @@ def write_task_points_csv(path: Path, task_points: list[dict[str, Any]], args: a
                     "hole_offset_x": point["hole_offset_x"],
                     "hole_offset_y": point["hole_offset_y"],
                     "hole_offset_z": point["hole_offset_z"],
-                    "sampling_mode": args.sampling_mode,
+                    "sampling_mode": resolved_sampling_mode(args),
                     "base_seed": point_set_seed,
                     "point_set_seed": point_set_seed,
                     "rollout_seed_base": rollout_seed_base,
@@ -571,8 +646,9 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
     manifest_path = args.output_root / "grid_manifest.json"
     manifest: dict[str, Any] = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "sampling_mode": args.sampling_mode,
-        "num_points": args.num_points,
+        "sampling_mode": resolved_sampling_mode(args),
+        "num_points": len(task_points),
+        "task_points_csv": args.task_points_csv,
         "x_min": args.x_min,
         "x_max": args.x_max,
         "z_min": args.z_min,
@@ -591,7 +667,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
             {
                 **point,
                 "output_dir": args.output_root / point["run_name"],
-                "sampling_mode": args.sampling_mode,
+                "sampling_mode": resolved_sampling_mode(args),
                 "base_seed": point_set_seed,
                 "point_set_seed": point_set_seed,
                 "rollout_seed_base": rollout_seed_base,
@@ -646,7 +722,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
         )
         run_entry: dict[str, Any] = {
             "point_index": point["point_index"],
-            "sampling_mode": args.sampling_mode,
+            "sampling_mode": resolved_sampling_mode(args),
             "base_seed": point_set_seed,
             "point_set_seed": point_set_seed,
             "rollout_seed_base": rollout_seed_base,
@@ -742,8 +818,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a hole-position perturbation rollout grid.")
     parser.add_argument(
         "--sampling-mode",
-        choices=("grid", "random", "latin_hypercube"),
+        choices=("grid", "random", "latin_hypercube", "file"),
         default="grid",
+    )
+    parser.add_argument(
+        "--task-points-csv",
+        type=Path,
+        default=None,
+        help=(
+            "Read fixed points from CSV instead of generating them. Required columns: "
+            "hole_offset_x and hole_offset_z in metres; hole_offset_y is optional."
+        ),
     )
     parser.add_argument("--num-points", type=int, default=50)
     parser.add_argument("--x-min", type=float, default=-0.002)
@@ -817,7 +902,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     if args.repeats <= 0:
         raise ValueError("--repeats must be positive")
-    validate_sampling_bounds(args)
+    if args.sampling_mode == "file" and args.task_points_csv is None:
+        raise ValueError("--sampling-mode file requires --task-points-csv")
+    if args.task_points_csv is None:
+        validate_sampling_bounds(args)
     manifest = run_grid(args)
     _print_final_counts(manifest)
     return 0

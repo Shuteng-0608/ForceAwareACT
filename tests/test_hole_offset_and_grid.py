@@ -6,12 +6,14 @@ import pandas as pd
 import pytest
 
 from scripts.plot_hole_grid_results import aggregate_grid_results, main as plot_grid_main
+from scripts.generate_fibonacci_disk_points import fibonacci_disk_points, write_points_csv
 from scripts.run_mujoco_hole_grid import (
     _build_rollout_command,
     generate_task_points,
     latin_hypercube_points,
     parse_args as parse_grid_args,
     parse_offset_list,
+    read_task_points_csv,
     resolve_point_set_seed,
     resolve_rollout_seed_base,
     run_grid,
@@ -222,6 +224,64 @@ def test_grid_offset_parsing_and_run_name_are_stable():
     assert parse_offset_list("-0.002,0,0.002") == [-0.002, 0.0, 0.002]
     assert run_name(-0.002, 0.002, 1) == "x_m002mm_z_p002mm_repeat_001"
     assert run_name(0.0, 0.0, 1) == "x_p000mm_z_p000mm_repeat_001"
+
+
+def test_fibonacci_disk_points_are_deterministic_and_area_uniform():
+    points = fibonacci_disk_points(100, 4.0)
+
+    assert points == fibonacci_disk_points(100, 4.0)
+    assert len(points) == 100
+    radii_mm = np.asarray(
+        [
+            np.hypot(point["hole_offset_x"], point["hole_offset_z"]) * 1000.0
+            for point in points
+        ]
+    )
+    expected_squared_radii = 16.0 * (np.arange(100) + 0.5) / 100.0
+    np.testing.assert_allclose(radii_mm**2, expected_squared_radii, atol=1e-12)
+    assert radii_mm.max() < 4.0
+
+
+def test_fixed_task_points_csv_round_trips_in_metres(tmp_path):
+    path = tmp_path / "fixed.csv"
+    source = fibonacci_disk_points(5, 4.0)
+    write_points_csv(path, source)
+
+    loaded = read_task_points_csv(path)
+
+    assert len(loaded) == 5
+    assert loaded[0]["point_index"] == 1
+    assert loaded[0]["hole_offset_x"] == pytest.approx(source[0]["hole_offset_x"])
+    assert loaded[0]["hole_offset_y"] == 0.0
+    assert loaded[0]["run_name"].startswith("point_001_")
+
+
+def test_fixed_task_points_override_generated_sampling_in_dry_run(tmp_path):
+    point_path = tmp_path / "fixed.csv"
+    write_points_csv(point_path, fibonacci_disk_points(5, 4.0))
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+            "--task-points-csv",
+            str(point_path),
+            "--dry-run",
+            "--no-plot-results",
+        ]
+    )
+
+    manifest = run_grid(args)
+
+    assert manifest["sampling_mode"] == "file"
+    assert manifest["num_points"] == 5
+    assert len(manifest["runs"]) == 5
+    assert manifest["task_points_csv"] == point_path
 
 
 def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):

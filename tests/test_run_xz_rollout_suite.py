@@ -1,4 +1,5 @@
 import argparse
+import csv
 
 import pytest
 
@@ -6,6 +7,7 @@ from scripts.run_xz_rollout_suite import (
     MODEL_SPECS,
     build_grid_command,
     build_parser,
+    effective_num_points,
     output_dir_from_args,
     resolved_point_set_seed,
     resolved_rollout_seed_base,
@@ -99,6 +101,43 @@ def test_grid_command_forwards_separated_seeds():
     assert resolved_rollout_seed_base(args) == 900
     assert command[command.index("--point-set-seed") + 1] == "101"
     assert command[command.index("--rollout-seed-base") + 1] == "900"
+
+
+def test_fixed_point_csv_controls_count_command_and_output_name(tmp_path):
+    point_path = tmp_path / "fibonacci_disk_100_r4mm.csv"
+    with point_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(
+            csv_file,
+            fieldnames=["point_index", "hole_offset_x", "hole_offset_y", "hole_offset_z"],
+        )
+        writer.writeheader()
+        writer.writerows(
+            [
+                {
+                    "point_index": 1,
+                    "hole_offset_x": 0.001,
+                    "hole_offset_y": 0.0,
+                    "hole_offset_z": 0.0,
+                },
+                {
+                    "point_index": 2,
+                    "hole_offset_x": 0.0,
+                    "hole_offset_y": 0.0,
+                    "hole_offset_z": -0.004,
+                },
+            ]
+        )
+    args = _args("--task-points-csv", str(point_path))
+
+    command = build_grid_command(args, _model("contact_cvae"), "mid")
+    output = output_dir_from_args(args, _model("contact_cvae"), "mid")
+
+    assert effective_num_points(args) == 2
+    assert command[command.index("--num-points") + 1] == "2"
+    assert command[command.index("--sampling-mode") + 1] == "file"
+    assert command[command.index("--task-points-csv") + 1] == str(point_path)
+    assert output.name.startswith("hole_fibonacci_disk_100_r4mm_")
+    assert target_map_limit_mm(args) == pytest.approx(4.0)
 
 
 def test_default_target_map_limit_contains_square_sampling_range():
