@@ -398,3 +398,66 @@ def test_train_intermediate_checkpoints_are_saved_after_optimizer_steps(
     assert step4_state.keys() == final_state.keys()
     for name, tensor in step4_state.items():
         assert torch.equal(tensor, final_state[name]), name
+
+
+def test_force_aware_validation_saves_best_checkpoint(tmp_path, monkeypatch):
+    train_episode = tmp_path / "train.hdf5"
+    val_episode = tmp_path / "val.hdf5"
+    output_dir = tmp_path / "validation"
+    _write_action_mode_episode(train_episode)
+    _write_action_mode_episode(val_episode)
+    args = SimpleNamespace(
+        episode_paths=[train_episode],
+        val_episode_paths=[val_episode],
+        camera_names=("ee_cam", "base_top_cam"),
+        action_mode="action",
+        policy_variant="force_aware_motion_cvae",
+        train_latent_mode="posterior",
+        chunk_len=4,
+        force_window_len=5,
+        force_window_duration=0.1,
+        image_size=(224, 224),
+        imagenet_normalize=False,
+        batch_size=1,
+        num_workers=0,
+        max_steps=1,
+        max_epochs=None,
+        val_every_epochs=1,
+        early_stop_patience=2,
+        early_stop_min_epochs=1,
+        early_stop_min_delta=0.005,
+        early_stop_metric="deploy_loss",
+        validation_deployment_mode="auto",
+        learning_rate=1.0e-4,
+        lambda_force=0.1,
+        lambda_prior=0.0,
+        prior_loss_mode="mse_mu",
+        beta_motion_max=1.0e-4,
+        beta_contact_max=1.0e-4,
+        warmup_steps=100,
+        save_every=0,
+        save_steps=[],
+        output_dir=output_dir,
+        log_csv=output_dir / "train_log.csv",
+        validation_log=output_dir / "validation_log.csv",
+        device="cpu",
+        normalization_stats=None,
+    )
+    monkeypatch.setattr(
+        train_minimal,
+        "evaluate_deployment_metrics",
+        lambda **_kwargs: {
+            "deploy_loss": 0.3,
+            "action_l1": 0.2,
+            "force_l1": 1.0,
+        },
+    )
+
+    assert train(args) == 0
+
+    best = torch.load(output_dir / "checkpoint_best.pt", map_location="cpu")
+    assert best["best_metric"] == pytest.approx(0.3)
+    assert best["config"]["validation_deployment_mode"] == "zero"
+    assert best["config"]["steps_per_epoch"] == len(
+        _build_training_dataset(_dataset_args(train_episode, "action"))
+    )

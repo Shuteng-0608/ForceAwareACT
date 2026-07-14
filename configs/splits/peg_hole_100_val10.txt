@@ -1,0 +1,11 @@
+# split=validation seed=20260701 episode_count=10
+mujoco_data/peg_hole_100/20260701_132122_teleop_017/episode.hdf5
+mujoco_data/peg_hole_100/20260701_132431_teleop_024/episode.hdf5
+mujoco_data/peg_hole_100/20260701_132701_teleop_031/episode.hdf5
+mujoco_data/peg_hole_100/20260701_134249_teleop_065/episode.hdf5
+mujoco_data/peg_hole_100/20260701_134359_teleop_068/episode.hdf5
+mujoco_data/peg_hole_100/20260701_134911_teleop_079/episode.hdf5
+mujoco_data/peg_hole_100/20260701_135534_teleop_007/episode.hdf5
+mujoco_data/peg_hole_100/20260701_135903_teleop_014/episode.hdf5
+mujoco_data/peg_hole_100/20260701_141001_teleop_038/episode.hdf5
+mujoco_data/peg_hole_100/20260701_141427_teleop_047/episode.hdf5

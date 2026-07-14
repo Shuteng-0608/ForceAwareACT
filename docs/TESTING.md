@@ -51,6 +51,9 @@ Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Pl
 | `test_summarize_rollouts.py` | rollout summarizer | unit | policy-agnostic | summary preference, sorting, CSV columns | no huge directory performance test. |
 | `test_temporal_force_encoder.py` | force encoder | unit | force-aware | shapes, projected dim, long-window rejection, gradients | no filtering/frame tests. |
 | `test_training_losses.py` | dual-latent loss | unit/integration | `force_aware_act` | weighted equation, zero latent KL disabling, prior loss, warmup, one-batch backward | variant losses covered in policy-specific files. |
+| `test_training_control.py` | epoch validation/early stopping | unit/integration | all training variants | epoch math, deployment-mode selection, split/stat leakage checks, weighted validation, mode restoration, patience | no long-run convergence test. |
+| `test_train_contact_prior_stage2_control.py` | stage-2 training control | integration | `force_aware_act` | stage-1 action/force setting inference, validation, best/final checkpoint metadata | synthetic model and data only. |
+| `test_split_episode_list.py` | dataset splitting | unit | all dataset policies | deterministic disjoint episode-level splitting and duplicate rejection | no metadata-based stratification. |
 
 ## Verification Snapshot
 

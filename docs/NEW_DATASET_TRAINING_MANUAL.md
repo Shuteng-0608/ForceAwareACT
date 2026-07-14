@@ -299,6 +299,17 @@ outputs/new_dataset/test.txt   # 10
 outputs/new_dataset/split_seed.txt
 ```
 
+仓库也提供了等价的确定性 episode 级划分工具：
+
+```bash
+python scripts/split_episode_list.py \
+  --input "$ALL_LIST" \
+  --train-output "$EXP_ROOT/train.txt" \
+  --val-output "$EXP_ROOT/val.txt" \
+  --test-output "$EXP_ROOT/test.txt" \
+  --train-count 80 --val-count 10 --seed 20260701
+```
+
 注意事项：
 
 - 必须按完整 episode 划分，不能把同一 episode 的帧分到不同集合；
@@ -469,6 +480,20 @@ PYTHONPATH=src python scripts/train_minimal.py \
   --log-csv "$OUT/train_log.csv" \
   2>&1 | tee "$OUT/console.log"
 ```
+
+泛化评估路线应在上述命令中额外加入：
+
+```bash
+  --val-episode-list "$VAL_LIST" \
+  --max-epochs 100 \
+  --val-every-epochs 1 \
+  --early-stop-min-epochs 10 \
+  --early-stop-patience 8 \
+  --early-stop-min-delta 0.005 \
+  --early-stop-metric deploy_loss
+```
+
+此时 `--max-steps` 是安全上限，`--max-epochs` 是 epoch 上限，两者先到者结束训练。验证默认使用确定性部署路径；当前 Contact-CVAE 配置因 `lambda_prior > 0` 自动使用 prior。最佳验证模型写入 `checkpoint_best.pt`，最终状态仍写入 `checkpoint.pt`。全量训练路线不提供 validation list，而是使用前一阶段确定的最佳 epoch 数。
 
 完整参数说明：
 

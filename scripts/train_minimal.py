@@ -15,6 +15,7 @@ import hashlib
 import os
 import random
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Sequence
 
@@ -35,10 +36,18 @@ from force_aware_act.models import (  # noqa: E402
     ForceAwareACTPolicy,
 )
 from force_aware_act.training import (  # noqa: E402
+    EARLY_STOP_METRICS,
+    VALIDATION_DEPLOYMENT_MODES,
+    EarlyStoppingState,
     compute_force_aware_act_loss,
     compute_force_aware_contact_cvae_loss,
     compute_force_aware_motion_cvae_loss,
+    compute_steps_per_epoch,
+    evaluate_deployment_metrics,
     linear_warmup,
+    resolve_validation_deployment_mode,
+    validate_disjoint_episode_splits,
+    validate_normalization_training_episodes,
 )
 from force_aware_act.utils import resolve_episode_paths, validate_episode_paths  # noqa: E402
 
@@ -266,6 +275,13 @@ def build_checkpoint_payload(
     initial_model_sha256: Optional[str] = None,
     torch_num_threads: Optional[int] = None,
     torch_num_interop_threads: Optional[int] = None,
+    epoch: Optional[int] = None,
+    step_in_epoch: Optional[int] = None,
+    best_metric: Optional[float] = None,
+    best_epoch: Optional[int] = None,
+    best_step: Optional[int] = None,
+    epochs_without_improvement: int = 0,
+    stop_reason: Optional[str] = None,
 ) -> Dict[str, object]:
     if initial_model_sha256 is None:
         initial_model_sha256 = compute_initial_model_sha256(model)
@@ -284,6 +300,13 @@ def build_checkpoint_payload(
         "initial_model_sha256": initial_model_sha256,
         "torch_num_threads": torch_num_threads,
         "torch_num_interop_threads": torch_num_interop_threads,
+        "epoch": epoch,
+        "step_in_epoch": step_in_epoch,
+        "best_metric": best_metric,
+        "best_epoch": best_epoch,
+        "best_step": best_step,
+        "epochs_without_improvement": epochs_without_improvement,
+        "stop_reason": stop_reason,
     }
 
 
@@ -339,6 +362,18 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         "torch_num_threads": torch_num_threads,
         "torch_num_interop_threads": torch_num_interop_threads,
         "max_steps": args.max_steps,
+        "max_epochs": getattr(args, "max_epochs", None),
+        "steps_per_epoch": getattr(args, "steps_per_epoch", None),
+        "effective_max_steps": getattr(args, "effective_max_steps", args.max_steps),
+        "val_episode_paths": [str(path) for path in getattr(args, "val_episode_paths", ())],
+        "val_every_epochs": getattr(args, "val_every_epochs", 1),
+        "early_stop_patience": getattr(args, "early_stop_patience", 8),
+        "early_stop_min_epochs": getattr(args, "early_stop_min_epochs", 10),
+        "early_stop_min_delta": getattr(args, "early_stop_min_delta", 0.005),
+        "early_stop_metric": getattr(args, "early_stop_metric", "deploy_loss"),
+        "validation_deployment_mode": getattr(
+            args, "resolved_validation_deployment_mode", ""
+        ),
         "learning_rate": args.learning_rate,
         "lambda_force": args.lambda_force,
         "lambda_prior": args.lambda_prior,
@@ -353,6 +388,7 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
         ),
         "output_dir": str(args.output_dir),
         "log_csv": str(args.log_csv),
+        "validation_log": str(getattr(args, "validation_log", "")),
         "device": args.device,
         "normalization_stats_path": (
             str(args.normalization_stats) if args.normalization_stats is not None else None
@@ -373,9 +409,12 @@ def _config_from_args(args: argparse.Namespace) -> Dict[str, object]:
     }
 
 
-def _build_training_dataset(args: argparse.Namespace) -> ContactForceHDF5Dataset:
+def _build_training_dataset(
+    args: argparse.Namespace,
+    episode_paths: Optional[Sequence[Path]] = None,
+) -> ContactForceHDF5Dataset:
     return ContactForceHDF5Dataset(
-        args.episode_paths,
+        args.episode_paths if episode_paths is None else episode_paths,
         camera_names=tuple(args.camera_names),
         action_mode=args.action_mode,
         chunk_len=args.chunk_len,
@@ -401,10 +440,13 @@ def train(args: argparse.Namespace) -> int:
     )
     args.intermediate_checkpoint_steps = intermediate_checkpoint_steps
     intermediate_checkpoint_step_set = set(intermediate_checkpoint_steps)
-    config = _config_from_args(args)
     device = torch.device(args.device)
     normalization_stats = _load_normalization_stats(args.normalization_stats)
     _validate_normalization_action_mode(normalization_stats, args.action_mode)
+    val_episode_paths = list(getattr(args, "val_episode_paths", ()))
+    if val_episode_paths:
+        validate_disjoint_episode_splits(args.episode_paths, val_episode_paths)
+        validate_normalization_training_episodes(normalization_stats, args.episode_paths)
     dataset = _build_training_dataset(args)
     if len(dataset) == 0:
         print("error: dataset is empty for the requested settings", file=sys.stderr)
@@ -420,6 +462,42 @@ def train(args: argparse.Namespace) -> int:
         generator=dataloader_generator,
         worker_init_fn=seed_dataloader_worker,
     )
+    steps_per_epoch = compute_steps_per_epoch(len(dataset), args.batch_size)
+    max_epochs = getattr(args, "max_epochs", None)
+    effective_max_steps = args.max_steps
+    if max_epochs is not None:
+        effective_max_steps = min(effective_max_steps, max_epochs * steps_per_epoch)
+    args.steps_per_epoch = steps_per_epoch
+    args.effective_max_steps = effective_max_steps
+
+    val_dataloader = None
+    validation_deployment_mode = ""
+    early_stopping = None
+    if val_episode_paths:
+        val_dataset = _build_training_dataset(args, val_episode_paths)
+        if len(val_dataset) == 0:
+            print("error: validation dataset is empty for the requested settings", file=sys.stderr)
+            return 1
+        val_dataloader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            worker_init_fn=seed_dataloader_worker,
+        )
+        validation_deployment_mode = resolve_validation_deployment_mode(
+            policy_variant=policy_variant,
+            requested_mode=getattr(args, "validation_deployment_mode", "auto"),
+            train_latent_mode=args.train_latent_mode,
+            lambda_prior=args.lambda_prior,
+        )
+        early_stopping = EarlyStoppingState(
+            patience=getattr(args, "early_stop_patience", 8),
+            min_epochs=getattr(args, "early_stop_min_epochs", 10),
+            min_delta=getattr(args, "early_stop_min_delta", 0.005),
+        )
+    args.resolved_validation_deployment_mode = validation_deployment_mode
+    config = _config_from_args(args)
 
     model_kwargs = {
         "pretrained_resnet18": False,
@@ -450,6 +528,8 @@ def train(args: argparse.Namespace) -> int:
     model.train()
 
     print(f"dataset_length={len(dataset)}")
+    print(f"steps_per_epoch={steps_per_epoch}")
+    print(f"effective_max_steps={effective_max_steps}")
     print(f"training_seed={training_seed}")
     print(f"dataloader_seed={dataloader_seed}")
     print(f"deterministic_enabled={deterministic_enabled}")
@@ -465,18 +545,31 @@ def train(args: argparse.Namespace) -> int:
     print(f"checkpoint_path={args.output_dir / 'checkpoint.pt'}")
     print(f"intermediate_checkpoint_steps={intermediate_checkpoint_steps}")
     print(f"log_csv={args.log_csv}")
+    if val_dataloader is not None:
+        print(f"validation_dataset_length={len(val_dataloader.dataset)}")
+        print(f"validation_deployment_mode={validation_deployment_mode}")
+        print(f"early_stop_metric={getattr(args, 'early_stop_metric', 'deploy_loss')}")
+        print(f"validation_log={args.validation_log}")
     print(f"normalization_enabled={normalization_stats is not None}")
     if normalization_stats is not None:
         print(f"normalization_stats_path={args.normalization_stats}")
 
     batch_iter = _cycle_batches(dataloader)
     last_step = 0
+    last_epoch = 0
+    last_step_in_epoch = 0
+    stop_reason = "max_steps"
+    if max_epochs is not None and effective_max_steps == max_epochs * steps_per_epoch:
+        stop_reason = "max_epochs"
     args.log_csv.parent.mkdir(parents=True, exist_ok=True)
-    with args.log_csv.open("w", newline="") as log_file:
+    with ExitStack() as stack:
+        log_file = stack.enter_context(args.log_csv.open("w", newline=""))
         log_writer = csv.DictWriter(
             log_file,
             fieldnames=[
                 "step",
+                "epoch",
+                "batch_in_epoch",
                 "loss_total",
                 "loss_action",
                 "loss_force",
@@ -496,8 +589,34 @@ def train(args: argparse.Namespace) -> int:
             ],
         )
         log_writer.writeheader()
-        for step in range(1, args.max_steps + 1):
+        validation_writer = None
+        if val_dataloader is not None:
+            args.validation_log.parent.mkdir(parents=True, exist_ok=True)
+            validation_file = stack.enter_context(args.validation_log.open("w", newline=""))
+            validation_writer = csv.DictWriter(
+                validation_file,
+                fieldnames=[
+                    "epoch",
+                    "step",
+                    "deployment_mode",
+                    "deploy_loss",
+                    "action_l1",
+                    "force_l1",
+                    "monitored_metric",
+                    "improved",
+                    "epochs_without_improvement",
+                    "best_metric",
+                    "best_epoch",
+                    "best_step",
+                ],
+            )
+            validation_writer.writeheader()
+        for step in range(1, effective_max_steps + 1):
             last_step = step
+            epoch = (step - 1) // steps_per_epoch + 1
+            step_in_epoch = (step - 1) % steps_per_epoch + 1
+            last_epoch = epoch
+            last_step_in_epoch = step_in_epoch
             batch = _move_batch_to_device(next(batch_iter), device)
             if normalization_stats is not None:
                 batch = _normalize_batch(batch, normalization_stats)
@@ -597,6 +716,9 @@ def train(args: argparse.Namespace) -> int:
                     initial_model_sha256=initial_model_sha256,
                     torch_num_threads=torch_num_threads,
                     torch_num_interop_threads=torch_num_interop_threads,
+                    epoch=epoch,
+                    step_in_epoch=step_in_epoch,
+                    **(early_stopping.checkpoint_metadata() if early_stopping else {}),
                 )
                 save_checkpoint_atomic(checkpoint, checkpoint_path)
                 print(f"saved intermediate checkpoint: {checkpoint_path}", flush=True)
@@ -604,6 +726,8 @@ def train(args: argparse.Namespace) -> int:
             log_writer.writerow(
                 {
                     "step": step,
+                    "epoch": epoch,
+                    "batch_in_epoch": step_in_epoch,
                     "loss_total": losses["loss_total"].item(),
                     "loss_action": losses["loss_action"].item(),
                     "loss_force": losses["loss_force"].item(),
@@ -627,6 +751,7 @@ def train(args: argparse.Namespace) -> int:
 
             loss_parts = [
                 f"step={step}",
+                f"epoch={epoch}",
                 f"loss_total={losses['loss_total'].item():.6g}",
                 f"loss_action={losses['loss_action'].item():.6g}",
                 f"loss_force={losses['loss_force'].item():.6g}",
@@ -649,6 +774,89 @@ def train(args: argparse.Namespace) -> int:
                 flush=True,
             )
 
+            epoch_finished = step_in_epoch == steps_per_epoch
+            val_every_epochs = getattr(args, "val_every_epochs", 1)
+            should_validate = val_dataloader is not None and (
+                (epoch_finished and epoch % val_every_epochs == 0)
+                or step == effective_max_steps
+            )
+            if should_validate:
+                metrics = evaluate_deployment_metrics(
+                    model=model,
+                    dataloader=val_dataloader,
+                    device=device,
+                    policy_variant=policy_variant,
+                    deployment_mode=validation_deployment_mode,
+                    normalization_stats=normalization_stats,
+                    lambda_force=args.lambda_force,
+                )
+                monitored_name = getattr(args, "early_stop_metric", "deploy_loss")
+                monitored_metric = metrics[monitored_name]
+                improved, should_stop = early_stopping.update(
+                    monitored_metric,
+                    epoch=epoch,
+                    step=step,
+                )
+                validation_writer.writerow(
+                    {
+                        "epoch": epoch,
+                        "step": step,
+                        "deployment_mode": validation_deployment_mode,
+                        "deploy_loss": metrics["deploy_loss"],
+                        "action_l1": metrics["action_l1"],
+                        "force_l1": metrics["force_l1"],
+                        "monitored_metric": monitored_metric,
+                        "improved": improved,
+                        **early_stopping.checkpoint_metadata(),
+                    }
+                )
+                validation_file.flush()
+                print(
+                    " ".join(
+                        [
+                            f"validation epoch={epoch}",
+                            f"step={step}",
+                            f"mode={validation_deployment_mode}",
+                            f"deploy_loss={metrics['deploy_loss']:.6g}",
+                            f"action_l1={metrics['action_l1']:.6g}",
+                            f"force_l1={metrics['force_l1']:.6g}",
+                            f"improved={improved}",
+                            "epochs_without_improvement="
+                            f"{early_stopping.epochs_without_improvement}",
+                        ]
+                    ),
+                    flush=True,
+                )
+                if improved:
+                    best_path = args.output_dir / "checkpoint_best.pt"
+                    best_checkpoint = build_checkpoint_payload(
+                        model=model,
+                        optimizer=optimizer,
+                        config=config,
+                        step=step,
+                        training_seed=training_seed,
+                        dataloader_seed=dataloader_seed,
+                        deterministic_enabled=deterministic_enabled,
+                        initial_model_sha256=initial_model_sha256,
+                        torch_num_threads=torch_num_threads,
+                        torch_num_interop_threads=torch_num_interop_threads,
+                        epoch=epoch,
+                        step_in_epoch=step_in_epoch,
+                        stop_reason="best_validation_metric",
+                        **early_stopping.checkpoint_metadata(),
+                    )
+                    save_checkpoint_atomic(best_checkpoint, best_path)
+                    print(f"saved best checkpoint: {best_path}", flush=True)
+                if should_stop:
+                    stop_reason = "early_stopping"
+                    print(
+                        f"early stopping at epoch={epoch} step={step} "
+                        f"best_epoch={early_stopping.best_epoch} "
+                        f"best_step={early_stopping.best_step}",
+                        flush=True,
+                    )
+                    break
+
     checkpoint_path = args.output_dir / "checkpoint.pt"
     checkpoint = build_checkpoint_payload(
         model=model,
@@ -661,6 +869,10 @@ def train(args: argparse.Namespace) -> int:
         initial_model_sha256=initial_model_sha256,
         torch_num_threads=torch_num_threads,
         torch_num_interop_threads=torch_num_interop_threads,
+        epoch=last_epoch,
+        step_in_epoch=last_step_in_epoch,
+        stop_reason=stop_reason,
+        **(early_stopping.checkpoint_metadata() if early_stopping else {}),
     )
     save_checkpoint_atomic(checkpoint, checkpoint_path)
     print(f"saved final checkpoint: {checkpoint_path}")
@@ -671,6 +883,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Minimal ForceAwareACT training loop.")
     parser.add_argument("episode_paths", type=Path, nargs="*", help="One or more HDF5 episodes.")
     parser.add_argument("--episode-list", type=Path, default=None)
+    parser.add_argument(
+        "--val-episode-list",
+        type=Path,
+        default=None,
+        help="Episode-level validation split; enables validation and early stopping.",
+    )
     parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
     parser.add_argument(
         "--policy-variant",
@@ -718,6 +936,22 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Enable strict deterministic PyTorch, cuDNN, and cuBLAS execution.",
     )
     parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument(
+        "--max-epochs",
+        type=positive_int,
+        default=None,
+        help="Optional epoch cap; training stops at the first max-steps/max-epochs limit.",
+    )
+    parser.add_argument("--val-every-epochs", type=positive_int, default=1)
+    parser.add_argument("--early-stop-patience", type=positive_int, default=8)
+    parser.add_argument("--early-stop-min-epochs", type=int, default=10)
+    parser.add_argument("--early-stop-min-delta", type=float, default=0.005)
+    parser.add_argument("--early-stop-metric", choices=EARLY_STOP_METRICS, default="deploy_loss")
+    parser.add_argument(
+        "--validation-deployment-mode",
+        choices=VALIDATION_DEPLOYMENT_MODES,
+        default="auto",
+    )
     parser.add_argument("--learning-rate", type=float, default=1.0e-4)
     parser.add_argument("--lambda-force", type=float, default=0.1)
     parser.add_argument("--lambda-prior", type=float, default=0.0)
@@ -729,6 +963,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--save-steps", type=int, nargs="*", default=[])
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/minimal_train"))
     parser.add_argument("--log-csv", type=Path, default=Path("outputs/minimal_train/train_log.csv"))
+    parser.add_argument("--validation-log", type=Path, default=None)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--normalization-stats", type=Path, default=None)
     return parser.parse_args(argv)
@@ -742,9 +977,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args.episode_paths = resolve_episode_paths(
         args.episode_paths, args.episode_list, project_root=REPO_ROOT
     )
+    args.val_episode_paths = resolve_episode_paths(
+        [], args.val_episode_list, project_root=REPO_ROOT
+    )
     if args.normalization_stats is not None:
         args.normalization_stats = args.normalization_stats.expanduser()
     args.log_csv = args.log_csv.expanduser()
+    args.output_dir = args.output_dir.expanduser()
+    if args.validation_log is None:
+        args.validation_log = args.output_dir / "validation_log.csv"
+    else:
+        args.validation_log = args.validation_log.expanduser()
     if not args.episode_paths:
         print("error: provide episode paths or --episode-list", file=sys.stderr)
         return 2
@@ -767,6 +1010,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.max_steps <= 0:
         print("error: --max-steps must be positive", file=sys.stderr)
+        return 2
+    if args.early_stop_min_epochs < 0:
+        print("error: --early-stop-min-epochs must be non-negative", file=sys.stderr)
+        return 2
+    if not 0.0 <= args.early_stop_min_delta < 1.0:
+        print("error: --early-stop-min-delta must be in [0, 1)", file=sys.stderr)
         return 2
     try:
         resolve_checkpoint_steps(

@@ -6,20 +6,28 @@ This inventory covers every file directly under `scripts/`. Status terms are des
 
 | script | status | purpose | policies | inputs | outputs | modifies data | MuJoCo | GPU |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `train_minimal.py` | current | Main trainer for force-aware policies. | `force_aware_act`, `force_aware_motion_cvae`, `force_aware_contact_cvae` | HDF5 episodes or `--episode-list`, optional stats | `checkpoint.pt`, optional step checkpoints, CSV log | no | no | optional |
-| `train_act_baseline.py` | current | Train force-free ACT Motion-CVAE baseline. | `act_baseline` | HDF5 episodes/list, optional stats | `checkpoint.pt`, optional step checkpoints, CSV log | no | no | optional |
-| `train_contact_prior_stage2.py` | specialized | Stage-2 contact-prior distillation for dual-latent policy. | `force_aware_act` | Stage-1 checkpoint, HDF5/list, stats | checkpoint and CSV log | no | no | optional |
+| `train_minimal.py` | current | Main trainer with epoch accounting, deployment-path validation, and early stopping. | `force_aware_act`, `force_aware_motion_cvae`, `force_aware_contact_cvae` | train HDF5/list, optional validation list and stats | final/best/step checkpoints, train and validation CSV logs | no | no | optional |
+| `train_act_baseline.py` | current | Train force-free ACT Motion-CVAE baseline with validation and early stopping. | `act_baseline` | train HDF5/list, optional validation list and stats | final/best/step checkpoints, train and validation CSV logs | no | no | optional |
+| `train_contact_prior_stage2.py` | specialized | Stage-2 contact-prior distillation with optional deployment-path validation and early stopping. | `force_aware_act` | Stage-1 checkpoint, train HDF5/list, optional validation list, stats | final/best checkpoints and train/validation CSV logs | no | no | optional |
 
 Typical commands:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/train_minimal.py --episode-list configs/splits/peg_in_hole_100_train80.txt --policy-variant force_aware_contact_cvae --normalization-stats outputs/stats.pt --output-dir outputs/contact_cvae
-PYTHONPATH=src .venv/bin/python scripts/train_act_baseline.py --episode-list configs/splits/peg_in_hole_100_train80.txt --normalization-stats outputs/stats.pt --output-dir outputs/act_baseline
+PYTHONPATH=src python scripts/train_minimal.py --episode-list configs/splits/peg_hole_100_train80.txt --val-episode-list configs/splits/peg_hole_100_val10.txt --policy-variant force_aware_contact_cvae --lambda-prior 0.1 --normalization-stats outputs/stats.pt --max-steps 200000 --max-epochs 100 --output-dir outputs/contact_cvae
+PYTHONPATH=src python scripts/train_act_baseline.py --episode-list configs/splits/peg_hole_100_train80.txt --val-episode-list configs/splits/peg_hole_100_val10.txt --normalization-stats outputs/stats.pt --max-steps 200000 --max-epochs 100 --output-dir outputs/act_baseline
 ```
 
-Key flags: `--policy-variant`, `--action-mode`, `--train-latent-mode`, `--train-contact-latent-mode`, `--lambda-force`, `--lambda-prior`, `--prior-loss-mode`, `--beta-motion-max`, `--beta-contact-max`, `--save-every`, `--save-steps`, `--normalization-stats`.
+Key stopping flags: `--val-episode-list`, `--max-epochs`, `--val-every-epochs`, `--early-stop-patience`, `--early-stop-min-epochs`, `--early-stop-min-delta`, `--early-stop-metric`, and `--validation-deployment-mode`. `--max-steps` remains a safety cap and legacy step-only runs remain supported.
+
+With validation enabled, `checkpoint_best.pt` contains the lowest monitored deployment metric, while `checkpoint.pt` contains the final state and records `stop_reason`. Force-aware defaults monitor normalized `action_l1 + lambda_force * force_l1`; ACT baseline monitors normalized action L1. Conditional-prior models use deterministic prior validation only when prior training is enabled.
 
 Limitations: no resume CLI; `train_minimal.py` uses hard-coded small model settings; `train_contact_prior_stage2.py` is dual-latent-specific.
+
+## Dataset Splitting
+
+| script | status | purpose | inputs | outputs |
+| --- | --- | --- | --- | --- |
+| `split_episode_list.py` | current | Deterministically split a source list at episode granularity. | source episode list, counts, seed | train/validation/test lists with provenance headers |
 
 ## Normalization
 
@@ -30,7 +38,7 @@ Limitations: no resume CLI; `train_minimal.py` uses hard-coded small model setti
 Typical command:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/compute_normalization_stats.py --episode-list configs/splits/peg_in_hole_100_train80.txt --action-mode action --chunk-len 10 --force-window-len 20 --output outputs/stats.pt
+PYTHONPATH=src python scripts/compute_normalization_stats.py --episode-list configs/splits/peg_hole_100_train80.txt --action-mode action --chunk-len 10 --force-window-len 20 --output outputs/stats.pt
 ```
 
 ## Offline Evaluation
@@ -45,8 +53,8 @@ PYTHONPATH=src .venv/bin/python scripts/compute_normalization_stats.py --episode
 Typical commands:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/evaluate_contact_cvae_modes.py --episode-list configs/splits/peg_in_hole_100_val10.txt --checkpoint outputs/contact_cvae/checkpoint.pt --normalization-stats outputs/stats.pt --action-mode action --output-csv outputs/contact_cvae/eval.csv
-PYTHONPATH=src .venv/bin/python scripts/evaluate_motion_cvae_modes.py --episode-list configs/splits/peg_in_hole_100_val10.txt --checkpoint outputs/motion_cvae/checkpoint.pt --normalization-stats outputs/stats.pt --posterior-mode mean
+PYTHONPATH=src python scripts/evaluate_contact_cvae_modes.py --episode-list configs/splits/peg_hole_100_val10.txt --checkpoint outputs/contact_cvae/checkpoint_best.pt --normalization-stats outputs/stats.pt --action-mode action --output-csv outputs/contact_cvae/eval.csv
+PYTHONPATH=src python scripts/evaluate_motion_cvae_modes.py --episode-list configs/splits/peg_hole_100_val10.txt --checkpoint outputs/motion_cvae/checkpoint_best.pt --normalization-stats outputs/stats.pt --posterior-mode mean
 ```
 
 Limitations: posterior modes are oracle-only and non-deployable. `evaluate_motion_cvae_modes.py` uses `Path(episode_path).stem` for `episode_identifier`, so distinct files named `episode.hdf5` can collapse to `episode`. `evaluate_contact_cvae_modes.py` uses the parent episode directory name, with a stem fallback.

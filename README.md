@@ -42,7 +42,7 @@ Token order is policy-specific and documented in [docs/ARCHITECTURE.md](docs/ARC
 src/force_aware_act/
   data/        HDF5 episode dataset, timestamp alignment, normalization
   models/      encoders, posterior/prior modules, heads, policy classes
-  training/    variant-specific loss functions and KL/warmup utilities
+  training/    losses, epoch accounting, deployment validation, and early stopping
   utils/       episode-list path resolution helpers
 scripts/       training, normalization, evaluation, rollout, plotting, inspection
 tests/         unit, integration, CLI, evaluator, rollout, and audit tests
@@ -84,7 +84,7 @@ Compute stats on the training split and keep the same `--action-mode`, chunk/win
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/compute_normalization_stats.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
   --action-mode action \
   --chunk-len 10 \
   --force-window-len 20 \
@@ -102,10 +102,12 @@ ACT baseline:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/train_act_baseline.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
+  --val-episode-list configs/splits/peg_hole_100_val10.txt \
   --action-mode action \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
-  --max-steps 5000 \
+  --max-steps 200000 \
+  --max-epochs 100 \
   --save-every 1000 \
   --output-dir outputs/peg_hole_100/act_baseline_5k \
   --log-csv outputs/peg_hole_100/act_baseline_5k/train_log.csv
@@ -115,7 +117,7 @@ Dual-latent ForceAwareACT:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
   --policy-variant force_aware_act \
   --action-mode action \
   --train-latent-mode posterior \
@@ -132,7 +134,7 @@ Motion-only force-aware CVAE:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
   --policy-variant force_aware_motion_cvae \
   --action-mode action \
   --train-latent-mode posterior \
@@ -148,7 +150,7 @@ Contact-only force-aware CVAE:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
   --policy-variant force_aware_contact_cvae \
   --action-mode action \
   --train-latent-mode posterior \
@@ -162,7 +164,9 @@ PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
   --log-csv outputs/peg_hole_100/contact_cvae_5k/train_log.csv
 ```
 
-Training writes `checkpoint.pt`, `train_log.csv`, and optional `checkpoint_step_XXXXXXXX.pt` files. There is no resume CLI. Checkpoints are saved after optimizer steps and include `model_state_dict`, `optimizer_state_dict`, `config`, and `step`.
+Add `--val-episode-list` to enable epoch-level deterministic deployment validation and early stopping. The defaults validate every epoch, require at least 10 epochs, and stop after 8 validation checks without a 0.5% relative improvement. `--max-steps` and optional `--max-epochs` are simultaneous safety bounds; the first reached bound wins.
+
+Training writes `checkpoint.pt`, `train_log.csv`, and optional `checkpoint_step_XXXXXXXX.pt` files. Validation additionally writes `checkpoint_best.pt` and `validation_log.csv`. The final checkpoint records epoch position, best metric metadata, patience state, and `stop_reason`. Use `checkpoint_best.pt` for test/rollout selection. There is no resume CLI.
 
 ## Offline Latent-Mode Evaluation
 
@@ -172,7 +176,7 @@ Dual-latent evaluator:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/evaluate_inference_modes.py \
-  --episode-list configs/splits/peg_in_hole_100_val10.txt \
+  --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/force_aware_act_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --action-mode action \
@@ -183,7 +187,7 @@ Motion-CVAE evaluator:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/evaluate_motion_cvae_modes.py \
-  --episode-list configs/splits/peg_in_hole_100_val10.txt \
+  --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/motion_cvae_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --action-mode action \
@@ -195,7 +199,7 @@ Contact-CVAE evaluator:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/evaluate_contact_cvae_modes.py \
-  --episode-list configs/splits/peg_in_hole_100_val10.txt \
+  --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/contact_cvae_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --action-mode action \
@@ -342,6 +346,7 @@ See [docs/TESTING.md](docs/TESTING.md) for the complete test-file inventory.
 - [Scripts Reference](docs/SCRIPTS_REFERENCE.md)
 - [Testing](docs/TESTING.md)
 - [Experiment Workflows](docs/EXPERIMENT_WORKFLOWS.md)
+- [Five-Model Training and Early-Stopping Manual](docs/MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md)
 - [Repository Architecture Audit](docs/REPOSITORY_ARCHITECTURE_AUDIT.md)
 - Historical reports remain in `docs/` and are useful as experiment records, but the files above are the current canonical entry points.
 

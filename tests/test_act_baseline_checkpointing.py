@@ -156,3 +156,37 @@ def test_act_final_divisible_periodic_checkpoint_matches_checkpoint_pt(tmp_path)
     for name, tensor in periodic["model_state_dict"].items():
         assert torch.equal(tensor, final["model_state_dict"][name]), name
     assert periodic["optimizer_state_dict"].keys() == final["optimizer_state_dict"].keys()
+
+
+def test_act_validation_writes_best_checkpoint_and_epoch_metadata(tmp_path, monkeypatch):
+    train_episode = tmp_path / "train.hdf5"
+    val_episode = tmp_path / "val.hdf5"
+    output_dir = tmp_path / "act_validation"
+    _write_episode(train_episode)
+    _write_episode(val_episode)
+    args = _base_args(train_episode, output_dir, max_steps=1, save_every=0)
+    args.val_episode_paths = [val_episode]
+    args.validation_log = output_dir / "validation_log.csv"
+    args.max_epochs = None
+    args.val_every_epochs = 1
+    args.early_stop_patience = 2
+    args.early_stop_min_epochs = 1
+    args.early_stop_min_delta = 0.005
+    args.early_stop_metric = "deploy_loss"
+    monkeypatch.setattr(
+        train_act_baseline,
+        "evaluate_deployment_metrics",
+        lambda **_kwargs: {"deploy_loss": 0.25, "action_l1": 0.25},
+    )
+
+    assert train_act_baseline.train(args) == 0
+
+    best = torch.load(output_dir / "checkpoint_best.pt", map_location="cpu")
+    final = torch.load(output_dir / "checkpoint.pt", map_location="cpu")
+    assert best["best_metric"] == pytest.approx(0.25)
+    assert best["best_epoch"] == 1
+    assert best["stop_reason"] == "best_validation_metric"
+    assert final["epoch"] == 1
+    assert final["step_in_epoch"] == 1
+    assert final["stop_reason"] == "max_steps"
+    assert args.validation_log.is_file()

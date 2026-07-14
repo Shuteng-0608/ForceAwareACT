@@ -6,7 +6,7 @@ Commands use repository-relative placeholder paths. Replace `outputs/...`, split
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/inspect_episode_collection.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
   --chunk-len 10 \
   --force-window-len 20 \
   --force-window-duration 0.25 \
@@ -19,7 +19,7 @@ Use `inspect_real_hdf5.py` for one episode and `inspect_action_modes.py` when co
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/compute_normalization_stats.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
   --action-mode action \
   --chunk-len 10 \
   --force-window-len 20 \
@@ -36,7 +36,8 @@ Dual-latent:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
+  --val-episode-list configs/splits/peg_hole_100_val10.txt \
   --policy-variant force_aware_act \
   --action-mode action \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
@@ -54,7 +55,8 @@ Contact-only and motion-only pilots change only `--policy-variant` and prior set
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
-  --episode-list configs/splits/peg_in_hole_100_train80.txt \
+  --episode-list configs/splits/peg_hole_100_train80.txt \
+  --val-episode-list configs/splits/peg_hole_100_val10.txt \
   --policy-variant force_aware_contact_cvae \
   --action-mode action \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
@@ -67,7 +69,7 @@ PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
   --log-csv outputs/peg_hole_100/contact_cvae_20k/train_log.csv
 ```
 
-Intermediate checkpoints are named `checkpoint_step_XXXXXXXX.pt`; `checkpoint.pt` is always the final checkpoint. There is no resume CLI.
+Intermediate checkpoints are named `checkpoint_step_XXXXXXXX.pt`; `checkpoint.pt` is always the final state. With a validation list, `checkpoint_best.pt` is updated on monitored-metric improvement and should be used for candidate selection. There is no resume CLI.
 
 ## 5. Offline Zero/Prior/Posterior Comparison
 
@@ -82,7 +84,7 @@ Contact-only:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/evaluate_contact_cvae_modes.py \
-  --episode-list configs/splits/peg_in_hole_100_val10.txt \
+  --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/contact_cvae_20k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --action-mode action \
@@ -94,7 +96,7 @@ Motion-only:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/evaluate_motion_cvae_modes.py \
-  --episode-list configs/splits/peg_in_hole_100_val10.txt \
+  --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/motion_cvae_20k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --action-mode action \
@@ -106,7 +108,7 @@ Dual-latent:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/evaluate_inference_modes.py \
-  --episode-list configs/splits/peg_in_hole_100_val10.txt \
+  --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/force_aware_act_20k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --action-mode action \

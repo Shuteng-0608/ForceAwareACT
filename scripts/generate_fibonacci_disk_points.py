@@ -81,10 +81,14 @@ def plot_points(
     *,
     show_point_index: bool = True,
     dpi: int = 300,
+    ring_step_mm: float = 1.0,
+    title: str | None = None,
 ) -> None:
     """Plot the generated x/z point layout in millimetres."""
     if dpi <= 0:
         raise ValueError("dpi must be positive")
+    if ring_step_mm <= 0.0 or not math.isfinite(ring_step_mm):
+        raise ValueError("ring_step_mm must be positive and finite")
     os.environ.setdefault(
         "MPLCONFIGDIR",
         str(Path(tempfile.gettempdir()) / "force_aware_act_matplotlib"),
@@ -110,7 +114,8 @@ def plot_points(
             zorder=0,
         )
     )
-    for ring_radius in range(1, int(math.floor(radius_limit_mm)) + 1):
+    ring_radius = ring_step_mm
+    while ring_radius <= radius_limit_mm + 1.0e-12:
         ax.add_patch(
             Circle(
                 (0.0, 0.0),
@@ -122,6 +127,7 @@ def plot_points(
                 zorder=1,
             )
         )
+        ring_radius += ring_step_mm
     scatter = ax.scatter(
         x_mm,
         z_mm,
@@ -158,7 +164,8 @@ def plot_points(
     ax.set_xlabel("x offset (mm)")
     ax.set_ylabel("z offset (mm)")
     ax.set_title(
-        f"Fixed Fibonacci disk point set: N={len(points)}, R={radius_limit_mm:g} mm"
+        title
+        or f"Fixed Fibonacci disk point set: N={len(points)}, R={radius_limit_mm:g} mm"
     )
     ax.grid(False)
 
@@ -187,6 +194,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show point indices when --plot-output is provided. Default: true.",
     )
     parser.add_argument("--plot-dpi", type=int, default=300)
+    parser.add_argument("--plot-ring-step-mm", type=float, default=1.0)
     return parser
 
 
@@ -206,6 +214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.radius_mm,
             show_point_index=args.show_point_index,
             dpi=args.plot_dpi,
+            ring_step_mm=args.plot_ring_step_mm,
         )
     maximum_radius_mm = max(float(point["radius_mm"]) for point in points)
     print(f"task_points_csv={args.output}")

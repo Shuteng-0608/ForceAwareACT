@@ -7,6 +7,7 @@ import pytest
 
 from scripts.plot_hole_grid_results import aggregate_grid_results, main as plot_grid_main
 from scripts.generate_fibonacci_disk_points import fibonacci_disk_points, write_points_csv
+from scripts.generate_random_disk_points import random_disk_points
 from scripts.run_mujoco_hole_grid import (
     _build_rollout_command,
     generate_task_points,
@@ -240,6 +241,23 @@ def test_fibonacci_disk_points_are_deterministic_and_area_uniform():
     expected_squared_radii = 16.0 * (np.arange(100) + 0.5) / 100.0
     np.testing.assert_allclose(radii_mm**2, expected_squared_radii, atol=1e-12)
     assert radii_mm.max() < 4.0
+
+
+def test_random_disk_points_are_seeded_and_stay_inside_radius():
+    points = random_disk_points(100, 60.0, seed=20260714)
+
+    assert points == random_disk_points(100, 60.0, seed=20260714)
+    assert points != random_disk_points(100, 60.0, seed=20260715)
+    assert len(points) == 100
+    radii_mm = np.asarray(
+        [
+            np.hypot(point["hole_offset_x"], point["hole_offset_z"]) * 1000.0
+            for point in points
+        ]
+    )
+    assert bool((radii_mm <= 60.0).all())
+    assert bool((radii_mm >= 0.0).all())
+    assert {point["sampling_seed"] for point in points} == {20260714}
 
 
 def test_fixed_task_points_csv_round_trips_in_metres(tmp_path):
