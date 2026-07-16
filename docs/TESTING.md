@@ -1,22 +1,22 @@
 # Testing
 
-Verification snapshot on 2026-07-07: the audited `tests/` tree contained 27 test files, and the verification run collected 209 passing tests.
+Verification snapshot on 2026-07-16: the audited `tests/` tree contains 36 test files. The full run completed with 321 passing tests and one CUDA-only skip.
 
 ## Commands
 
 Full suite:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest -q
+PYTHONPATH=src python -m pytest -q
 ```
 
 Focused policy tests:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_force_aware_act_policy.py
-PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_force_aware_motion_cvae_policy.py
-PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_force_aware_contact_cvae_policy.py
-PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_act_policy_baseline.py
+PYTHONPATH=src python -m pytest -q tests/test_force_aware_act_policy.py
+PYTHONPATH=src python -m pytest -q tests/test_force_aware_motion_cvae_policy.py
+PYTHONPATH=src python -m pytest -q tests/test_force_aware_contact_cvae_policy.py
+PYTHONPATH=src python -m pytest -q tests/test_act_policy_baseline.py
 ```
 
 Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Plot tests use `pandas`/matplotlib paths. MuJoCo helper tests use mocked or minimal geometry paths where possible, but real rollout execution requires `mujoco`.
@@ -35,6 +35,7 @@ Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Pl
 | `test_contact_prior_encoder.py` | contact prior | unit | contact-capable | shapes, visual summary, gradients, deterministic mu/logvar | no calibration metric. |
 | `test_episode_paths.py` | path helpers | unit | all scripts | absolute, project-relative, list-relative resolution | no symlink policy tests. |
 | `test_evaluate_act_baseline_modes.py` | ACT evaluator | evaluator/CLI | `act_baseline` | zero/posterior modes, metrics, checkpoint marker, CSV smoke | no legacy rollout behavior. |
+| `test_evaluate_dataset_quality.py` | collection quality gate | unit/CLI | dataset | accepted/rejected episodes, threshold warnings, CSV/JSON output | synthetic recordings; thresholds still need dataset-specific review. |
 | `test_evaluate_inference_modes.py` | dual-latent evaluator | evaluator | `force_aware_act` | ranked best/worst case sorting | limited end-to-end coverage here. |
 | `test_evaluate_motion_cvae_modes.py` | motion evaluator | evaluator/CLI | `force_aware_motion_cvae` | zero/posterior modes, metrics, strict checkpoint dispatch, CSV smoke | no rollout metric correlation. |
 | `test_force_aware_act_policy.py` | dual-latent model | unit/integration | `force_aware_act` | training/inference shapes, zero/prior/posterior validation, force head latent use, gradients | no real image backbone training. |
@@ -42,17 +43,23 @@ Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Pl
 | `test_force_aware_motion_cvae_policy.py` | motion-only model | unit | `force_aware_motion_cvae` | no contact modules, zero deploy, validation, force head zero aux, loss | no conditional prior by design. |
 | `test_force_vision_cross_attention.py` | force-vision fusion | unit | force-aware | shapes, attention weights, projection, validation, gradients | no visual quality tests. |
 | `test_hole_offset_and_grid.py` | hole offsets/grid/plots | rollout utility | rollout-supported | offset transforms, schema keys, dry-run manifest, LHS determinism, plots | no real subprocess rollout. |
+| `test_monitor_xz_rollout_suite.py` | rollout monitor | orchestration utility | configured suite | plan/manual reconstruction, progress/completion rendering, process matching | synthetic output trees. |
 | `test_mujoco_rollout_action_modes.py` | rollout action/safety helpers | rollout utility | rollout-supported | absolute/delta target interpretation, stats action-mode validation, success condition/schema | no full physics stepping. |
 | `test_normalization.py` | normalization | unit | all dataset policies | stats shapes, normalize/denormalize, std floor | no serialized metadata check here. |
+| `test_plot_hole_target_map.py` | target map | visualization | policy-agnostic | column resolution, safe-force override, limits, report/plot output | synthetic grid summaries. |
 | `test_plot_rollout_sensor_analysis.py` | rollout sensor plots | visualization | policy-agnostic | marker extraction, success reconstruction, optional predicted-force columns, compare output | synthetic logs only. |
 | `test_posterior_encoders.py` | posterior modules | unit | motion/contact latent policies | shapes, long-chunk rejection, KL, gradients | no latent disentanglement tests. |
 | `test_prediction_heads.py` | heads | unit | force-aware and ACT | action/force head shapes, latent sensitivity, validation, gradients | no loss integration beyond unit. |
 | `test_resnet18_vision_encoder.py` | vision encoder | unit | all visual policies | default/projection shapes, freeze behavior | no pretrained download test. |
+| `test_run_xz_multiseed_rollout_suite.py` | multi-seed suite | orchestration/statistics | configured suite | separated seed Cartesian product, plan/paths, completion, aggregation, Wilson intervals | no real MuJoCo subprocesses. |
+| `test_run_xz_rollout_suite.py` | x/z suite | orchestration | configured suite | model selection, fixed/generated point commands, independent seeds, output naming/map commands | hard-coded artifacts are not executed. |
 | `test_summarize_rollouts.py` | rollout summarizer | unit | policy-agnostic | summary preference, sorting, CSV columns | no huge directory performance test. |
 | `test_temporal_force_encoder.py` | force encoder | unit | force-aware | shapes, projected dim, long-window rejection, gradients | no filtering/frame tests. |
 | `test_training_losses.py` | dual-latent loss | unit/integration | `force_aware_act` | weighted equation, zero latent KL disabling, prior loss, warmup, one-batch backward | variant losses covered in policy-specific files. |
 | `test_training_control.py` | epoch validation/early stopping | unit/integration | all training variants | epoch math, deployment-mode selection, split/stat leakage checks, weighted validation, mode restoration, patience | no long-run convergence test. |
 | `test_train_contact_prior_stage2_control.py` | stage-2 training control | integration | `force_aware_act` | stage-1 action/force setting inference, validation, best/final checkpoint metadata | synthetic model and data only. |
+| `test_train_minimal_reproducibility.py` | main trainer reproducibility | unit/integration | force-aware trainers | RNG configuration, worker seed, model fingerprint, checkpoint metadata | no multi-GPU determinism proof. |
+| `test_train_minimal_thread_control.py` | CPU thread control | unit/CLI | main trainer | parser validation, resolved intra/inter-op settings and checkpoint metadata | process-global inter-op behavior limits repeated reconfiguration. |
 | `test_split_episode_list.py` | dataset splitting | unit | all dataset policies | deterministic disjoint episode-level splitting and duplicate rejection | no metadata-based stratification. |
 
 ## Verification Snapshot
@@ -60,10 +67,10 @@ Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Pl
 The full suite was run after documentation edits with:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest -q
+PYTHONPATH=src python -m pytest -q
 ```
 
-Verification snapshot on 2026-07-07: `209 passed, 14 warnings in 29.82s`. The warnings came from matplotlib/pyparsing deprecations in `tests/test_hole_offset_and_grid.py::test_heatmap_outputs_are_created`.
+Verification snapshot on 2026-07-16: `321 passed, 1 skipped in 21.16s`. The skipped test is the CUDA-device rollout helper check when `torch.cuda.is_available()` is false. Syntax compilation and every script's `--help` path (except the non-CLI registry updater and compatibility module) also completed successfully with the active Python 3.10.20 environment.
 
 ## Testing Conventions
 

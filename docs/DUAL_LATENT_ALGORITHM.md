@@ -1,4 +1,12 @@
-# ForceAwareACT Algorithm Framework
+# ForceAwareACT Dual-Latent Algorithm Reference
+
+Scope note (2026-07-16): this document explains the dual-latent
+`force_aware_act` algorithm in depth. It does not replace the current four-policy inventory, five-config
+training manual, or fixed-point/multi-seed rollout manual. Use
+[`ARCHITECTURE.md`](ARCHITECTURE.md),
+[`MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md`](MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md),
+and [`ROLLOUT_EXPERIMENT_MANUAL.md`](ROLLOUT_EXPERIMENT_MANUAL.md) for current
+operational behavior.
 
 This document audits the current ForceAwareACT implementation as code, not as a proposed redesign. It summarizes the dataset contract, normalization, model graph, losses, evaluation modes, and MuJoCo rollout semantics used by the repository.
 
@@ -434,7 +442,7 @@ The policy and low-level control frequencies do not need to match. The policy ca
 Compute normalization stats for absolute executable commands:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/compute_normalization_stats.py \
+PYTHONPATH=src python scripts/compute_normalization_stats.py \
   --episode-list outputs/peg_hole_playback_test/all10.txt \
   --action-mode action \
   --chunk-len 10 \
@@ -446,7 +454,7 @@ PYTHONPATH=src .venv/bin/python scripts/compute_normalization_stats.py \
 Train the zero-latent action baseline:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
+PYTHONPATH=src python scripts/train_minimal.py \
   --episode-list outputs/peg_hole_playback_test/all10.txt \
   --action-mode action \
   --train-latent-mode zero \
@@ -463,7 +471,7 @@ PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
 Evaluate inference modes:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/evaluate_inference_modes.py \
+PYTHONPATH=src python scripts/evaluate_inference_modes.py \
   --episode-list outputs/peg_hole_playback_test/all10.txt \
   --checkpoint outputs/peg_hole_playback_test/overfit_action_trainzero_all10_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_playback_test/normalization_stats_action_all10.pt \
@@ -479,7 +487,7 @@ PYTHONPATH=src .venv/bin/python scripts/evaluate_inference_modes.py \
 Roll out the zero-latent action baseline:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py \
+PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
   --checkpoint outputs/peg_hole_playback_test/overfit_action_trainzero_all10_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_playback_test/normalization_stats_action_all10.pt \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
@@ -500,7 +508,7 @@ PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py \
 Inspect action-mode labels:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/inspect_action_modes.py \
+PYTHONPATH=src python scripts/inspect_action_modes.py \
   --data-dir mujoco_data/peg_hole_playback_test \
   --chunk-len 10 \
   --force-window-len 20
@@ -509,7 +517,7 @@ PYTHONPATH=src .venv/bin/python scripts/inspect_action_modes.py \
 Analyze rollout/contact logs:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/analyze_contact_stage.py \
+PYTHONPATH=src python scripts/analyze_contact_stage.py \
   outputs/peg_hole_playback_test/rollout_action_trainzero_mid/rollout_log.csv \
   --output-csv outputs/peg_hole_playback_test/rollout_action_trainzero_mid/contact_summary.csv
 ```

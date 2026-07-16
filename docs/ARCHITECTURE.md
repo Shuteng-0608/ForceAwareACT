@@ -1,6 +1,6 @@
 # ForceAwareACT Architecture
 
-This document is the current architecture reference for the repository. Source code, not historical reports, is the source of truth.
+This document is the current architecture reference for the repository, audited against source on 2026-07-16. Source code and parser help, not historical reports, are the source of truth.
 
 ## End-to-End Flow
 
@@ -65,6 +65,8 @@ Images are scaled to `[0,1]`, resized with bilinear interpolation to `image_size
 `scripts/compute_normalization_stats.py` saves a `torch.save` dictionary with tensor keys `qpos_mean`, `qpos_std`, `action_mean`, `action_std`, `force_mean`, `force_std`, plus metadata for action mode, chunk length, force window settings, cameras, image size, ImageNet flag, episode paths, and episode list.
 
 Training/evaluation/rollout validate `action_mode` metadata when present. Rollout permits legacy stats without `action_mode` only for `action_mode='joint_pos'`.
+
+The checks are not otherwise uniform: trainers do not automatically reject every mismatch in chunk length, force-window duration, cameras, image size, or ImageNet preprocessing. `train_minimal.py` and the other trainers reject stats episode-provenance mismatch only when validation is enabled. These settings therefore remain an explicit experiment-level invariant.
 
 ## Shared Model Building Blocks
 
@@ -190,6 +192,8 @@ config
 step
 ```
 
+Current `train_minimal.py` payloads additionally record epoch position, best-metric state, stop reason, training/DataLoader seeds, deterministic mode, resolved PyTorch thread counts, and an initial-model SHA-256. The ACT baseline and stage-2 trainers reuse the common envelope but do not expose the same seed/thread CLI controls.
+
 `config.policy_variant` dispatches model construction. Missing or non-dict config generally falls back to `force_aware_act` in rollout and legacy dual-latent paths. Motion/contact evaluators can accept raw state dictionaries, but envelope checkpoints are checked for the matching policy variant and loaded strictly. ACT rollout supports legacy zero-latent baseline checkpoints through `LegacyZeroLatentACTPolicyBaseline`.
 
 Duplicated construction exists in `train_minimal.py`, `train_act_baseline.py`, `evaluate_*_modes.py`, `run_policy_inference_smoke.py`, `debug_inference_modes.py`, and `run_mujoco_policy_rollout.py`.
@@ -215,6 +219,8 @@ Duplicated construction exists in `train_minimal.py`, `train_act_baseline.py`, `
 
 Task success is held distance/lateral/force threshold satisfaction. Safe success is computed by grid summaries as task success with max force below the configured success force threshold. Hard force stop is immediate termination on `force_norm > force_stop_threshold`.
 
+`scripts/run_mujoco_hole_grid.py` supports generated `grid`, `random`, and `latin_hypercube` points plus exact replay from `--sampling-mode file --task-points-csv ...`. Generated point coordinates use `point_set_seed`; rollout `i` uses `rollout_seed_base + i - 1`. The x/z suite forwards fixed point files, while the multi-seed suite can form a Cartesian product of point-set and rollout seed bases and isolate each configuration in its own output directory.
+
 ## Extension Guide
 
 To add another policy variant, update these locations consistently:
@@ -235,4 +241,7 @@ To add another policy variant, update these locations consistently:
 - Rollout CLI contains contact-latent flags even for policies that ignore them.
 - Force physical conventions are implicit and unverified.
 - `evaluate_motion_cvae_modes.py` uses `Path(episode_path).stem` for `episode_identifier`, so distinct files named `episode.hdf5` can collapse to `episode`. `evaluate_contact_cvae_modes.py` uses the parent episode directory name, with a stem fallback.
-- Grid runner cannot replay an explicit saved task-point CSV.
+- Not every consumer enforces all stats/checkpoint preprocessing metadata.
+- Training seed/thread controls are currently asymmetric across trainers.
+- `evaluate_dataset_quality.py` targets the current command-labelled recording schema and is stricter than the general dataset reader (for example, it requires `*_episode` timestamps and `actions/joint_pos_command`).
+- `run_xz_rollout_suite.py`, `monitor_dataset_scaling_rollout.py`, and `analyze_rollout_safety_threshold.py` are experiment-specific and contain assumed model names/directory layouts.

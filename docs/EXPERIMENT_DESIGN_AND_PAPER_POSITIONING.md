@@ -1,6 +1,6 @@
 # Experiment Design And Paper Positioning
 
-This document summarizes how to position ForceAwareACT in a paper and how to design clean experiments against an ACT-style baseline. It builds on `docs/ACT_ALIGNMENT_AUDIT.md`, `docs/ALGORITHM_FRAMEWORK_README.md`, `docs/VISION_BACKBONE_AUDIT.md`, `docs/COMMAND_ACTION_TRAINING_PIPELINE.md`, and `docs/COMMAND_ACTION_ROLLOUT.md`.
+This document summarizes how to position ForceAwareACT in a paper and how to design clean experiments against an ACT-style baseline. It builds on `docs/ACT_ALIGNMENT_AUDIT.md`, `docs/DUAL_LATENT_ALGORITHM.md`, `docs/VISION_BACKBONE_AUDIT.md`, and `docs/ACTION_SEMANTICS.md`.
 
 ## Core Experiment Philosophy
 

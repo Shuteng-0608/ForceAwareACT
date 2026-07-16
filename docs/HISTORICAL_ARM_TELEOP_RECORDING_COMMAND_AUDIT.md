@@ -1,4 +1,10 @@
-# Current arm_teleop HDF5 Recording and Command Audit
+# Historical arm_teleop Recording and Command Audit
+
+> Historical recorder snapshot: this audit describes an older fixed-start
+> compact recording path that did not store executable command labels. The
+> current main datasets contain root `action` and
+> `actions/joint_pos_command`. Use [`ACTION_SEMANTICS.md`](ACTION_SEMANTICS.md)
+> and the inspected dataset itself for the current training contract.
 
 ## Executive Conclusion
 

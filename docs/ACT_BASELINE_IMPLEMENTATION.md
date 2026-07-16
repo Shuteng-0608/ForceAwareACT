@@ -84,7 +84,7 @@ kl_motion = mean_batch(sum_latent KL[N(mu, sigma), N(0, I)])
 Example smoke command:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/train_act_baseline.py \
+PYTHONPATH=src python scripts/train_act_baseline.py \
   test_data/episode.hdf5 \
   --device cpu \
   --max-steps 2 \
@@ -157,7 +157,7 @@ Legacy `act_baseline` checkpoints without `act_baseline_version=motion_cvae_v1` 
 Use the zero/posterior evaluator:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/evaluate_act_baseline_modes.py \
+PYTHONPATH=src python scripts/evaluate_act_baseline_modes.py \
   --episode-list episodes.txt \
   --checkpoint outputs/act_baseline/checkpoints/latest.pt \
   --normalization-stats outputs/act_baseline/normalization_stats.pt \

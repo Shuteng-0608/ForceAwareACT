@@ -92,7 +92,7 @@ imitation, action selection, temporal aggregation, or distribution shift.
 ## Example
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/replay_hdf5_joint_trajectory_mujoco.py \
+PYTHONPATH=src python scripts/replay_hdf5_joint_trajectory_mujoco.py \
   --data-dir mujoco_data/peg_hole_fixed_insertion \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
   --output-dir outputs/peg_fixed_insert_100/dynamic_replay_audit \
@@ -105,7 +105,7 @@ PYTHONPATH=src .venv/bin/python scripts/replay_hdf5_joint_trajectory_mujoco.py \
 Executable command playback on the new schema:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/replay_hdf5_joint_trajectory_mujoco.py \
+PYTHONPATH=src python scripts/replay_hdf5_joint_trajectory_mujoco.py \
   --data-dir mujoco_data/peg_hole_playback_test \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
   --output-dir outputs/peg_hole_playback_test/dynamic_replay_action \
@@ -117,7 +117,7 @@ PYTHONPATH=src .venv/bin/python scripts/replay_hdf5_joint_trajectory_mujoco.py \
 Controller-faithful command playback with a velocity limit:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/replay_hdf5_joint_trajectory_mujoco.py \
+PYTHONPATH=src python scripts/replay_hdf5_joint_trajectory_mujoco.py \
   --data-dir mujoco_data/peg_hole_playback_test \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
   --output-dir outputs/peg_hole_playback_test/dynamic_replay_action_vlim_1p2 \
@@ -130,7 +130,7 @@ PYTHONPATH=src .venv/bin/python scripts/replay_hdf5_joint_trajectory_mujoco.py \
 For a single episode with videos:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/replay_hdf5_joint_trajectory_mujoco.py \
+PYTHONPATH=src python scripts/replay_hdf5_joint_trajectory_mujoco.py \
   --episode-path mujoco_data/peg_hole_fixed_insertion/<episode_dir>/episode.hdf5 \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
   --output-dir outputs/peg_fixed_insert_100/dynamic_replay_single \

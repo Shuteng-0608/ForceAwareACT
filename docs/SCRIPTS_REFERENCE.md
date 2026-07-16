@@ -1,6 +1,6 @@
 # Scripts Reference
 
-This inventory covers every file directly under `scripts/`. Status terms are descriptive: `current`, `specialized`, `diagnostic`, `compatibility`, `experiment-specific`, or `historical`.
+This inventory covers every file directly under `scripts/` as audited on 2026-07-16. Status terms are descriptive: `current`, `specialized`, `diagnostic`, `compatibility`, or `experiment-specific`. Run commands from the repository root in an activated environment.
 
 ## Training
 
@@ -21,7 +21,7 @@ Key stopping flags: `--val-episode-list`, `--max-epochs`, `--val-every-epochs`, 
 
 With validation enabled, `checkpoint_best.pt` contains the lowest monitored deployment metric, while `checkpoint.pt` contains the final state and records `stop_reason`. Force-aware defaults monitor normalized `action_l1 + lambda_force * force_l1`; ACT baseline monitors normalized action L1. Conditional-prior models use deterministic prior validation only when prior training is enabled.
 
-Limitations: no resume CLI; `train_minimal.py` uses hard-coded small model settings; `train_contact_prior_stage2.py` is dual-latent-specific.
+Limitations: no resume CLI; `train_minimal.py` uses hard-coded small model settings; `train_contact_prior_stage2.py` is dual-latent-specific. Reproducible seed/deterministic/thread flags are implemented only by `train_minimal.py`; the ACT baseline and stage-2 trainers do not currently expose them.
 
 ## Dataset Splitting
 
@@ -63,19 +63,23 @@ Limitations: posterior modes are oracle-only and non-deployable. `evaluate_motio
 
 | script | status | purpose | policies | inputs | outputs | modifies data | MuJoCo | GPU |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `run_mujoco_policy_rollout.py` | current | Single guarded MuJoCo rollout. | all checkpoint-dispatched policies | checkpoint, stats, XML | rollout CSV, summary JSON, snapshots/videos | no source/data change | yes | no |
-| `run_mujoco_hole_grid.py` | current | Batch grid/random/LHS hole-offset rollout wrapper. `--point-set-seed` controls point generation and `--rollout-seed-base` independently controls per-point rollout seeds; legacy `--base-seed` remains supported. | all rollout-supported policies | checkpoint, stats, XML | manifest, task CSV, grid summary, random summary | writes outputs | yes | no |
-| `run_xz_rollout_suite.py` | experiment-specific | Sequential x/z LHS suite for Contact-CVAE zero/prior, Motion-CVAE, DualZero, and ACT baseline with mid/temporal selection. Defaults to 50 points, ±6 mm, and 900 steps; point-set and rollout seeds can be controlled independently. | configured local checkpoints, stats, XML | per-experiment grid outputs and safe-success target maps | writes outputs | yes | no |
-| `run_xz_multiseed_rollout_suite.py` | experiment-specific | Run `run_xz_rollout_suite.py` across independent point-set and rollout-seed dimensions, then aggregate task/safe-success rates, Wilson intervals, and run-level variation. `--point-set-seeds` and `--rollout-seed-bases` form a Cartesian product under isolated `pointset_<seed>/rollout_<seed>/` directories. Legacy `--seeds` remains supported. Defaults to `mid`; complete configurations are skipped and partial configurations resume through `--skip-existing`. | explicit seed lists, configured local checkpoints, stats, XML | seed directories, `per_seed_summary.csv`, `aggregate_summary.csv` | writes outputs | yes | no |
-| `monitor_xz_rollout_suite.py` | diagnostic | Read-only progress monitor for an x/z multi-seed suite. Reports the active model, point-set seed, rollout-seed base, point index, completed configurations, partial work, and queued configurations. Uses `suite_plan.json` automatically or accepts the protocol flags manually for already-running legacy jobs. | suite output directory and optional protocol flags | terminal progress report | no | no | no |
+| `run_mujoco_policy_rollout.py` | current | Single guarded MuJoCo rollout. | all checkpoint-dispatched policies | checkpoint, stats, XML | rollout CSV, summary JSON, snapshots/videos | no source/data change | yes | optional |
+| `run_mujoco_hole_grid.py` | current | Batch grid/random/LHS/fixed-file hole-offset rollout wrapper. `--point-set-seed` controls generated points and `--rollout-seed-base` independently controls per-point rollout seeds; `--task-points-csv` is the exact point source when supplied. | all rollout-supported policies | checkpoint, stats, XML, optional point CSV | manifest, task CSV, grid summary, random summary | writes outputs | yes | optional |
+| `run_xz_rollout_suite.py` | experiment-specific | Sequential x/z suite for Contact-CVAE zero/prior, Motion-CVAE, DualZero, and ACT baseline with mid/temporal selection. Defaults to 50 LHS points, ±6 mm, and 900 steps; it can instead forward a fixed point CSV. | five configured experiment variants | local checkpoints, stats, XML, optional point CSV | per-experiment grid outputs and safe-success target maps | writes outputs | yes | optional |
+| `run_xz_multiseed_rollout_suite.py` | experiment-specific | Run `run_xz_rollout_suite.py` across independent point-set and rollout-seed dimensions, then aggregate task/safe-success rates, Wilson intervals, and run-level variation. `--point-set-seeds` and `--rollout-seed-bases` form a Cartesian product under isolated `pointset_<seed>/rollout_<seed>/` directories. Legacy `--seeds` remains supported. Defaults to `mid`; complete configurations are skipped and partial configurations resume through `--skip-existing`. | configured suite variants | seed lists, local checkpoints, stats, XML | seed directories, plan, per-seed and aggregate CSVs | writes outputs | yes | optional |
+| `monitor_xz_rollout_suite.py` | diagnostic | Read-only progress monitor for an x/z multi-seed suite. Reports the active model, point-set seed, rollout-seed base, point index, completed configurations, partial work, and queued configurations. Uses `suite_plan.json` automatically or accepts the protocol flags manually for already-running legacy jobs. | n/a | suite output directory and optional protocol flags | terminal progress report | no | no | no |
+| `monitor_dataset_scaling_rollout.py` | experiment-specific | Read-only monitor for the hard-coded dataset-scaling `mix50/mix100/mix150/mix203` rollout layout; can watch and report GPU/process state. | fixed scaling variants | scaling experiment root and expected point count | terminal progress report | no | no | no |
 | `summarize_rollouts.py` | current | Aggregate rollout directories. | policy-agnostic | rollout dirs | summary CSV/table | writes summary | no | no |
 | `plot_hole_grid_results.py` | current | Plot grid/LHS result heatmaps and scatters. | policy-agnostic | `grid_summary.csv` | PNG/PDF/etc and result tables | writes plots | no | no |
+| `generate_fibonacci_disk_points.py` | current | Generate deterministic equal-area Fibonacci disk points in metres, with an optional diagnostic plot. | n/a | point count, radius, rotation | fixed point CSV, optional PNG | writes config/plot | no | no |
+| `generate_random_disk_points.py` | current | Generate seeded area-uniform random disk points in metres with atomic CSV writing. | n/a | point count, radius, seed | fixed point CSV | writes config | no | no |
 
 Typical commands:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --action-mode action --action-select-mode mid --output-dir outputs/rollout --execute-actions
-PYTHONPATH=src .venv/bin/python scripts/run_mujoco_hole_grid.py --sampling-mode latin_hypercube --num-points 50 --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --output-root outputs/lhs --continue-on-error
+PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --action-mode action --action-select-mode mid --output-dir outputs/rollout --execute-actions
+PYTHONPATH=src python scripts/run_mujoco_hole_grid.py --sampling-mode latin_hypercube --num-points 50 --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --output-root outputs/lhs --continue-on-error
+PYTHONPATH=src python scripts/run_mujoco_hole_grid.py --sampling-mode file --task-points-csv configs/experiments/fibonacci_disk_100_r4mm.csv --checkpoint outputs/model/checkpoint.pt --normalization-stats outputs/stats.pt --model-xml ../arm_teleop/model/pangu_all_right.xml --output-root outputs/fixed_points --continue-on-error
 python scripts/run_xz_rollout_suite.py --num-points 50 --offset-mm 6 --max-rollout-steps 900
 python scripts/run_xz_multiseed_rollout_suite.py --seeds 20260702 20260703 20260704 20260705 20260706 --offset-mm 4 --output-base outputs/peg_hole_100/new_goal_multiseed
 python scripts/run_xz_multiseed_rollout_suite.py --point-set-seeds 20260702 20260703 --rollout-seed-bases 31000 32000 --action-select-modes mid --offset-mm 4 --output-base outputs/peg_hole_100/separated_seed_rollouts
@@ -101,6 +105,7 @@ Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-deca
 | `inspect_inference_case_predictions.py` | diagnostic | Inspect one saved inference case/prediction. | episode, state index, checkpoint, stats | output directory artifacts | contact-mode debugging. |
 | `inspect_worst_case_episode.py` | diagnostic | Inspect signals around one HDF5 state index. | episode, state index | CSV/frames | read-only on HDF5. |
 | `plot_hole_target_map.py` | current | Plot measured hole-position rollout outcomes as a target-style spatial map. | `grid_summary.csv` with `point_index`, `hole_offset_x`, `hole_offset_z`, `success`, optional `safe_success`, and `max_force` when overriding the threshold | PNG/PDF/SVG target maps | safe success is green, task success that is not safe is amber, and failure is red; `--safe-force-threshold N` recomputes safe success as `success AND max_force < N` without modifying the CSV. |
+| `analyze_rollout_safety_threshold.py` | experiment-specific | Recompute safety labels and paired statistics for the fixed `mix50/mix100/mix150/mix203`, 100-point scaling layout. | completed scaling output root, force threshold | four CSV summaries/case tables | assumes exactly 100 summaries per model; optional SciPy supplies exact McNemar p-values. |
 
 `plot_hole_target_map.py` converts hole offsets from metres to millimetres, centers the nominal hole at `(0, 0)`, draws light grey concentric rings at `--ring-step-mm` intervals, and uses identical circular markers with black edges for measured outcomes. When `safe_success` is available, safe successes are green, task successes that are not safe are amber, failures are red, and the title reports the safe-success count and rate. `--safe-force-threshold N` overrides the stored classification for plotting by applying the strict rule `success AND max_force < N`; the title and legend display the selected threshold. Historical CSVs without `safe_success` retain the original green-success/red-failure display and task-success title. It plots measured rollout samples only; it does not estimate or interpolate a continuous success region.
 
@@ -124,6 +129,7 @@ Important flags: `--max-radius-mm` for an explicit symmetric plot extent, `--mar
 | --- | --- | --- | --- | --- | --- |
 | `inspect_real_hdf5.py` | diagnostic | Inspect one HDF5 episode fields and lengths. | episode path | printed report | dataset audit. |
 | `inspect_episode_collection.py` | diagnostic | Inspect many HDF5 episodes for safe lengths/sample counts. | HDF5/list | optional CSV | checks action/window settings. |
+| `evaluate_dataset_quality.py` | current/specialized | Read-only batch quality gate for current command-labelled recordings: collection status, required schema, timing, force, motion, command tracking, and sampled image quality. | data directory or one HDF5 | per-episode CSV and aggregate JSON | stricter schema than `ContactForceHDF5Dataset`; tune thresholds and manually review warnings. |
 | `inspect_action_modes.py` | diagnostic | Compare action-mode labels in local data. | data dir | printed samples | hard-coded default data dir. |
 
 ## Model Inspection and Smoke Tests
@@ -152,6 +158,7 @@ Important flags: `--max-radius-mm` for an explicit symmetric plot extent, `--mar
 | --- | --- | --- | --- |
 | `script_utils.py` | compatibility | Re-export path helpers for older script imports. | no CLI. |
 | `run_peg_fixed_insert_100_experiment.sh` | experiment-specific | Fixed 100-episode prepare/train/eval/rollout wrapper for dual-latent workflow. | Preserves historical workflow; default stage is `smoke`. |
+| `update_hf_model_registry.py` | experiment-specific | Query configured Hugging Face repositories and regenerate pinned model-registry JSON/CSV/Markdown. | Requires network/Hugging Face access and hard-coded release definitions; mutates `docs/model_registry/*`, so run only for an intentional registry update. |
 
 ## General Limitations
 

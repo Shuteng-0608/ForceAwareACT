@@ -17,7 +17,8 @@ checkpoints/
 /data/
 datasets/
 peg_in_hole_hdf5/
-mujoco_data/
+mujoco_data/*
+!mujoco_data/DATASET_README.md
 
 *.hdf5
 *.h5
@@ -27,6 +28,7 @@ mujoco_data/
 *.csv
 !configs/experiments/fibonacci_disk_100_r4mm.csv
 !configs/experiments/random_disk_100_r60mm_seed20260714.csv
+!configs/experiments/fibonacci_disk_100_r60mm.csv
 *.png
 *.egg-info/
 src/*.egg-info/

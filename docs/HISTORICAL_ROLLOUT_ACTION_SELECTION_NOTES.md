@@ -1,4 +1,11 @@
-# MuJoCo Rollout Success and Summary
+# Historical Rollout Action-Selection Notes
+
+> Historical experiment note: this file preserves early single-checkpoint
+> commands and observations comparing action-selection modes and
+> `max_delta_q`. It is not the current rollout contract or a general policy
+> recommendation. Use
+> [`ROLLOUT_EXPERIMENT_MANUAL.md`](ROLLOUT_EXPERIMENT_MANUAL.md) for current
+> success, safety, execution, and aggregation behavior.
 
 ## Success Criteria
 

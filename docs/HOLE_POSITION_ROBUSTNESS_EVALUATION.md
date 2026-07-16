@@ -1,5 +1,11 @@
 # Hole Position Robustness Evaluation
 
+> Current workflow note (2026-07-16): the runner now supports exact point CSV
+> input and independent point-set/rollout seeds. This document preserves the
+> original grid/LHS protocol examples; use
+> [`ROLLOUT_EXPERIMENT_MANUAL.md`](ROLLOUT_EXPERIMENT_MANUAL.md) for the current
+> fixed-point and multi-seed workflow.
+
 ## Purpose
 
 Evaluate small hole-position perturbations without changing hole orientation or
@@ -113,7 +119,7 @@ Use this command on macOS or Linux to validate the XML structure and runtime
 offset without loading a policy checkpoint:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/inspect_hole_assembly.py \
+PYTHONPATH=src python scripts/inspect_hole_assembly.py \
   --model-xml /Users/wangshuteng/Desktop/arm_teleop/model/pangu_all_right.xml \
   --hole-site-name hole_goal_site \
   --hole-body-name wall_task \

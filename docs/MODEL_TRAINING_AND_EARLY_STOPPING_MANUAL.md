@@ -1,6 +1,6 @@
 # ForceAwareACT 五模型规范化训练与早停手册
 
-本文档规定本仓库五种实验配置从数据划分、归一化、smoke、正式训练、epoch 早停到 checkpoint 选择的统一流程。命令以 `peg_hole_100` 的 train80/val10/test10 划分为当前实例，均从项目根目录执行。
+本文档规定本仓库五种实验配置从数据划分、归一化、smoke、正式训练、epoch 早停到 checkpoint 选择的统一流程，已于 2026-07-16 按当前源码复核。命令以 `peg_hole_100` 的 train80/val10/test10 划分为当前实例，均从项目根目录执行。
 
 ```bash
 cd ~/ForceAwareACT_workspace/ForceAwareACT
@@ -39,6 +39,8 @@ conda activate forceact
 8. future action 和 future force 只能作为训练标签或 posterior oracle 标签，不能进入部署推理输入；
 9. 每个模型使用独立输出目录，禁止复用目录混写日志；
 10. 修改模型、数据语义或超参数后必须重新 smoke。
+
+可复现性控制目前并不完全对称：四种 `train_minimal.py` 配置应固定 `--seed`，并建议固定 `--torch-num-threads`/`--torch-num-interop-threads`；需要严格确定性时加入 `--deterministic`。这些值和初始模型 SHA-256 会写入 checkpoint。ACT baseline 与 stage-2 trainer 没有对应 CLI，因此五配置比较必须明确记录这一限制。
 
 统一流程：
 

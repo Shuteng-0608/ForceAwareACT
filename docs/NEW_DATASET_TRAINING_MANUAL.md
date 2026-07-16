@@ -1,6 +1,6 @@
 # ForceAwareACT 新数据集训练实验手册
 
-本文档规定从一批新的 HDF5 episode 到完成 ForceAware Contact-CVAE 训练的标准流程。命令均从项目根目录执行，并以 `mujoco_data/new_dataset` 作为新数据集示例。
+本文档规定从一批新的 HDF5 episode 到完成 ForceAware Contact-CVAE 训练的标准流程，已于 2026-07-16 按当前源码复核。命令均从项目根目录、已激活的 Python 环境中执行，并以 `mujoco_data/new_dataset` 作为新数据集示例。
 
 本流程包含两条可选路线：
 
@@ -12,7 +12,7 @@
 ```text
 HDF5 episodes
   -> all.txt
-  -> 数据集质量检测
+  -> 采集质量门禁 + 数据读取器一致性检查
   -> 确定 action_mode 和数据语义参数
   -> [可选] train/val/test 划分
   -> 使用训练列表计算 normalization stats
@@ -131,7 +131,23 @@ PYTHONPATH=src python scripts/inspect_real_hdf5.py \
 
 重点确认图像、`qpos`、`force_window`、`action_chunk` 和 `future_force_chunk` 的 shape 符合预期。
 
-### 3.2 全集结构与时间对齐检查
+### 3.2 采集质量门禁
+
+对当前 command-labelled 录制格式，先运行只读质量门禁：
+
+```bash
+PYTHONPATH=src python scripts/evaluate_dataset_quality.py \
+  "$DATA_DIR" \
+  --output-csv "$EXP_ROOT/quality_report.csv" \
+  --output-json "$EXP_ROOT/quality_summary.json" \
+  2>&1 | tee "$EXP_ROOT/quality_report.log"
+```
+
+它检查采集 `status`、当前录制字段、严格递增时间戳、非有限数、平移力/力矩、关节速度、命令步长与跟踪误差，并抽样检查空白或冻结图像。默认要求 `timestamps/*_episode` 和 `actions/joint_pos_command`，因此它针对当前新录制格式，比通用 `ContactForceHDF5Dataset` 更严格。
+
+`quality=reject` 的 episode 不应进入最终列表；`quality=review` 必须人工查看具体 warning。阈值是工程筛查规则，不是接触安全或数据正确性的数学证明。若数据来自旧格式，不能简单忽略缺字段错误；应使用下一节的通用读取器检查，并明确记录为什么不适用该门禁。
+
+### 3.3 全集结构与时间对齐检查
 
 ```bash
 QUALITY_CSV="$EXP_ROOT/dataset_inspection.csv"
@@ -188,7 +204,7 @@ PYTHONPATH=src python scripts/inspect_episode_collection.py \
 | `--tolerate-length-mismatch` | 允许检查器按安全长度裁齐数据流。 |
 | `--max-length-mismatch 1` | 最多允许一帧差异；不要为了让坏数据通过而随意增大。 |
 
-### 3.3 动作标签语义检查
+### 3.4 动作标签语义检查
 
 集合检查器不负责确认 `/action` 与不同 action mode 的语义，因此必须单独运行：
 
@@ -253,41 +269,17 @@ finite_tensor_check=passed
 
 ### 4.2 示例：固定种子的 80/10/10 随机划分
 
-下面的命令以 episode 为单位划分，并记录随机种子：
+仓库内的标准工具会先排序、再按固定 seed 洗牌，拒绝重复项，并给每个输出文件写入 provenance header。100 条 episode 的 80/10/10 示例：
 
 ```bash
-SPLIT_SEED=20260701
-
-python - "$ALL_LIST" "$EXP_ROOT" "$SPLIT_SEED" <<'PY'
-import random
-import sys
-from pathlib import Path
-
-all_list = Path(sys.argv[1])
-output_dir = Path(sys.argv[2])
-seed = int(sys.argv[3])
-
-episodes = [line.strip() for line in all_list.read_text().splitlines()
-            if line.strip() and not line.lstrip().startswith("#")]
-if len(episodes) != len(set(episodes)):
-    raise SystemExit("duplicate episode paths found")
-
-rng = random.Random(seed)
-rng.shuffle(episodes)
-n = len(episodes)
-n_train = int(n * 0.8)
-n_val = int(n * 0.1)
-
-splits = {
-    "train.txt": episodes[:n_train],
-    "val.txt": episodes[n_train:n_train + n_val],
-    "test.txt": episodes[n_train + n_val:],
-}
-for name, values in splits.items():
-    (output_dir / name).write_text("\n".join(values) + "\n")
-    print(f"{name}: {len(values)}")
-(output_dir / "split_seed.txt").write_text(f"{seed}\n")
-PY
+PYTHONPATH=src python scripts/split_episode_list.py \
+  --input "$ALL_LIST" \
+  --train-output "$EXP_ROOT/train.txt" \
+  --val-output "$EXP_ROOT/val.txt" \
+  --test-output "$EXP_ROOT/test.txt" \
+  --train-count 80 \
+  --val-count 10 \
+  --seed 20260701
 ```
 
 输出示例（100 条 episode）：
@@ -296,19 +288,9 @@ PY
 outputs/new_dataset/train.txt  # 80
 outputs/new_dataset/val.txt    # 10
 outputs/new_dataset/test.txt   # 10
-outputs/new_dataset/split_seed.txt
 ```
 
-仓库也提供了等价的确定性 episode 级划分工具：
-
-```bash
-python scripts/split_episode_list.py \
-  --input "$ALL_LIST" \
-  --train-output "$EXP_ROOT/train.txt" \
-  --val-output "$EXP_ROOT/val.txt" \
-  --test-output "$EXP_ROOT/test.txt" \
-  --train-count 80 --val-count 10 --seed 20260701
-```
+每个文件第一行记录 split 名、seed 和 episode 数，空行与 `#` 开头的 header 会被 episode-list 解析器忽略。
 
 注意事项：
 
@@ -383,6 +365,8 @@ PYTHONPATH=src python scripts/compute_normalization_stats.py \
 
 输出文件包含 `qpos/action/force` 的 mean/std，以及 action mode、窗口、相机、图像尺寸和 episode 路径元数据。
 
+当前训练器会检查 stats 的 `action_mode`；在提供 validation list 时，还会要求 stats 记录的 episode 路径集合与训练集完全一致。但 chunk/window/camera/image/Imagenet 元数据并非被所有消费者自动逐项拒绝，因此仍须按本手册人工保持一致。
+
 验收条件：命令成功退出，输出没有 `NaN/Inf`，保存路径正确，日志中的 episode 数与 `TRAIN_LIST` 一致。
 
 ## 6. Smoke training（必须）
@@ -417,6 +401,10 @@ PYTHONPATH=src python scripts/train_minimal.py \
   --batch-size 2 \
   --num-workers 0 \
   --learning-rate 1e-4 \
+  --seed 0 \
+  --deterministic \
+  --torch-num-threads 4 \
+  --torch-num-interop-threads 1 \
   --device cuda \
   --output-dir "$SMOKE_OUT" \
   --log-csv "$SMOKE_OUT/train_log.csv" \
@@ -475,6 +463,10 @@ PYTHONPATH=src python scripts/train_minimal.py \
   --batch-size 16 \
   --num-workers 0 \
   --learning-rate 1e-4 \
+  --seed 0 \
+  --deterministic \
+  --torch-num-threads 4 \
+  --torch-num-interop-threads 1 \
   --device cuda \
   --output-dir "$OUT" \
   --log-csv "$OUT/train_log.csv" \
@@ -520,6 +512,10 @@ PYTHONPATH=src python scripts/train_minimal.py \
 | `--batch-size` | `16` | 每次更新的样本数；需按显存调整。 |
 | `--num-workers` | `0` | DataLoader worker 数；提高前先验证 HDF5 多进程读取稳定性。 |
 | `--learning-rate` | `1e-4` | 优化器学习率。 |
+| `--seed` | `0` | 模型与训练随机种子；DataLoader 使用 `seed + 1`。 |
+| `--deterministic` | 开启 | 请求 PyTorch/cuDNN/cuBLAS 严格确定性；如算子不支持会显式报错。 |
+| `--torch-num-threads` | `4` | PyTorch CPU intra-op 线程数；应按机器固定并记录。 |
+| `--torch-num-interop-threads` | `1` | PyTorch CPU inter-op 线程数。 |
 | `--device` | `cuda` | 训练设备；没有 CUDA 时可用 `cpu`，但会很慢。 |
 | `--output-dir` | `$OUT` | 最终和中间 checkpoints 的目录。 |
 | `--log-csv` | `$OUT/train_log.csv` | 每步 loss 指标的 CSV。 |
@@ -531,6 +527,8 @@ PYTHONPATH=src python scripts/train_minimal.py \
 - `--save-steps 3000 10000`：除周期保存外，在指定 steps 精确保存；
 - `--imagenet-normalize`：启用 ImageNet 图像归一化，但必须与 stats 和评估保持一致；
 - `--policy-variant force_aware_act` 或 `force_aware_motion_cvae`：训练其他模型变体，需要重新确认相应 latent 和 loss 配置。
+
+上述 seed、deterministic 和线程参数只存在于 `train_minimal.py`。`train_act_baseline.py` 与 `train_contact_prior_stage2.py` 当前没有对应 CLI；跨 trainer 对比必须记录这一不对称，不能把输出目录中的 `seed0` 当作已经受控的证据。
 
 正式训练预期输出：
 

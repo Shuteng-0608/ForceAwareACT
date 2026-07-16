@@ -50,17 +50,19 @@ docs/          architecture, workflow, script, test, and historical reports
 configs/       split lists and experiment notes
 ```
 
-See [docs/SCRIPTS_REFERENCE.md](docs/SCRIPTS_REFERENCE.md) and [docs/TESTING.md](docs/TESTING.md) for full inventories.
+See the [documentation index](docs/README.md), [scripts reference](docs/SCRIPTS_REFERENCE.md), and [testing guide](docs/TESTING.md) for full inventories and the distinction between current manuals and historical reports.
 
 ## Installation
 
-Use an existing local virtual environment or create one outside version control. The package requires Python 3.9+ and the base dependencies in `pyproject.toml`: `h5py`, `numpy`, `torch`, and `torchvision`. Tests require `pytest`. MuJoCo rollout scripts additionally require `mujoco`; video output requires `imageio` and `imageio-ffmpeg`.
+Use an activated conda/virtual environment. The package requires Python 3.9+ and the base dependencies in `pyproject.toml`: `h5py`, `numpy`, `torch`, and `torchvision`. Tests require `pytest`. Several analysis/plot scripts additionally use `pandas`, `matplotlib`, and optionally `scipy`; MuJoCo rollout requires `mujoco`; video output requires `imageio` and `imageio-ffmpeg`.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest -q
+PYTHONPATH=src python -m pytest -q
 ```
 
 ## Dataset Format
+
+Local dataset inventory, measured counts, selection guidance, and known metadata limitations are documented in [mujoco_data/DATASET_README.md](mujoco_data/DATASET_README.md).
 
 `ContactForceHDF5Dataset` expects synchronized HDF5 episodes with:
 
@@ -78,12 +80,14 @@ Images are read as HWC RGB, scaled to `[0, 1]` by default, resized to `--image-s
 
 Force-frame assumptions are not encoded in code. The reader uses recorded `observations/ft_wrench` directly; rollout uses MuJoCo force/torque sensors directly. There is no implemented bias removal, filtering, gravity compensation, sign conversion, or frame conversion.
 
+For a new dataset, first create a stable episode list, run both `evaluate_dataset_quality.py` (collection status, command, image, motion, and force heuristics) and `inspect_episode_collection.py` (the exact dataset reader's synchronization/sample checks), inspect action semantics, split at episode level when measuring generalization, and compute stats from the training split only. See [the new-dataset manual](docs/NEW_DATASET_TRAINING_MANUAL.md).
+
 ## Normalization Workflow
 
 Compute stats on the training split and keep the same `--action-mode`, chunk/window lengths, cameras, image size, and ImageNet setting for training, evaluation, and rollout.
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/compute_normalization_stats.py \
+PYTHONPATH=src python scripts/compute_normalization_stats.py \
   --episode-list configs/splits/peg_hole_100_train80.txt \
   --action-mode action \
   --chunk-len 10 \
@@ -101,7 +105,7 @@ All commands below use placeholder local paths; replace `outputs/...` and split 
 ACT baseline:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/train_act_baseline.py \
+PYTHONPATH=src python scripts/train_act_baseline.py \
   --episode-list configs/splits/peg_hole_100_train80.txt \
   --val-episode-list configs/splits/peg_hole_100_val10.txt \
   --action-mode action \
@@ -116,7 +120,7 @@ PYTHONPATH=src .venv/bin/python scripts/train_act_baseline.py \
 Dual-latent ForceAwareACT:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
+PYTHONPATH=src python scripts/train_minimal.py \
   --episode-list configs/splits/peg_hole_100_train80.txt \
   --policy-variant force_aware_act \
   --action-mode action \
@@ -133,7 +137,7 @@ PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
 Motion-only force-aware CVAE:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
+PYTHONPATH=src python scripts/train_minimal.py \
   --episode-list configs/splits/peg_hole_100_train80.txt \
   --policy-variant force_aware_motion_cvae \
   --action-mode action \
@@ -149,7 +153,7 @@ PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
 Contact-only force-aware CVAE:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/train_minimal.py \
+PYTHONPATH=src python scripts/train_minimal.py \
   --episode-list configs/splits/peg_hole_100_train80.txt \
   --policy-variant force_aware_contact_cvae \
   --action-mode action \
@@ -168,6 +172,8 @@ Add `--val-episode-list` to enable epoch-level deterministic deployment validati
 
 Training writes `checkpoint.pt`, `train_log.csv`, and optional `checkpoint_step_XXXXXXXX.pt` files. Validation additionally writes `checkpoint_best.pt` and `validation_log.csv`. The final checkpoint records epoch position, best metric metadata, patience state, and `stop_reason`. Use `checkpoint_best.pt` for test/rollout selection. There is no resume CLI.
 
+`train_minimal.py` also supports `--seed`, `--deterministic`, `--torch-num-threads`, and `--torch-num-interop-threads`; it records the resolved seeds, thread counts, deterministic flag, and initial model SHA-256. These controls are not currently exposed by `train_act_baseline.py` or `train_contact_prior_stage2.py`, so do not claim fully matched training-seed control across all trainers.
+
 ## Offline Latent-Mode Evaluation
 
 Deployment zero means the deployable zero latent branch. Deployment prior means deterministic conditional-prior inference using only online inputs. Offline posterior oracle means future action/force labels are encoded for analysis and must not be treated as deployable inference.
@@ -175,7 +181,7 @@ Deployment zero means the deployable zero latent branch. Deployment prior means 
 Dual-latent evaluator:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/evaluate_inference_modes.py \
+PYTHONPATH=src python scripts/evaluate_inference_modes.py \
   --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/force_aware_act_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
@@ -186,7 +192,7 @@ PYTHONPATH=src .venv/bin/python scripts/evaluate_inference_modes.py \
 Motion-CVAE evaluator:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/evaluate_motion_cvae_modes.py \
+PYTHONPATH=src python scripts/evaluate_motion_cvae_modes.py \
   --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/motion_cvae_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
@@ -198,7 +204,7 @@ PYTHONPATH=src .venv/bin/python scripts/evaluate_motion_cvae_modes.py \
 Contact-CVAE evaluator:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/evaluate_contact_cvae_modes.py \
+PYTHONPATH=src python scripts/evaluate_contact_cvae_modes.py \
   --episode-list configs/splits/peg_hole_100_val10.txt \
   --checkpoint outputs/peg_hole_100/contact_cvae_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
@@ -214,7 +220,7 @@ PYTHONPATH=src .venv/bin/python scripts/evaluate_contact_cvae_modes.py \
 Dual-latent zero mode:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py \
+PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
   --checkpoint outputs/peg_hole_100/force_aware_act_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
@@ -230,7 +236,7 @@ Dual-latent prior mode uses `--contact-latent-mode prior`. Contact-only zero/pri
 Motion-CVAE rollout:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py \
+PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
   --checkpoint outputs/peg_hole_100/motion_cvae_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
@@ -243,7 +249,7 @@ PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py \
 ACT baseline rollout:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/run_mujoco_policy_rollout.py \
+PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
   --checkpoint outputs/peg_hole_100/act_baseline_5k/checkpoint.pt \
   --normalization-stats outputs/peg_hole_100/normalization_stats_action_train80.pt \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
@@ -260,7 +266,7 @@ Task success, safe success, and hard force stop are different concepts. Task suc
 Run a 50-point Latin-hypercube perturbation experiment:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/run_mujoco_hole_grid.py \
+PYTHONPATH=src python scripts/run_mujoco_hole_grid.py \
   --sampling-mode latin_hypercube \
   --num-points 50 \
   --x-min -0.002 --x-max 0.002 \
@@ -278,6 +284,21 @@ PYTHONPATH=src .venv/bin/python scripts/run_mujoco_hole_grid.py \
 
 The runner writes `task_points.csv`, `grid_manifest.json`, per-run rollout directories, `grid_summary.csv`, `random_position_summary.json`, and optional plots.
 
+For exact paired comparisons, reuse an explicit point file rather than relying only on regeneration:
+
+```bash
+PYTHONPATH=src python scripts/run_mujoco_hole_grid.py \
+  --sampling-mode file \
+  --task-points-csv configs/experiments/fibonacci_disk_100_r4mm.csv \
+  --checkpoint outputs/model/checkpoint_best.pt \
+  --normalization-stats outputs/stats.pt \
+  --model-xml ../arm_teleop/model/pangu_all_right.xml \
+  --output-root outputs/fixed_points_model \
+  --continue-on-error
+```
+
+`run_xz_rollout_suite.py` can forward the same file with `--task-points-csv`. For stochastic protocols, `--point-set-seed` controls generated coordinates and `--rollout-seed-base` controls per-point policy/simulation seeds. `run_xz_multiseed_rollout_suite.py` can evaluate the Cartesian product of those seed dimensions and writes `suite_plan.json`, `per_seed_summary.csv`, and `aggregate_summary.csv`.
+
 ## Checkpoint Format
 
 Current training checkpoints are dictionaries with:
@@ -294,13 +315,13 @@ Compatibility behavior varies by consumer. Rollout defaults missing `config.poli
 Full suite:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest -q
+PYTHONPATH=src python -m pytest -q
 ```
 
 Focused model tests:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest -q \
+PYTHONPATH=src python -m pytest -q \
   tests/test_force_aware_act_policy.py \
   tests/test_force_aware_motion_cvae_policy.py \
   tests/test_force_aware_contact_cvae_policy.py \
@@ -310,19 +331,19 @@ PYTHONPATH=src .venv/bin/python -m pytest -q \
 Model audit for all four variants:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/audit_model_components.py \
+PYTHONPATH=src python scripts/audit_model_components.py \
   --policy-variant force_aware_act \
   --device cpu
 
-PYTHONPATH=src .venv/bin/python scripts/audit_model_components.py \
+PYTHONPATH=src python scripts/audit_model_components.py \
   --policy-variant force_aware_motion_cvae \
   --device cpu
 
-PYTHONPATH=src .venv/bin/python scripts/audit_model_components.py \
+PYTHONPATH=src python scripts/audit_model_components.py \
   --policy-variant force_aware_contact_cvae \
   --device cpu
 
-PYTHONPATH=src .venv/bin/python scripts/audit_model_components.py \
+PYTHONPATH=src python scripts/audit_model_components.py \
   --policy-variant act_baseline \
   --device cpu
 ```
@@ -343,9 +364,10 @@ See [docs/TESTING.md](docs/TESTING.md) for the complete test-file inventory.
 ## Documentation Index
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Documentation Index](docs/README.md)
 - [Scripts Reference](docs/SCRIPTS_REFERENCE.md)
 - [Testing](docs/TESTING.md)
-- [Experiment Workflows](docs/EXPERIMENT_WORKFLOWS.md)
+- [Command Recipes](docs/COMMAND_RECIPES.md)
 - [Five-Model Training and Early-Stopping Manual](docs/MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md)
 - [Repository Architecture Audit](docs/REPOSITORY_ARCHITECTURE_AUDIT.md)
 - Historical reports remain in `docs/` and are useful as experiment records, but the files above are the current canonical entry points.
@@ -357,9 +379,11 @@ See [docs/TESTING.md](docs/TESTING.md) for the complete test-file inventory.
 - The shared rollout CLI still exposes `--contact-latent-mode` for policies that ignore it.
 - Force coordinate frame, sign convention, bias removal, filtering, gravity compensation, and dataset-vs-MuJoCo wrench equivalence are not encoded or validated.
 - The motion-CVAE evaluator uses `Path(episode_path).stem` for `episode_identifier`, so distinct files named `episode.hdf5` can collapse to `episode`. The contact-CVAE evaluator uses the parent episode directory name, with a stem fallback.
-- Grid/LHS runner regenerates points from arguments and seed; it cannot load an existing task-point CSV as the source of truth.
+- Stats metadata beyond `action_mode` and (when validation is enabled) episode provenance is not uniformly enforced by every consumer; manually keep chunk/window/camera/image settings aligned.
+- Training-seed and CPU-thread controls exist only in `train_minimal.py`, not the ACT baseline or stage-2 trainer.
+- Experiment-specific suite scripts contain hard-coded model registry paths and protocol defaults; override or audit them before reusing on a new dataset.
 - Training scripts use small hard-coded model defaults in `train_minimal.py`; `train_act_baseline.py` exposes more architecture flags.
 
 ## Development Status
 
-Current code implements all four policy families listed above, including `force_aware_contact_cvae`. Documentation verification snapshot on 2026-07-07: this README reflects source code and CLI help inspected during the documentation audit. No source behavior is changed by the documentation audit.
+Current code implements all four policy families listed above; the rollout suite exposes five experiment configurations because Contact-CVAE zero and prior share one policy family/checkpoint structure but use different learned/deployment semantics. Documentation verification snapshot on 2026-07-16: source files and CLI help were inspected during the repository-wide documentation audit.

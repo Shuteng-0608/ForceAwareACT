@@ -38,7 +38,7 @@ recent command-action rollouts.
 Example:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/analyze_contact_stage.py \
+PYTHONPATH=src python scripts/analyze_contact_stage.py \
   outputs/peg_hole_playback_test/rollout_smoke_action_mid/rollout_log.csv \
   --hole-entrance-offset 0.024 \
   --force-thresholds 5 10 20 50 \
@@ -69,7 +69,7 @@ audits, or extend this script with `--model-xml` replay later.
 Example:
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/analyze_contact_stage.py \
+PYTHONPATH=src python scripts/analyze_contact_stage.py \
   --hdf5 mujoco_data/peg_hole_playback_test/20260617_200306_teleop_002/episode.hdf5 \
   --force-thresholds 5 10 20 50 \
   --output-csv outputs/peg_hole_playback_test/demo_contact_stage_summary.csv

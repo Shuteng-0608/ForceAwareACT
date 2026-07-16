@@ -1,6 +1,6 @@
 # ForceAwareACT MuJoCo Rollout 标准实验手册
 
-本文档规定从训练完成的 checkpoint 到单次 MuJoCo rollout、批量点位实验、多模型 suite、多 seed 稳健性评估、监控、汇总和可视化的标准流程。
+本文档规定从训练完成的 checkpoint 到单次 MuJoCo rollout、批量点位实验、多模型 suite、多 seed 稳健性评估、监控、汇总和可视化的标准流程，已于 2026-07-16 按当前源码复核。
 
 命令均从项目根目录执行：
 
@@ -35,7 +35,7 @@ checkpoint + normalization stats + MuJoCo XML
 | 脚本 | 层级 | 主要作用 | 典型使用场景 |
 |---|---|---|---|
 | `run_mujoco_policy_rollout.py` | 单次 rollout 内核 | 加载一个 checkpoint 和 stats，在一个孔偏移位置执行一次受保护的 MuJoCo rollout | 新模型 smoke、单点调试、单次正式运行 |
-| `run_mujoco_hole_grid.py` | 批量点位 | 生成 grid、random 或 Latin hypercube 点位，逐点调用单次内核 | 一个模型/latent/action-select 配置的空间鲁棒性实验 |
+| `run_mujoco_hole_grid.py` | 批量点位 | 生成 grid/random/Latin-hypercube 点位或读取固定 CSV，逐点调用单次内核 | 一个模型/latent/action-select 配置的空间鲁棒性实验 |
 | `run_xz_rollout_suite.py` | 多配置 suite | 顺序运行预注册模型和 `mid/temporal` 组合，每个组合调用批量点位脚本 | 当前 peg-hole 五类模型的统一对照实验 |
 | `run_xz_multiseed_rollout_suite.py` | 多 seed suite | 对 point-set seeds 和 rollout-seed bases 的组合反复运行 x/z suite，并聚合置信区间 | 多 seed 稳健性与 safe-success 统计 |
 | `monitor_xz_rollout_suite.py` | 只读监控 | 显示多 seed suite 当前模型、seed、点位、完成数和队列 | 长时间多 seed 任务监控 |
@@ -106,7 +106,7 @@ test -f "$MODEL_XML" || echo "missing MuJoCo XML: $MODEL_XML"
 | 图像预处理 | 模型输入尺寸、相机和 normalization 语义必须与训练配置兼容。 |
 | MuJoCo XML | 必须含训练/rollout 所需的关节、执行器、相机、力/力矩传感器、peg tip site 和 hole site/body。 |
 
-当前 rollout 从 MuJoCo `force_ee` 与 `torque_ee` 传感器构造 6D wrench。代码没有额外实现 bias removal、重力补偿、滤波、符号或坐标系转换。正式比较前应确认它与 HDF5 `observations/ft_wrench` 的物理约定一致。
+当前 rollout 从 MuJoCo `peg_ft_force` 与 `peg_ft_torque` 传感器构造 6D wrench。代码没有额外实现 bias removal、重力补偿、滤波、符号或坐标系转换。正式比较前应确认它与 HDF5 `observations/ft_wrench` 的物理约定一致。
 
 ## 3. 离线 deployable inference smoke（必须）
 
@@ -295,6 +295,7 @@ PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
 |---|---|
 | `--checkpoint` | 模型 checkpoint。 |
 | `--normalization-stats` | qpos/action/force stats。 |
+| `--device` | `auto`、`cpu` 或 `cuda`；`auto` 在 CUDA 可用时使用 GPU，否则 CPU。MuJoCo physics/rendering 仍由 MuJoCo 路径执行。 |
 | `--model-xml` | MuJoCo 模型 XML；默认路径也是 `../arm_teleop/model/pangu_all_right.xml`。 |
 | `--contact-latent-mode` | `zero` 或 deployable `prior`；Motion-CVAE/ACT 分支忽略它。 |
 | `--action-mode` | 输出解释方式；必须与训练和 stats 一致。 |
@@ -454,6 +455,7 @@ PYTHONPATH=src python scripts/run_mujoco_hole_grid.py \
 | `grid` | `--x-offsets`、`--z-offsets`、`--y-offset`、`--repeats` | 运行显式笛卡尔网格；`num-points` 和随机范围不决定网格点数。 |
 | `random` | `--num-points`、x/z min/max、point-set seed | 在矩形范围内独立均匀随机采样。 |
 | `latin_hypercube` | 同 random | 用 LHS 更均匀覆盖矩形范围，空间鲁棒性实验首选。 |
+| `file` | `--task-points-csv` | 精确读取固定点位；必需列为 `hole_offset_x`、`hole_offset_z`（米），`point_index` 可选但若提供必须从 1 连续递增，`hole_offset_y` 可选。 |
 
 规则 3×3 grid 示例：
 
@@ -473,6 +475,23 @@ PYTHONPATH=src python scripts/run_mujoco_hole_grid.py \
   --max-rollout-steps 900 \
   --max-delta-q 0.02 \
   --output-root "$ROLLOUT_ROOT/contact_cvae_zero_mid_grid3x3" \
+  --continue-on-error
+```
+
+固定圆盘点集可先生成再复用：
+
+```bash
+PYTHONPATH=src python scripts/generate_fibonacci_disk_points.py \
+  --num-points 100 --radius-mm 4 \
+  --output configs/experiments/fibonacci_disk_100_r4mm.csv
+
+PYTHONPATH=src python scripts/run_mujoco_hole_grid.py \
+  --sampling-mode file \
+  --task-points-csv configs/experiments/fibonacci_disk_100_r4mm.csv \
+  --checkpoint "$CHECKPOINT" \
+  --normalization-stats "$STATS" \
+  --model-xml "$MODEL_XML" \
+  --output-root "$ROLLOUT_ROOT/fibonacci_r4mm_model" \
   --continue-on-error
 ```
 
@@ -501,9 +520,7 @@ PYTHONPATH=src python scripts/run_mujoco_hole_grid.py \
 | `--mujoco-gl` | 给子进程设置 MuJoCo GL backend，例如无头环境可能使用 `egl`。 |
 | `--save-videos` | 所有子 rollout 保存视频，耗时和磁盘开销较大。 |
 
-续跑必须使用完全相同的点位生成参数、seed、模型和输出目录。`--skip-existing` 只根据 `summary.json` 判断完成，不会验证旧结果的协议是否与新命令一致，因此实验者必须自行保证配置一致。
-
-当前 grid runner 不能直接加载外部 `task_points.csv` 或旧 manifest；它依靠 sampling mode、bounds 和 seed 重新生成点位。精确复现实验时必须保存并记录这些参数。
+续跑必须使用完全相同的点位文件或点位生成参数、两个 seed、模型和输出目录。`--skip-existing` 只根据 `summary.json` 判断完成，不会验证旧结果的协议是否与新命令一致，因此实验者必须自行保证配置一致。精确配对实验应保留输入 point CSV、runner 写出的 `task_points.csv` 与 `grid_manifest.json`；旧 manifest 本身不能作为输入。
 
 ### 6.6 批量输出结构
 
@@ -540,10 +557,14 @@ GRID_OUT/
 
 checkpoint 路径硬编码在 `run_xz_rollout_suite.py` 的 `MODEL_SPECS` 中，并指向 `outputs/peg_hole_100/...`。该脚本适合仓库当前已注册模型的对照实验，不提供任意 `--checkpoint` 参数。
 
+默认由 `--sampling-mode` 生成矩形范围点集；提供 `--task-points-csv <file>` 时，suite 会把固定 CSV 传给每个模型/动作选择组合，并按文件名与点数生成隔离输出目录。这是五配置精确配对的推荐方式。`--offset-mm` 此时不决定坐标，只用于部分命名/绘图语义，脚本会从 CSV 检查实际最大半径。
+
 对于刚训练的新 checkpoint：
 
 - 单模型实验使用 `run_mujoco_hole_grid.py`；
 - 只有明确要把新模型加入固定 suite 时，才修改 `MODEL_SPECS` 并同步实验协议和测试。
+
+suite 当前不单独暴露 `--device`，它调用 grid runner 的默认 `auto`。若必须强制 CPU/CUDA，直接使用 `run_mujoco_hole_grid.py --device ...`，或在受控修改 suite 转发后同步测试与协议记录。
 
 ### 7.2 先 dry-run
 
@@ -871,7 +892,7 @@ PYTHONPATH=src python scripts/plot_rollout_sensor_analysis.py \
 确认 MODEL_SPECS 路径
   -> run_xz_rollout_suite.py --dry-run
   -> 小点数 pilot
-  -> 固定 point-set seed，使模型共享完全相同点位
+  -> 固定 task-point CSV（或生成协议与 point-set seed），使模型共享完全相同点位
   -> 正式 suite
   -> 比较 task success、safe success、force 和空间分布
 ```
@@ -893,7 +914,7 @@ PYTHONPATH=src python scripts/plot_rollout_sensor_analysis.py \
 
 比较两个模型时应保持以下条件相同：
 
-- 同一 `task_points.csv` 对应的 point-set seed、sampling mode 和 bounds；
+- 同一输入 task-point CSV；若使用生成点，则保持 point-set seed、sampling mode、bounds 和生成器版本一致；
 - 同一 rollout-seed base；
 - 相同 action mode、action-select mode、policy rate 和 max steps；
 - 相同 `max_delta_q`、EMA、成功阈值和 hard force stop；
@@ -926,7 +947,7 @@ hard force stop threshold
 
 ### 12.4 当前实现限制
 
-- Grid runner 不能直接读取保存的 task-points CSV/manifest，只能由参数和 seed 重生成；
+- Grid runner 能读取 task-point CSV，但不能把旧 `grid_manifest.json` 直接作为输入；
 - Grid runner 没有 subprocess timeout 和自动 retry；
 - Grid runner 没有显式转发 `temporal-agg-decay`，使用单次脚本默认值 `0.3`；
 - x/z suite 只支持 `MODEL_SPECS` 中的固定 checkpoint；

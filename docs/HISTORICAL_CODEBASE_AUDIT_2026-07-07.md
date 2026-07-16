@@ -1,4 +1,4 @@
-# ForceAwareACT Codebase Architecture Audit
+# Historical ForceAwareACT Codebase Audit — 2026-07-07
 
 > Current-status note (2026-07-07): this is a historical architecture audit that predates the current canonical documentation set and does not fully cover the `force_aware_contact_cvae` policy family. For the current source-of-truth audit, see `docs/REPOSITORY_ARCHITECTURE_AUDIT.md`, `docs/ARCHITECTURE.md`, `docs/SCRIPTS_REFERENCE.md`, and `docs/TESTING.md`. Historical experiment observations below are preserved.
 

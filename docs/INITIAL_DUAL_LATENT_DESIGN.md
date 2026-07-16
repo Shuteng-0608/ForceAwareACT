@@ -1,4 +1,10 @@
-# Contact-Dynamics-Aware Vision-Force ACT: Implementation Design
+# Initial Dual-Latent ForceAwareACT Design
+
+> Historical design document: this file records the original implementation
+> specification and staged contact-prior plan. It is useful for design intent,
+> but some details predate the current four-policy implementation and CLI.
+> Use [`ARCHITECTURE.md`](ARCHITECTURE.md) and
+> [`DUAL_LATENT_ALGORITHM.md`](DUAL_LATENT_ALGORITHM.md) for current behavior.
 
 ## 0. Project Goal
 

@@ -100,7 +100,7 @@ when the HDF5 joint positions are correct.
 ## Example
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/audit_hdf5_replay_task_error.py \
+PYTHONPATH=src python scripts/audit_hdf5_replay_task_error.py \
   --data-dir mujoco_data/peg_hole_fixed_insertion \
   --model-xml ../arm_teleop/model/pangu_all_right.xml \
   --output-dir outputs/peg_fixed_insert_100/replay_audit \

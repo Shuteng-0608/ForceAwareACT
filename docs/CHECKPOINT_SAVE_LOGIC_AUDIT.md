@@ -1,5 +1,12 @@
 # Checkpoint Save Logic Audit
 
+> Historical snapshot note (2026-07-16): this audit predates epoch validation,
+> `checkpoint_best.pt`, early-stopping metadata, and the current reproducibility
+> fields. Its analysis of the named 100k runs is preserved, but it is not the
+> current trainer contract. Use
+> [`MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md`](MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md)
+> and [`ARCHITECTURE.md`](ARCHITECTURE.md) for current behavior.
+
 ## Scope and Limitations
 
 This is a source-only audit of the current ForceAwareACT checkpoint save, load, and resume semantics. The real Linux checkpoint files from these completed experiments are not present in this macOS workspace and were not searched for or loaded:
@@ -156,7 +163,7 @@ Periodic numbered checkpoints and `checkpoint.pt` use the same payload builder i
 
 There is no current training resume implementation.
 
-Searches of the active trainers found no `--resume`, `--resume-from`, `resume_from`, or equivalent CLI path. Documentation also states that no training resume CLI is implemented (`README.md:165`, `docs/EXPERIMENT_WORKFLOWS.md:70`, `docs/ARCHITECTURE.md:233`).
+Searches of the active trainers found no `--resume`, `--resume-from`, `resume_from`, or equivalent CLI path. Documentation also states that no training resume CLI is implemented (`README.md:165`, `docs/COMMAND_RECIPES.md:74`, `docs/ARCHITECTURE.md:233`).
 
 Consequences:
 
