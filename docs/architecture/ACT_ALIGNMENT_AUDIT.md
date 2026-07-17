@@ -60,7 +60,7 @@ Recommendation:
 
 ## Vision Audit Summary
 
-`docs/VISION_BACKBONE_AUDIT.md` found:
+`docs/architecture/VISION_BACKBONE_AUDIT.md` found:
 
 - `ResNet18VisionEncoder` supports ImageNet weights through `ResNet18_Weights.DEFAULT`.
 - The active `scripts/train_minimal.py` path hard-codes `pretrained_resnet18=False`.

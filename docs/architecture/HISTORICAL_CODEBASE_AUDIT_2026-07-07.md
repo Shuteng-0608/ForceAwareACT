@@ -1,6 +1,6 @@
 # Historical ForceAwareACT Codebase Audit — 2026-07-07
 
-> Current-status note (2026-07-07): this is a historical architecture audit that predates the current canonical documentation set and does not fully cover the `force_aware_contact_cvae` policy family. For the current source-of-truth audit, see `docs/REPOSITORY_ARCHITECTURE_AUDIT.md`, `docs/ARCHITECTURE.md`, `docs/SCRIPTS_REFERENCE.md`, and `docs/TESTING.md`. Historical experiment observations below are preserved.
+> Current-status note (2026-07-07): this is a historical architecture audit that predates the current canonical documentation set and does not fully cover the `force_aware_contact_cvae` policy family. For the current source-of-truth audit, see `docs/architecture/REPOSITORY_ARCHITECTURE_AUDIT.md`, `docs/architecture/ARCHITECTURE.md`, `docs/reference/SCRIPTS_REFERENCE.md`, and `docs/reference/TESTING.md`. Historical experiment observations below are preserved.
 
 Generated from a read-only audit of `/Users/wangshuteng/Desktop/ForceAwareACT`.
 
@@ -309,7 +309,7 @@ The rollout defaults to `hole_goal_site` and `wall_task` (`scripts/run_mujoco_po
 - `world` frame: transforms requested world delta into parent-local coordinates and expects the site's world displacement to equal the requested offset.
 - `body` frame: applies the offset in parent/body-local coordinates and computes expected world displacement from parent rotation.
 
-It calls `mj_forward`, records nominal/actual body local and site world positions, computes actual offset, and raises if validation error norm exceeds `1e-7` (`run_mujoco_policy_rollout.py:343-415`). Because `wall_task` owns the site and hole collision geoms per docs (`docs/HOLE_POSITION_ROBUSTNESS_EVALUATION.md:21-38`), the whole wall/hole assembly moves together, not only the goal site.
+It calls `mj_forward`, records nominal/actual body local and site world positions, computes actual offset, and raises if validation error norm exceeds `1e-7` (`run_mujoco_policy_rollout.py:343-415`). Because `wall_task` owns the site and hole collision geoms per docs (`docs/rollout/HOLE_POSITION_ROBUSTNESS_EVALUATION.md:21-38`), the whole wall/hole assembly moves together, not only the goal site.
 
 ## 14. Batch/Grid/LHS Experiment System
 
@@ -331,7 +331,7 @@ Local search covered `docs`, `scripts`, and `outputs` for the facts `50 planned`
 
 Evidence found:
 
-- Documentation specifies the intended 50-point LHS run at `outputs/peg_hole_100/hole_lhs_50_xz_2mm_mid_dq002` with seed `20260702`, checkpoint `outputs/peg_hole_100/action_trainzero_all100_20k_bs16/checkpoint.pt`, action mode `action`, action selection `mid`, `max_delta_q=0.02`, hard force stop `1000`, max rollout steps `900`, success thresholds 5 mm / 6 mm / 80 N / 15 steps, no videos in first run, and `--continue-on-error` (`docs/HOLE_POSITION_ROBUSTNESS_EVALUATION.md:136-203`).
+- Documentation specifies the intended 50-point LHS run at `outputs/peg_hole_100/hole_lhs_50_xz_2mm_mid_dq002` with seed `20260702`, checkpoint `outputs/peg_hole_100/action_trainzero_all100_20k_bs16/checkpoint.pt`, action mode `action`, action selection `mid`, `max_delta_q=0.02`, hard force stop `1000`, max rollout steps `900`, success thresholds 5 mm / 6 mm / 80 N / 15 steps, no videos in first run, and `--continue-on-error` (`docs/rollout/HOLE_POSITION_ROBUSTNESS_EVALUATION.md:136-203`).
 - `run_mujoco_hole_grid.py` deterministically regenerates LHS points from seed/bounds (`scripts/run_mujoco_hole_grid.py:94-109`).
 - The exact 50 coordinates are not stored locally and were not regenerated in this audit because the task prohibited generating a new LHS point set.
 - The two process errors and exact per-run commands cannot be reconstructed locally without the missing manifest.
@@ -450,7 +450,7 @@ Primary inspected files:
 - `scripts/summarize_rollouts.py`
 - `scripts/plot_hole_grid_results.py`
 - `scripts/run_peg_fixed_insert_100_experiment.sh`
-- `docs/HOLE_POSITION_ROBUSTNESS_EVALUATION.md`
+- `docs/rollout/HOLE_POSITION_ROBUSTNESS_EVALUATION.md`
 - Repository script/test/docs tree listings and local outputs metadata.
 
 ## 21. Commands Executed

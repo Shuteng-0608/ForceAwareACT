@@ -5,7 +5,7 @@
 > fields. Its analysis of the named 100k runs is preserved, but it is not the
 > current trainer contract. Use
 > [`MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md`](MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md)
-> and [`ARCHITECTURE.md`](ARCHITECTURE.md) for current behavior.
+> and [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md) for current behavior.
 
 ## Scope and Limitations
 
@@ -163,7 +163,7 @@ Periodic numbered checkpoints and `checkpoint.pt` use the same payload builder i
 
 There is no current training resume implementation.
 
-Searches of the active trainers found no `--resume`, `--resume-from`, `resume_from`, or equivalent CLI path. Documentation also states that no training resume CLI is implemented (`README.md:165`, `docs/COMMAND_RECIPES.md:74`, `docs/ARCHITECTURE.md:233`).
+Searches of the active trainers found no `--resume`, `--resume-from`, `resume_from`, or equivalent CLI path. Documentation also states that no training resume CLI is implemented (`README.md:165`, `docs/reference/COMMAND_RECIPES.md:74`, `docs/architecture/ARCHITECTURE.md:233`).
 
 Consequences:
 

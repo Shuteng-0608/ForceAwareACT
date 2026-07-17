@@ -714,3 +714,50 @@ seed = 0, 1, 2
 9. 最后执行 test10 离线评估
 10. 多 seed 汇总并形成实验报告
 ```
+
+## 19. 单 GPU 串行自动训练与监控
+
+`hole_random_60mm_hmj` 的 train90/val10 五配置实验提供两个自动化脚本：
+
+- `scripts/run_hole_random_5model_earlystop.sh`：在单 GPU 上依次训练 Contact-zero、Contact-prior、Motion-CVAE、DualZero 和 ACT baseline；前一项成功且同时生成 final/best checkpoint 后才启动下一项。
+- `scripts/monitor_hole_random_5model_training.py`：只读显示队列状态、当前 epoch/step、最新训练与验证指标、patience、GPU 使用、当前日志，以及整个五模型队列的预计完成时间。
+
+启动前检查：
+
+```bash
+conda activate forceact
+bash scripts/run_hole_random_5model_earlystop.sh preflight
+```
+
+在 tmux 中启动自动队列：
+
+```bash
+tmux new-session -s forceact5
+bash scripts/run_hole_random_5model_earlystop.sh train
+```
+
+按 `Ctrl-b d` 脱离 tmux。重新连接：
+
+```bash
+tmux attach-session -t forceact5
+```
+
+在另一个终端持续监控：
+
+```bash
+python scripts/monitor_hole_random_5model_training.py \
+  --run-root outputs/hole_random_60mm_hmj/earlystop_train90_splitseed20260716_run1 \
+  --watch \
+  --interval 10
+```
+
+监控窗口中按 `Ctrl-C` 只会退出监控，不会中断 tmux 中的训练。runner 会跳过带完整成功标记和两个 checkpoint 的已完成模型；如果发现未完成模型目录则拒绝覆盖，因为当前 trainer 不支持断点续训。中断发生在模型训练中途时，应保留旧目录用于审计，并通过环境变量选择全新的运行目录：
+
+ETA 会在累计获得至少 100 个训练 step 后显示，并同时给出两个边界：`plateau ETA` 假设从当前开始没有新的至少 0.5% validation 改善、patience 按现状耗尽；`hard-budget ETA` 假设所有剩余模型都运行到 `max_epochs/max_steps` 硬上限。两者都使用当前队列观测到的实际秒/step，并包含初始化和 validation 开销。early stopping 可能因后续改善而重置 patience，因此 plateau ETA 会动态后移，不能视为承诺时间。
+
+```bash
+RUN_ROOT=outputs/hole_random_60mm_hmj/earlystop_train90_splitseed20260716_run2 \
+  bash scripts/run_hole_random_5model_earlystop.sh train
+```
+
+路径、batch size、worker、预算和早停参数都可通过同名大写环境变量覆盖。正式对比中如需覆盖，应在启动前记录完整命令，且五种配置共享同一组控制参数。

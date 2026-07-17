@@ -190,5 +190,5 @@ other failures. Those values are experiment history, not universal safety
 defaults. Derive and freeze thresholds for the selected dataset and XML.
 
 Current end-to-end rollout commands and safety semantics are maintained in
-[`ROLLOUT_EXPERIMENT_MANUAL.md`](ROLLOUT_EXPERIMENT_MANUAL.md); compact commands
-are in [`COMMAND_RECIPES.md`](COMMAND_RECIPES.md).
+[`ROLLOUT_EXPERIMENT_MANUAL.md`](../rollout/ROLLOUT_EXPERIMENT_MANUAL.md); compact commands
+are in [`COMMAND_RECIPES.md`](../reference/COMMAND_RECIPES.md).

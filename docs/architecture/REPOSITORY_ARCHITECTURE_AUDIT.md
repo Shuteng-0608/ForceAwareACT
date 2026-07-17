@@ -99,11 +99,11 @@ Known limitation: a saved manifest cannot be supplied as input; `--skip-existing
 
 ## 10. Script Inventory Summary
 
-Confirmed current behavior: 43 Python files exist directly under `scripts/`, covering training, normalization, offline evaluation, rollout, batch experiments, point generation, visualization, dataset inspection/quality, model inspection, debugging, replay, geometry validation, monitoring, release-registry maintenance, compatibility, and experiment wrappers. Full details are in [SCRIPTS_REFERENCE.md](SCRIPTS_REFERENCE.md).
+Confirmed current behavior: 43 Python files exist directly under `scripts/`, covering training, normalization, offline evaluation, rollout, batch experiments, point generation, visualization, dataset inspection/quality, model inspection, debugging, replay, geometry validation, monitoring, release-registry maintenance, compatibility, and experiment wrappers. Full details are in [SCRIPTS_REFERENCE.md](../reference/SCRIPTS_REFERENCE.md).
 
 ## 11. Test Inventory Summary
 
-The current tree contains 36 `test_*.py` files, including new coverage for dataset quality, split control, reproducible/thread-controlled training, early stopping, fixed point files, rollout suites/monitoring, target maps, and sensor analysis. The actual 2026-07-16 verification result is recorded in [TESTING.md](TESTING.md).
+The current tree contains 36 `test_*.py` files, including new coverage for dataset quality, split control, reproducible/thread-controlled training, early stopping, fixed point files, rollout suites/monitoring, target maps, and sensor analysis. The actual 2026-07-16 verification result is recorded in [TESTING.md](../reference/TESTING.md).
 
 ## 12. Checkpoint and Dispatch System
 

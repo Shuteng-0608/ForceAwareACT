@@ -4,7 +4,7 @@
 
 This audit separates the current code into an ACT-style base, ForceAwareACT additions, latent extensions, and rollout/project infrastructure. It is documentation plus a read-only parameter-count utility only; it does not implement or refactor an ACT baseline.
 
-Main finding: the current `ForceAwareACTPolicy` always instantiates and uses the force path in the action forward pass. `force_window -> TemporalForceEncoder -> z_F_online` and `z_F_online + visual_tokens -> ForceVisionCrossAttention -> z_VF` are concatenated into the policy encoder tokens before the action decoder runs ([`policy.py:176`](../src/force_aware_act/models/policy.py#L176)-[`261`](../src/force_aware_act/models/policy.py#L261)). Therefore action loss gradients reach force modules. The auxiliary force loss is computed from `pred_force`, which depends on `decoder_hidden`; its gradients reach the shared Transformer, vision, qpos, force encoder, and fusion paths unless parameters are frozen ([`losses.py:44`](../src/force_aware_act/training/losses.py#L44)-[`58`](../src/force_aware_act/training/losses.py#L58)).
+Main finding: the current `ForceAwareACTPolicy` always instantiates and uses the force path in the action forward pass. `force_window -> TemporalForceEncoder -> z_F_online` and `z_F_online + visual_tokens -> ForceVisionCrossAttention -> z_VF` are concatenated into the policy encoder tokens before the action decoder runs ([`policy.py:176`](../../src/force_aware_act/models/policy.py#L176)-[`261`](../../src/force_aware_act/models/policy.py#L261)). Therefore action loss gradients reach force modules. The auxiliary force loss is computed from `pred_force`, which depends on `decoder_hidden`; its gradients reach the shared Transformer, vision, qpos, force encoder, and fusion paths unless parameters are frozen ([`losses.py:44`](../../src/force_aware_act/training/losses.py#L44)-[`58`](../../src/force_aware_act/training/losses.py#L58)).
 
 The successful 20k zero-latent experiment path is not present as a local checkpoint in this macOS workspace. The closest available local checkpoint with explicit zero latent is `outputs/peg_hole_playback_test/overfit_action_trainzero_all10_5k/checkpoint.pt`; it records `action_mode=action`, `train_latent_mode=zero`, `chunk_len=10`, `force_window_len=20`, `force_window_duration=0.25`, two cameras, from-scratch ResNet18, `lambda_force=0.1`, and the small `d_model=128` model. The 20k/batch-16/max-delta/LHS details below are experiment-record-derived from existing docs, not checkpoint-verified locally.
 
@@ -31,14 +31,14 @@ Principal execution paths:
 
 | Path | Source |
 | --- | --- |
-| Dataset sample construction | `ContactForceHDF5Dataset.__getitem__`: reads synchronized state/image/force/action data, samples past force, future action, future force ([`contact_force_hdf5_dataset.py:279`](../src/force_aware_act/data/contact_force_hdf5_dataset.py#L279)-[`344`](../src/force_aware_act/data/contact_force_hdf5_dataset.py#L344)). |
-| Batch collation | Standard PyTorch `DataLoader` in training/eval scripts; no custom collate in repo ([`train_minimal.py:185`](../scripts/train_minimal.py#L185)-[`190`](../scripts/train_minimal.py#L190)). |
-| Model construction | `ForceAwareACTPolicy.__init__` instantiates all ACT, force, motion, contact, Transformer, and head modules ([`policy.py:83`](../src/force_aware_act/models/policy.py#L83)-[`157`](../src/force_aware_act/models/policy.py#L157)). |
-| Training forward pass | `train_minimal.py` passes `images`, `qpos`, `force_window`, `action_chunk`, `future_force_chunk`, `is_training=True`, and `contact_latent_mode=args.train_latent_mode` ([`train_minimal.py:257`](../scripts/train_minimal.py#L257)-[`265`](../scripts/train_minimal.py#L265)). |
-| Loss computation | `compute_force_aware_act_loss` computes action L1, future-force L1, optional motion/contact KL, optional prior distillation ([`losses.py:25`](../src/force_aware_act/training/losses.py#L25)-[`87`](../src/force_aware_act/training/losses.py#L87)). |
+| Dataset sample construction | `ContactForceHDF5Dataset.__getitem__`: reads synchronized state/image/force/action data, samples past force, future action, future force ([`contact_force_hdf5_dataset.py:279`](../../src/force_aware_act/data/contact_force_hdf5_dataset.py#L279)-[`344`](../../src/force_aware_act/data/contact_force_hdf5_dataset.py#L344)). |
+| Batch collation | Standard PyTorch `DataLoader` in training/eval scripts; no custom collate in repo ([`train_minimal.py:185`](../../scripts/train_minimal.py#L185)-[`190`](../../scripts/train_minimal.py#L190)). |
+| Model construction | `ForceAwareACTPolicy.__init__` instantiates all ACT, force, motion, contact, Transformer, and head modules ([`policy.py:83`](../../src/force_aware_act/models/policy.py#L83)-[`157`](../../src/force_aware_act/models/policy.py#L157)). |
+| Training forward pass | `train_minimal.py` passes `images`, `qpos`, `force_window`, `action_chunk`, `future_force_chunk`, `is_training=True`, and `contact_latent_mode=args.train_latent_mode` ([`train_minimal.py:257`](../../scripts/train_minimal.py#L257)-[`265`](../../scripts/train_minimal.py#L265)). |
+| Loss computation | `compute_force_aware_act_loss` computes action L1, future-force L1, optional motion/contact KL, optional prior distillation ([`losses.py:25`](../../src/force_aware_act/training/losses.py#L25)-[`87`](../../src/force_aware_act/training/losses.py#L87)). |
 | Evaluation forward pass | `evaluate_inference_modes.py` runs zero, prior, and posterior/contact modes against batches; posterior mode uses future labels only offline. |
-| MuJoCo rollout inference | `run_mujoco_policy_rollout.py` loads checkpoint/stats, builds normalized online tensors, calls model with `is_training=False`, denormalizes, selects an action, clips/smooths/executes ([`run_mujoco_policy_rollout.py:547`](../scripts/run_mujoco_policy_rollout.py#L547)-[`573`](../scripts/run_mujoco_policy_rollout.py#L573), [`970`](../scripts/run_mujoco_policy_rollout.py#L970)-[`1162`](../scripts/run_mujoco_policy_rollout.py#L1162)). |
-| Checkpoint loading | Evaluation/rollout reconstruct from `checkpoint["config"]["model"]`, force `pretrained_resnet18=False` default, set dropout/max force length defaults, then `load_state_dict` ([`run_mujoco_policy_rollout.py:167`](../scripts/run_mujoco_policy_rollout.py#L167)-[`180`](../scripts/run_mujoco_policy_rollout.py#L180)). |
+| MuJoCo rollout inference | `run_mujoco_policy_rollout.py` loads checkpoint/stats, builds normalized online tensors, calls model with `is_training=False`, denormalizes, selects an action, clips/smooths/executes ([`run_mujoco_policy_rollout.py:547`](../../scripts/run_mujoco_policy_rollout.py#L547)-[`573`](../../scripts/run_mujoco_policy_rollout.py#L573), [`970`](../../scripts/run_mujoco_policy_rollout.py#L970)-[`1162`](../../scripts/run_mujoco_policy_rollout.py#L1162)). |
+| Checkpoint loading | Evaluation/rollout reconstruct from `checkpoint["config"]["model"]`, force `pretrained_resnet18=False` default, set dropout/max force length defaults, then `load_state_dict` ([`run_mujoco_policy_rollout.py:167`](../../scripts/run_mujoco_policy_rollout.py#L167)-[`180`](../../scripts/run_mujoco_policy_rollout.py#L180)). |
 
 ## 3. Component Taxonomy
 
@@ -123,9 +123,9 @@ RGB images: dataset reads camera frames, scales/resizes to `[N_cam,3,224,224]`, 
 
 qpos: dataset returns `observations/joint_pos[state_index]` as `[7]`, normalization optionally applies `qpos_mean/std`, `JointMLP` maps `[B,7] -> [B,d]`, the token enters the policy encoder and action loss reaches it. qvel, joint torque, and ee_pose exist in samples but have no policy input argument and receive no gradients.
 
-force_window: dataset samples only force timestamps at or before the state time using `np.searchsorted(..., side="right") - 1` ([`contact_force_hdf5_dataset.py:207`](../src/force_aware_act/data/contact_force_hdf5_dataset.py#L207)-[`216`](../src/force_aware_act/data/contact_force_hdf5_dataset.py#L216)). After optional force normalization it enters `TemporalForceEncoder`, which projects force samples, prepends a learned CLS token, adds learned positional embeddings, and returns the CLS output ([`force.py:68`](../src/force_aware_act/models/force.py#L68)-[`73`](../src/force_aware_act/models/force.py#L73)). Action loss gradients reach `force_encoder` through both `z_F_online` and `z_VF`; this remains true in zero-latent mode.
+force_window: dataset samples only force timestamps at or before the state time using `np.searchsorted(..., side="right") - 1` ([`contact_force_hdf5_dataset.py:207`](../../src/force_aware_act/data/contact_force_hdf5_dataset.py#L207)-[`216`](../../src/force_aware_act/data/contact_force_hdf5_dataset.py#L216)). After optional force normalization it enters `TemporalForceEncoder`, which projects force samples, prepends a learned CLS token, adds learned positional embeddings, and returns the CLS output ([`force.py:68`](../../src/force_aware_act/models/force.py#L68)-[`73`](../../src/force_aware_act/models/force.py#L73)). Action loss gradients reach `force_encoder` through both `z_F_online` and `z_VF`; this remains true in zero-latent mode.
 
-future_force_chunk: dataset aligns future state times to nearest force timestamps ([`contact_force_hdf5_dataset.py:317`](../src/force_aware_act/data/contact_force_hdf5_dataset.py#L317)-[`324`](../src/force_aware_act/data/contact_force_hdf5_dataset.py#L324)). It is a target only. Force loss backpropagates from `pred_force` through `ForceHead`, decoder, policy encoder, and all tokens that feed memory, including vision, qpos, force encoder, and force-vision fusion. It does not feed inference.
+future_force_chunk: dataset aligns future state times to nearest force timestamps ([`contact_force_hdf5_dataset.py:317`](../../src/force_aware_act/data/contact_force_hdf5_dataset.py#L317)-[`324`](../../src/force_aware_act/data/contact_force_hdf5_dataset.py#L324)). It is a target only. Force loss backpropagates from `pred_force` through `ForceHead`, decoder, policy encoder, and all tokens that feed memory, including vision, qpos, force encoder, and force-vision fusion. It does not feed inference.
 
 motion latent: in posterior training, `MotionPosteriorEncoder(qpos, action_chunk)` emits `mu_motion`, `logvar_motion`, and sampled `z_motion`; KL is optional via `use_posterior_kl`. In zero-latent training and all inference, `z_motion` is a zero tensor, but `motion_latent_proj` is still called and its bias can yield a nonzero token.
 
@@ -165,14 +165,14 @@ State labels: supported in code means parser/constructor accepts it; default ena
 
 ## 7. Parameter-Count Partition
 
-The utility is [`scripts/audit_model_components.py`](../scripts/audit_model_components.py). It instantiates the existing policy with synthetic config or checkpoint config, forces `pretrained_resnet18=False` to avoid downloads, reports total/trainable counts, and writes JSON to [`ACT_BACKBONE_FORCE_EXTENSION_AUDIT.json`](ACT_BACKBONE_FORCE_EXTENSION_AUDIT.json). Unknown names go to `other_unclassified`.
+The utility is [`scripts/audit_model_components.py`](../../scripts/audit_model_components.py). It instantiates the existing policy with synthetic config or checkpoint config, forces `pretrained_resnet18=False` to avoid downloads, reports total/trainable counts, and writes JSON to [`ACT_BACKBONE_FORCE_EXTENSION_AUDIT.json`](ACT_BACKBONE_FORCE_EXTENSION_AUDIT.json). Unknown names go to `other_unclassified`.
 
 Command used:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/audit_model_components.py \
   --device cpu \
-  --json-output docs/ACT_BACKBONE_FORCE_EXTENSION_AUDIT.json
+  --json-output docs/architecture/ACT_BACKBONE_FORCE_EXTENSION_AUDIT.json
 ```
 
 ## 8. ACT Backbone Definition
@@ -265,11 +265,11 @@ Standard ACT-CVAE baseline: images + qpos plus motion posterior during training 
 
 ## 15. Previous Document Comparison
 
-`docs/ACT_ALIGNMENT_AUDIT.md` remains broadly accurate: it correctly identifies images/qpos/ResNet/Transformer/action L1 as ACT-like and force/contact modules as extensions. It is incomplete on the exact gradient implication that action loss reaches force modules because force tokens are inside the policy encoder context.
+`docs/architecture/ACT_ALIGNMENT_AUDIT.md` remains broadly accurate: it correctly identifies images/qpos/ResNet/Transformer/action L1 as ACT-like and force/contact modules as extensions. It is incomplete on the exact gradient implication that action loss reaches force modules because force tokens are inside the policy encoder context.
 
-`docs/VISION_BACKBONE_AUDIT.md` remains accurate for current code and inspected checkpoints: training uses `pretrained_resnet18=False`; constructor defaults differ; freeze is supported but not exposed by training CLI. It is stale only in the sense that more local checkpoints now exist beyond the three listed.
+`docs/architecture/VISION_BACKBONE_AUDIT.md` remains accurate for current code and inspected checkpoints: training uses `pretrained_resnet18=False`; constructor defaults differ; freeze is supported but not exposed by training CLI. It is stale only in the sense that more local checkpoints now exist beyond the three listed.
 
-`docs/EXPERIMENT_DESIGN_AND_PAPER_POSITIONING.md` remains accurate for experiment philosophy. It should be updated to reference this stricter boundary and to state that zero-force interventions are not true ACT baselines.
+`docs/research/EXPERIMENT_DESIGN_AND_PAPER_POSITIONING.md` remains accurate for experiment philosophy. It should be updated to reference this stricter boundary and to state that zero-force interventions are not true ACT baselines.
 
 Recommended document updates: add the parameter-count table, add the force-off caveat table, and explicitly mark the 20k run values as checkpoint-verified only when the exact checkpoint is present.
 

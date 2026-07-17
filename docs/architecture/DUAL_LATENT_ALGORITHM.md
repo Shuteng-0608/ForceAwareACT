@@ -4,8 +4,8 @@ Scope note (2026-07-16): this document explains the dual-latent
 `force_aware_act` algorithm in depth. It does not replace the current four-policy inventory, five-config
 training manual, or fixed-point/multi-seed rollout manual. Use
 [`ARCHITECTURE.md`](ARCHITECTURE.md),
-[`MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md`](MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md),
-and [`ROLLOUT_EXPERIMENT_MANUAL.md`](ROLLOUT_EXPERIMENT_MANUAL.md) for current
+[`MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md`](../training/MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md),
+and [`ROLLOUT_EXPERIMENT_MANUAL.md`](../rollout/ROLLOUT_EXPERIMENT_MANUAL.md) for current
 operational behavior.
 
 This document audits the current ForceAwareACT implementation as code, not as a proposed redesign. It summarizes the dataset contract, normalization, model graph, losses, evaluation modes, and MuJoCo rollout semantics used by the repository.

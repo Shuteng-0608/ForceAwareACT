@@ -177,9 +177,9 @@ mujoco_data/<dataset>/
 
 现有完整流程见：
 
-- [`docs/NEW_DATASET_TRAINING_MANUAL.md`](../docs/NEW_DATASET_TRAINING_MANUAL.md)
-- [`docs/ACTION_SEMANTICS.md`](../docs/ACTION_SEMANTICS.md)
-- [`docs/COMMAND_RECIPES.md`](../docs/COMMAND_RECIPES.md)
+- [`docs/data/NEW_DATASET_TRAINING_MANUAL.md`](../docs/data/NEW_DATASET_TRAINING_MANUAL.md)
+- [`docs/data/ACTION_SEMANTICS.md`](../docs/data/ACTION_SEMANTICS.md)
+- [`docs/reference/COMMAND_RECIPES.md`](../docs/reference/COMMAND_RECIPES.md)
 - [`configs/splits/README.md`](../configs/splits/README.md)
 
 ## 快速复核命令

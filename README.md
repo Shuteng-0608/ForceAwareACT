@@ -34,7 +34,7 @@ The implementation treats future action chunks and future force chunks as traini
 | `force_aware_contact_cvae` | yes | yes | yes | no | yes | yes | decoder hidden | decoder hidden + `z_contact` | contact posterior | zero or deterministic contact prior |
 | `act_baseline` | yes | yes | no | yes | no | no | decoder hidden | none | motion posterior | zero motion latent |
 
-Token order is policy-specific and documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short: the force-aware policies use visual spatial tokens plus state/force/fusion tokens and the relevant latent token(s); the ACT baseline uses visual tokens, qpos token, and motion latent token only.
+Token order is policy-specific and documented in [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md). In short: the force-aware policies use visual spatial tokens plus state/force/fusion tokens and the relevant latent token(s); the ACT baseline uses visual tokens, qpos token, and motion latent token only.
 
 ## Repository Structure
 
@@ -50,7 +50,7 @@ docs/          architecture, workflow, script, test, and historical reports
 configs/       split lists and experiment notes
 ```
 
-See the [documentation index](docs/README.md), [scripts reference](docs/SCRIPTS_REFERENCE.md), and [testing guide](docs/TESTING.md) for full inventories and the distinction between current manuals and historical reports.
+See the [documentation index](docs/README.md), [scripts reference](docs/reference/SCRIPTS_REFERENCE.md), and [testing guide](docs/reference/TESTING.md) for full inventories and the distinction between current manuals and historical reports.
 
 ## Installation
 
@@ -80,7 +80,7 @@ Images are read as HWC RGB, scaled to `[0, 1]` by default, resized to `--image-s
 
 Force-frame assumptions are not encoded in code. The reader uses recorded `observations/ft_wrench` directly; rollout uses MuJoCo force/torque sensors directly. There is no implemented bias removal, filtering, gravity compensation, sign conversion, or frame conversion.
 
-For a new dataset, first create a stable episode list, run both `evaluate_dataset_quality.py` (collection status, command, image, motion, and force heuristics) and `inspect_episode_collection.py` (the exact dataset reader's synchronization/sample checks), inspect action semantics, split at episode level when measuring generalization, and compute stats from the training split only. See [the new-dataset manual](docs/NEW_DATASET_TRAINING_MANUAL.md).
+For a new dataset, first create a stable episode list, run both `evaluate_dataset_quality.py` (collection status, command, image, motion, and force heuristics) and `inspect_episode_collection.py` (the exact dataset reader's synchronization/sample checks), inspect action semantics, split at episode level when measuring generalization, and compute stats from the training split only. See [the new-dataset manual](docs/data/NEW_DATASET_TRAINING_MANUAL.md).
 
 ## Normalization Workflow
 
@@ -350,7 +350,7 @@ PYTHONPATH=src python scripts/audit_model_components.py \
 
 `--policy-variant both` is a narrow comparison mode for `force_aware_act` versus `act_baseline`; it does not audit the two single-latent force-aware variants.
 
-See [docs/TESTING.md](docs/TESTING.md) for the complete test-file inventory.
+See [docs/reference/TESTING.md](docs/reference/TESTING.md) for the complete test-file inventory.
 
 ## Reproducibility and Experiment Hygiene
 
@@ -363,13 +363,13 @@ See [docs/TESTING.md](docs/TESTING.md) for the complete test-file inventory.
 
 ## Documentation Index
 
-- [Architecture](docs/ARCHITECTURE.md)
+- [Architecture](docs/architecture/ARCHITECTURE.md)
 - [Documentation Index](docs/README.md)
-- [Scripts Reference](docs/SCRIPTS_REFERENCE.md)
-- [Testing](docs/TESTING.md)
-- [Command Recipes](docs/COMMAND_RECIPES.md)
-- [Five-Model Training and Early-Stopping Manual](docs/MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md)
-- [Repository Architecture Audit](docs/REPOSITORY_ARCHITECTURE_AUDIT.md)
+- [Scripts Reference](docs/reference/SCRIPTS_REFERENCE.md)
+- [Testing](docs/reference/TESTING.md)
+- [Command Recipes](docs/reference/COMMAND_RECIPES.md)
+- [Five-Model Training and Early-Stopping Manual](docs/training/MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md)
+- [Repository Architecture Audit](docs/architecture/REPOSITORY_ARCHITECTURE_AUDIT.md)
 - Historical reports remain in `docs/` and are useful as experiment records, but the files above are the current canonical entry points.
 
 ## Known Limitations
