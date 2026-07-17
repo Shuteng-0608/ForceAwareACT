@@ -761,3 +761,43 @@ RUN_ROOT=outputs/hole_random_60mm_hmj/earlystop_train90_splitseed20260716_run2 \
 ```
 
 路径、batch size、worker、预算和早停参数都可通过同名大写环境变量覆盖。正式对比中如需覆盖，应在启动前记录完整命令，且五种配置共享同一组控制参数。
+
+## 20. 五个 best checkpoint 的固定 60 mm Fibonacci rollout
+
+五模型训练完成后，可在完全相同的 `configs/experiments/fibonacci_disk_100_r60mm.csv` 固定 100 点上串行执行配对 rollout。专用 runner 使用各自的 `checkpoint_best.pt`，Contact-zero 使用 zero，Contact-prior 使用 prior，Motion-CVAE、DualZero 和 ACT baseline 使用 zero。
+
+启动前只读检查：
+
+```bash
+python scripts/run_hole_random_5model_fibonacci_r60_rollouts.py preflight
+python scripts/run_hole_random_5model_fibonacci_r60_rollouts.py dry-run
+```
+
+在 tmux 中自动运行五个模型：
+
+```bash
+tmux new-session -s forceact-rollout60
+conda activate forceact
+cd ~/ForceAwareACT_workspace/ForceAwareACT
+python scripts/run_hole_random_5model_fibonacci_r60_rollouts.py run
+```
+
+该专用 runner 默认使用 MuJoCo 的 EGL 后端，并向每个子 rollout 传递
+`--mujoco-gl egl`，因此上述命令无需额外指定图形后端。
+
+在另一个终端监控 500 次 rollout 的完成点、成功、40 N safe success、process error、hard force stop、峰值力和 ETA：
+
+```bash
+python scripts/monitor_hole_random_5model_fibonacci_r60_rollouts.py \
+  --watch \
+  --interval 10
+```
+
+默认输出根目录为：
+
+```text
+outputs/hole_random_60mm_hmj/earlystop_train90_splitseed20260716_run1/
+  rollouts/fibonacci_disk_100_r60mm_mid/
+```
+
+runner 默认传递 `--skip-existing`，因此中断后可用同一命令安全跳过已有有效 `summary.json` 并继续缺失点。已有 `suite_plan.json` 必须与新命令协议完全一致，避免在同一目录混入不同阈值、seed、checkpoint 或点集。
