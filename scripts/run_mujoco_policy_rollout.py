@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from collections import deque
 from pathlib import Path
@@ -20,7 +21,16 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
+from force_aware_act.data import (  # noqa: E402
+    canonical_json_sha256,
+    denormalize_tensor,
+    normalize_tensor,
+    validate_normalization_provenance_hashes,
+)
+from force_aware_act.evaluation import (  # noqa: E402
+    ContactRecoveryConfig,
+    ContactRecoveryStateMachine,
+)
 from force_aware_act.models import (  # noqa: E402
     ACTPolicyBaseline,
     ForceAwareACTContactCVAEPolicy,
@@ -28,6 +38,12 @@ from force_aware_act.models import (  # noqa: E402
     ForceAwareACTPolicy,
     LegacyZeroLatentACTPolicyBaseline,
 )
+from force_aware_act.training.checkpointing import (  # noqa: E402
+    CHECKPOINT_SCHEMA_VERSION,
+    file_sha256,
+    validate_checkpoint_v2_payload,
+)
+from force_aware_act.training.engine import validate_normalization_stats  # noqa: E402
 
 
 JOINT_NAMES = tuple(f"joint_{index}" for index in range(1, 8))
@@ -38,6 +54,8 @@ TASK_SITE_NAMES = ("peg_tip_site", "hole_goal_site")
 TASK_BODY_NAMES = ("peg_tool", "wall_task")
 DEFAULT_HOLE_SITE_NAME = "hole_goal_site"
 DEFAULT_HOLE_BODY_NAME = "wall_task"
+DEFAULT_HARD_FORCE_THRESHOLD = 1000.0
+ROLLOUT_CONTRACT_SCHEMA_VERSION = 1
 EXPECTED_HOLE_GEOM_NAMES = tuple(
     f"wall_hole_ring_{index:02d}" for index in range(24)
 ) + ("hole_back_stop",)
@@ -63,6 +81,10 @@ SUMMARY_REQUIRED_KEYS = (
     "checkpoint",
     "normalization_stats",
     "model_xml",
+    "checkpoint_file_sha256",
+    "normalization_stats_file_sha256",
+    "model_xml_file_sha256",
+    "rollout_contract",
     "inference_device",
     "rollout_mode",
     "action_mode",
@@ -85,6 +107,10 @@ SUMMARY_REQUIRED_KEYS = (
     "success_force_threshold",
     "success_hold_steps",
     "success_stop_enabled",
+    "recovery_success",
+    "safe_recovery_success",
+    "contact_recovery_metrics_valid",
+    "contact_recovery_metrics",
     "stop_reason",
     "steps_executed",
     "final_time",
@@ -155,13 +181,275 @@ def _load_mujoco():
 
 
 def _load_stats(path: Path) -> Dict[str, Any]:
-    stats = torch.load(path, map_location="cpu")
+    stats = _torch_load(path)
     if not isinstance(stats, dict):
         raise ValueError("normalization stats file must contain a dict")
-    for key in ("qpos_mean", "qpos_std", "action_mean", "action_std", "force_mean", "force_std"):
-        if key not in stats or not torch.is_tensor(stats[key]):
-            raise KeyError(f"normalization stats missing tensor: {key}")
+    validate_normalization_stats(stats)
     return stats
+
+
+def _torch_load(path: Path) -> Any:
+    """Load one trusted local artifact across supported PyTorch versions."""
+
+    try:
+        return torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:  # pragma: no cover - compatibility with older PyTorch
+        return torch.load(path, map_location="cpu")
+
+
+def _normalization_semantic_sha256(stats: Dict[str, Any]) -> str:
+    """Verify and return the semantic digest used by formal staged training."""
+
+    recorded = stats.get("normalization_content_sha256")
+    if not isinstance(recorded, str) or len(recorded) != 64 or any(
+        character not in "0123456789abcdef" for character in recorded
+    ):
+        raise ValueError(
+            "formal rollout normalization stats must record a lowercase "
+            "normalization_content_sha256 digest"
+        )
+    validate_normalization_provenance_hashes(stats, require_components=True)
+    descriptor = {
+        "normalization_config_sha256": stats.get("normalization_config_sha256"),
+        "population_sha256": stats.get("population_sha256"),
+        "statistics": {
+            key: {
+                "dtype": str(stats[key].dtype),
+                "shape": list(stats[key].shape),
+                "values": stats[key].detach().cpu().tolist(),
+            }
+            for key in (
+                "qpos_mean",
+                "qpos_std",
+                "action_mean",
+                "action_std",
+                "force_mean",
+                "force_std",
+            )
+        },
+    }
+    actual = canonical_json_sha256(descriptor)
+    if actual != recorded:
+        raise ValueError(
+            "normalization semantic SHA256 mismatch: "
+            f"recorded={recorded} actual={actual}"
+        )
+    return actual
+
+
+def _semantic_value(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return tuple(value)
+    return value
+
+
+def _validate_v2_rollout_semantics(
+    checkpoint: Dict[str, Any],
+    stats: Dict[str, Any],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Bind a formal v2 checkpoint to runtime and normalization semantics."""
+
+    validate_checkpoint_v2_payload(checkpoint, verify_hashes=True)
+    config = checkpoint["config"]
+    expected = {
+        "action_mode": args.action_mode,
+        "chunk_len": args.chunk_len,
+        "force_window_len": args.force_window_len,
+        "force_window_duration": args.force_window_duration,
+        "image_size": (args.image_size, args.image_size),
+        "camera_names": CAMERA_NAMES,
+        # Runtime rendering scales RGB into [0, 1] but does not apply ImageNet
+        # channel statistics.
+        "imagenet_normalize": False,
+    }
+    for key, expected_value in expected.items():
+        if key not in config:
+            raise ValueError(f"formal checkpoint config is missing rollout semantic: {key}")
+        actual_value = _semantic_value(config[key])
+        if actual_value != _semantic_value(expected_value):
+            raise ValueError(
+                f"checkpoint/runtime semantic mismatch for {key}: "
+                f"checkpoint={actual_value!r} runtime={expected_value!r}"
+            )
+        if key not in stats:
+            raise ValueError(f"formal normalization stats is missing dataset semantic: {key}")
+        stats_value = _semantic_value(stats[key])
+        if stats_value != _semantic_value(expected_value):
+            raise ValueError(
+                f"normalization/runtime semantic mismatch for {key}: "
+                f"stats={stats_value!r} runtime={expected_value!r}"
+            )
+
+    expected_dimensions = {
+        "qpos_mean": 7,
+        "qpos_std": 7,
+        "action_mean": 7,
+        "action_std": 7,
+        "force_mean": 6,
+        "force_std": 6,
+    }
+    for key, expected_dimension in expected_dimensions.items():
+        if int(stats[key].numel()) != expected_dimension:
+            raise ValueError(
+                f"formal normalization {key} dimension mismatch: "
+                f"stats={stats[key].numel()} runtime={expected_dimension}"
+            )
+
+    semantic_hash = _normalization_semantic_sha256(stats)
+    config_hash = config.get("normalization_sha256")
+    integrity_hash = checkpoint["integrity"].get("normalization_sha256")
+    if config_hash != integrity_hash:
+        raise ValueError("checkpoint normalization SHA256 fields disagree")
+    if integrity_hash != semantic_hash:
+        raise ValueError(
+            "checkpoint normalization SHA256 does not bind the supplied stats: "
+            f"checkpoint={integrity_hash!r} stats={semantic_hash!r}"
+        )
+    return {
+        "status": "v2_verified",
+        "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "normalization_semantic_sha256": semantic_hash,
+    }
+
+
+def _validate_rollout_artifact_semantics(
+    checkpoint: Dict[str, Any],
+    stats: Dict[str, Any],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Validate formal artifacts while retaining explicit legacy compatibility."""
+
+    _validate_stats_action_mode(stats, args.action_mode)
+    if checkpoint.get("schema_version") == CHECKPOINT_SCHEMA_VERSION:
+        return _validate_v2_rollout_semantics(checkpoint, stats, args)
+    formal_markers = {
+        "schema_version",
+        "checkpoint_type",
+        "integrity",
+        "training_state",
+        "stage",
+        "lineage",
+    }
+    present_markers = sorted(formal_markers.intersection(checkpoint))
+    if present_markers:
+        raise ValueError(
+            "checkpoint contains formal checkpoint markers but is not a valid "
+            f"schema-v{CHECKPOINT_SCHEMA_VERSION} artifact: {', '.join(present_markers)}"
+        )
+    return {
+        "status": "legacy_unverified",
+        "checkpoint_schema_version": checkpoint.get("schema_version"),
+        "normalization_semantic_sha256": None,
+    }
+
+
+def _build_rollout_contract(
+    args: argparse.Namespace,
+    *,
+    inference_device: torch.device,
+    policy_variant: str,
+    verification: Dict[str, Any],
+    mujoco_gl: Optional[str] = None,
+) -> dict[str, Any]:
+    """Build the exact JSON contract used to authorize result reuse."""
+
+    contact_config = _contact_recovery_config(args)
+    return {
+        "schema_version": ROLLOUT_CONTRACT_SCHEMA_VERSION,
+        "artifacts": {
+            "checkpoint": {
+                "path": str(args.checkpoint),
+                "file_sha256": file_sha256(args.checkpoint),
+            },
+            "normalization_stats": {
+                "path": str(args.normalization_stats),
+                "file_sha256": file_sha256(args.normalization_stats),
+            },
+            "model_xml": {
+                "path": str(args.model_xml),
+                "file_sha256": file_sha256(args.model_xml),
+            },
+        },
+        "artifact_verification": dict(verification),
+        "runtime": {
+            "requested_device": args.device,
+            "resolved_device": str(inference_device),
+            "mujoco_gl": os.environ.get("MUJOCO_GL") if mujoco_gl is None else mujoco_gl,
+            "policy_variant": policy_variant,
+            "rollout_mode": "execute" if args.execute_actions else "dry_run",
+            "seed": args.seed,
+            "contact_latent_mode": args.contact_latent_mode,
+            "action_mode": args.action_mode,
+            "action_select_mode": args.action_select_mode,
+            "selected_action_index": _selected_action_index(
+                args.chunk_len, args.action_select_mode
+            ),
+            "temporal_agg_decay": args.temporal_agg_decay,
+            "chunk_len": args.chunk_len,
+            "force_window_len": args.force_window_len,
+            "force_window_duration": args.force_window_duration,
+            "policy_rate_hz": args.policy_rate_hz,
+            "max_rollout_steps": args.max_rollout_steps,
+            "image_width": args.image_width,
+            "image_height": args.image_height,
+            "image_size": [args.image_size, args.image_size],
+            "camera_names": list(CAMERA_NAMES),
+            "imagenet_normalize": False,
+            "ema_alpha": args.ema_alpha,
+            "max_delta_q": args.max_delta_q,
+            "force_stop_threshold": args.force_stop_threshold,
+            "success_distance_threshold": args.success_distance_threshold,
+            "success_lateral_threshold": args.success_lateral_threshold,
+            "success_force_threshold": args.success_force_threshold,
+            "success_hold_steps": args.success_hold_steps,
+            "success_stop_enabled": args.success_stop_enabled,
+            "contact_recovery": contact_config.to_dict(),
+            "hole_site_name": args.hole_site_name,
+            "hole_body_name": args.hole_body_name,
+            "hole_offset_frame": args.hole_offset_frame,
+            "hole_offset": [
+                args.hole_offset_x,
+                args.hole_offset_y,
+                args.hole_offset_z,
+            ],
+            "hole_axis_world": np.asarray(args.hole_axis_world).tolist(),
+            "axial_push_enabled": args.enable_axial_push,
+            "axial_push_speed": args.axial_push_speed,
+            "axial_push_start_dist": args.axial_push_start_dist,
+            "axial_push_stop_force": args.axial_push_stop_force,
+            "save_camera_snapshots": args.save_camera_snapshots,
+            "snapshot_every": args.snapshot_every,
+            "save_videos": args.save_videos,
+            "video_fps": args.video_fps,
+            "video_every": args.video_every,
+        },
+        "output_dir": str(args.output_dir.resolve()),
+    }
+
+
+def _prepare_rollout_artifacts(
+    args: argparse.Namespace,
+    *,
+    mujoco_gl: Optional[str] = None,
+) -> tuple[Dict[str, Any], Dict[str, Any], torch.device, dict[str, Any]]:
+    """Load, verify, and identify every artifact that controls a rollout."""
+
+    inference_device = _resolve_inference_device(args.device)
+    stats = _load_stats(args.normalization_stats)
+    checkpoint = _torch_load(args.checkpoint)
+    if not isinstance(checkpoint, dict):
+        raise ValueError("checkpoint must contain a dict")
+    verification = _validate_rollout_artifact_semantics(checkpoint, stats, args)
+    policy_variant = _policy_variant_from_checkpoint(checkpoint)
+    contract = _build_rollout_contract(
+        args,
+        inference_device=inference_device,
+        policy_variant=policy_variant,
+        verification=verification,
+        mujoco_gl=mujoco_gl,
+    )
+    return stats, checkpoint, inference_device, contract
 
 
 def _validate_stats_action_mode(stats: Dict[str, Any], action_mode: str) -> None:
@@ -864,6 +1152,14 @@ def _fieldnames() -> list[str]:
             "prior_vs_zero_force_mean_abs_diff",
             "success_condition",
             "success_hold_counter",
+            "contact_active",
+            "contact_transition",
+            "contact_force_excess_n",
+            "contact_hard_force_this_step",
+            "contact_hard_force_violation",
+            "contact_metrics_valid",
+            "recovery_success",
+            "safe_recovery_success",
             "stop_reason",
         ]
     )
@@ -908,13 +1204,108 @@ def _success_condition(
     force_threshold: float,
 ) -> bool:
     return bool(
-        np.isfinite(peg_to_hole_dist)
-        and np.isfinite(peg_to_hole_lateral_error)
+        _position_success_condition(
+            peg_to_hole_dist,
+            peg_to_hole_lateral_error,
+            distance_threshold,
+            lateral_threshold,
+        )
         and np.isfinite(force_norm)
-        and peg_to_hole_dist < distance_threshold
-        and peg_to_hole_lateral_error < lateral_threshold
         and force_norm < force_threshold
     )
+
+
+def _position_success_condition(
+    peg_to_hole_dist: float,
+    peg_to_hole_lateral_error: float,
+    distance_threshold: float,
+    lateral_threshold: float,
+) -> bool:
+    """Return the geometry-only portion of the existing success criterion."""
+
+    return bool(
+        np.isfinite(peg_to_hole_dist)
+        and np.isfinite(peg_to_hole_lateral_error)
+        and peg_to_hole_dist < distance_threshold
+        and peg_to_hole_lateral_error < lateral_threshold
+    )
+
+
+def _recovery_observation_is_valid(
+    *,
+    force_n: float,
+    peg_to_hole_dist: float,
+    peg_to_hole_lateral_error: float,
+    observation_time: float,
+    dt_s: float,
+) -> bool:
+    """Return whether one recovery observation is complete and causal."""
+
+    values = (
+        force_n,
+        peg_to_hole_dist,
+        peg_to_hole_lateral_error,
+        observation_time,
+        dt_s,
+    )
+    return bool(
+        all(np.isfinite(value) for value in values)
+        and force_n >= 0.0
+        and peg_to_hole_dist >= 0.0
+        and peg_to_hole_lateral_error >= 0.0
+        and observation_time >= 0.0
+        and dt_s >= 0.0
+    )
+
+
+def _control_command_is_finite(command: np.ndarray, expected_dim: int = 7) -> bool:
+    """Final fail-closed gate immediately before writing actuator controls."""
+
+    values = np.asarray(command)
+    return bool(values.shape == (expected_dim,) and np.isfinite(values).all())
+
+
+def _contact_recovery_config(args: argparse.Namespace) -> ContactRecoveryConfig:
+    """Resolve optional CLI defaults into one validated metric configuration."""
+
+    safe_force = (
+        args.success_force_threshold
+        if args.safe_force_threshold is None
+        else args.safe_force_threshold
+    )
+    hard_force = (
+        DEFAULT_HARD_FORCE_THRESHOLD
+        if args.hard_force_threshold is None
+        else args.hard_force_threshold
+    )
+    return ContactRecoveryConfig(
+        contact_enter_force_n=args.contact_enter_force_threshold,
+        contact_exit_force_n=args.contact_exit_force_threshold,
+        contact_min_steps=args.contact_min_steps,
+        success_force_n=args.success_force_threshold,
+        safe_force_n=safe_force,
+        hard_force_n=hard_force,
+        success_hold_steps=args.success_hold_steps,
+    )
+
+
+def _finalize_contact_recovery_summary(
+    tracker: ContactRecoveryStateMachine,
+    invalid_observation_count: int,
+) -> dict[str, object]:
+    """Fail closed when force observations could not be evaluated."""
+
+    if invalid_observation_count < 0:
+        raise ValueError("invalid_observation_count must be non-negative")
+    summary = tracker.summary()
+    metrics_valid = invalid_observation_count == 0
+    summary["recovery_success_observed"] = bool(summary["recovery_success"])
+    summary["safe_success_observed"] = bool(summary["safe_success"])
+    summary["metrics_valid"] = metrics_valid
+    summary["invalid_observation_count"] = invalid_observation_count
+    summary["recovery_success"] = bool(summary["recovery_success"] and metrics_valid)
+    summary["safe_success"] = bool(summary["safe_success"] and metrics_valid)
+    return summary
 
 
 def _update_success_hold_counter(
@@ -944,7 +1335,7 @@ def _validate_summary_schema(summary: dict[str, Any]) -> None:
 
 
 def run_rollout(args: argparse.Namespace) -> int:
-    inference_device = _resolve_inference_device(args.device)
+    stats, checkpoint, inference_device, rollout_contract = _prepare_rollout_artifacts(args)
     cuda_available = torch.cuda.is_available()
     print(f"requested_device={args.device}")
     print(f"resolved_device={inference_device}")
@@ -954,12 +1345,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     mujoco = _load_mujoco()
-    stats = _load_stats(args.normalization_stats)
-    _validate_stats_action_mode(stats, args.action_mode)
     stats = _stats_to_device(stats, inference_device)
-    checkpoint = torch.load(args.checkpoint, map_location="cpu")
-    if not isinstance(checkpoint, dict):
-        raise ValueError("checkpoint must contain a dict")
     policy_variant = _policy_variant_from_checkpoint(checkpoint)
     model = _build_policy_from_checkpoint(checkpoint, args.force_window_len, args.chunk_len)
     model.load_state_dict(checkpoint["model_state_dict"], strict=True)
@@ -1070,6 +1456,9 @@ def run_rollout(args: argparse.Namespace) -> int:
     success_time: Optional[float] = None
     success_hold_counter = 0
     max_success_hold_counter = 0
+    recovery_tracker = ContactRecoveryStateMachine(_contact_recovery_config(args))
+    contact_recovery_invalid_observations = 0
+    previous_recovery_observation_time: Optional[float] = None
     initial_task: Optional[dict[str, np.ndarray | float]] = None
     final_task: Optional[dict[str, np.ndarray | float]] = None
     snapshots_saved = False
@@ -1117,6 +1506,37 @@ def run_rollout(args: argparse.Namespace) -> int:
                 args.success_lateral_threshold,
                 args.success_force_threshold,
             )
+            position_success_condition = _position_success_condition(
+                float(task["peg_to_hole_dist"]),
+                float(task["peg_to_hole_lateral_error"]),
+                args.success_distance_threshold,
+                args.success_lateral_threshold,
+            )
+            observation_time = float(data.time)
+            recovery_dt = (
+                0.0
+                if previous_recovery_observation_time is None
+                else observation_time - previous_recovery_observation_time
+            )
+            recovery_step_state = None
+            recovery_observation_valid = _recovery_observation_is_valid(
+                force_n=force_norm,
+                peg_to_hole_dist=float(task["peg_to_hole_dist"]),
+                peg_to_hole_lateral_error=float(
+                    task["peg_to_hole_lateral_error"]
+                ),
+                observation_time=observation_time,
+                dt_s=recovery_dt,
+            )
+            if recovery_observation_valid:
+                recovery_step_state = recovery_tracker.update(
+                    force_n=force_norm,
+                    dt_s=recovery_dt,
+                    task_success=position_success_condition,
+                )
+                previous_recovery_observation_time = observation_time
+            else:
+                contact_recovery_invalid_observations += 1
             success_hold_counter = _update_success_hold_counter(
                 success_hold_counter,
                 step_success_condition,
@@ -1153,6 +1573,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                 and (np.isfinite(selected_force).all() if has_predicted_force else True)
                 and np.isfinite(qpos).all()
                 and np.isfinite(wrench).all()
+                and recovery_observation_valid
             )
             row_stop_reason = ""
             if not finite:
@@ -1276,6 +1697,10 @@ def run_rollout(args: argparse.Namespace) -> int:
                 clipped_delta_norm = float(np.linalg.norm(delta_clipped_action - qpos))
                 ema_delta_norm = float(np.linalg.norm(ema_action - qpos))
 
+            if args.execute_actions and not _control_command_is_finite(
+                ctrl_clipped_action
+            ):
+                row_stop_reason = "nonfinite_value"
             if args.execute_actions and not row_stop_reason:
                 data.ctrl[actuator_ids] = ctrl_clipped_action
                 previous_command = ctrl_clipped_action.copy()
@@ -1334,6 +1759,42 @@ def run_rollout(args: argparse.Namespace) -> int:
                 ),
                 "success_condition": step_success_condition,
                 "success_hold_counter": success_hold_counter,
+                "contact_active": (
+                    recovery_step_state.contact_active
+                    if recovery_step_state is not None
+                    else ""
+                ),
+                "contact_transition": (
+                    recovery_step_state.contact_transition
+                    if recovery_step_state is not None
+                    else ""
+                ),
+                "contact_force_excess_n": (
+                    recovery_step_state.force_excess_n
+                    if recovery_step_state is not None
+                    else ""
+                ),
+                "contact_hard_force_this_step": (
+                    recovery_step_state.hard_force_this_step
+                    if recovery_step_state is not None
+                    else ""
+                ),
+                "contact_hard_force_violation": (
+                    recovery_step_state.hard_force_violation
+                    if recovery_step_state is not None
+                    else ""
+                ),
+                "contact_metrics_valid": recovery_step_state is not None,
+                "recovery_success": (
+                    recovery_step_state.recovery_success
+                    if recovery_step_state is not None
+                    else False
+                ),
+                "safe_recovery_success": (
+                    recovery_step_state.safe_success
+                    if recovery_step_state is not None
+                    else False
+                ),
                 "stop_reason": row_stop_reason,
             }
             row.update({f"qpos_{index}": float(value) for index, value in enumerate(qpos)})
@@ -1488,6 +1949,10 @@ def run_rollout(args: argparse.Namespace) -> int:
         else float("nan")
     )
     videos_saved = args.save_videos and any(video_frame_counts.values())
+    recovery_summary = _finalize_contact_recovery_summary(
+        recovery_tracker,
+        contact_recovery_invalid_observations,
+    )
     summary_path = args.output_dir / "summary.json"
     summary = {
         "output_dir": args.output_dir,
@@ -1495,6 +1960,16 @@ def run_rollout(args: argparse.Namespace) -> int:
         "policy_variant": policy_variant,
         "normalization_stats": args.normalization_stats,
         "model_xml": args.model_xml,
+        "checkpoint_file_sha256": rollout_contract["artifacts"]["checkpoint"][
+            "file_sha256"
+        ],
+        "normalization_stats_file_sha256": rollout_contract["artifacts"][
+            "normalization_stats"
+        ]["file_sha256"],
+        "model_xml_file_sha256": rollout_contract["artifacts"]["model_xml"][
+            "file_sha256"
+        ],
+        "rollout_contract": rollout_contract,
         "inference_device": str(inference_device),
         "rollout_mode": "execute" if args.execute_actions else "dry_run",
         "action_mode": args.action_mode,
@@ -1517,6 +1992,10 @@ def run_rollout(args: argparse.Namespace) -> int:
         "success_force_threshold": args.success_force_threshold,
         "success_hold_steps": args.success_hold_steps,
         "success_stop_enabled": args.success_stop_enabled,
+        "recovery_success": recovery_summary["recovery_success"],
+        "safe_recovery_success": recovery_summary["safe_success"],
+        "contact_recovery_metrics_valid": recovery_summary["metrics_valid"],
+        "contact_recovery_metrics": recovery_summary,
         "stop_reason": stop_reason,
         "steps_executed": len(rows),
         "final_time": float(data.time),
@@ -1685,6 +2164,9 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"success_time={success_time}")
     print(f"success_hold_steps_observed={max_success_hold_counter}")
     print(f"success_stop_enabled={args.success_stop_enabled}")
+    print(f"recovery_success={recovery_summary['recovery_success']}")
+    print(f"safe_recovery_success={recovery_summary['safe_success']}")
+    print(f"contact_recovery_metrics_valid={recovery_summary['metrics_valid']}")
     print(f"snapshots_saved={snapshots_saved}")
     if snapshots_saved:
         print(f"snapshot_dir={snapshot_dir}")
@@ -1738,6 +2220,24 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
     parser.add_argument("--success-force-threshold", type=float, default=40.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
+    parser.add_argument("--contact-enter-force-threshold", type=float, default=5.0)
+    parser.add_argument("--contact-exit-force-threshold", type=float, default=3.0)
+    parser.add_argument("--contact-min-steps", type=int, default=2)
+    parser.add_argument(
+        "--safe-force-threshold",
+        type=float,
+        default=None,
+        help="Peak-force ceiling for safe recovery; defaults to success force threshold.",
+    )
+    parser.add_argument(
+        "--hard-force-threshold",
+        type=float,
+        default=None,
+        help=(
+            "Hard-violation metric threshold; defaults to the independent "
+            f"{DEFAULT_HARD_FORCE_THRESHOLD:g} N evaluation ceiling."
+        ),
+    )
     parser.add_argument("--disable-success-stop", action="store_true")
     parser.add_argument("--hole-site-name", default=DEFAULT_HOLE_SITE_NAME)
     parser.add_argument("--hole-body-name", default=DEFAULT_HOLE_BODY_NAME)
@@ -1764,79 +2264,105 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = parse_args(sys.argv[1:] if argv is None else argv)
+def _resolve_and_validate_rollout_args(args: argparse.Namespace) -> None:
+    """Resolve paths and reject unsafe CLI values, including NaN and infinity."""
+
     for key in ("checkpoint", "normalization_stats", "model_xml"):
         path = getattr(args, key).expanduser().resolve()
         setattr(args, key, path)
         if not path.is_file():
-            print(f"error: {key.replace('_', ' ')} does not exist: {path}", file=sys.stderr)
-            return 2
+            raise FileNotFoundError(f"{key.replace('_', ' ')} does not exist: {path}")
     args.output_dir = args.output_dir.expanduser()
+    finite_float_names = (
+        "temporal_agg_decay",
+        "force_window_duration",
+        "policy_rate_hz",
+        "ema_alpha",
+        "max_delta_q",
+        "force_stop_threshold",
+        "success_distance_threshold",
+        "success_lateral_threshold",
+        "success_force_threshold",
+        "contact_enter_force_threshold",
+        "contact_exit_force_threshold",
+        "safe_force_threshold",
+        "hard_force_threshold",
+        "hole_offset_x",
+        "hole_offset_y",
+        "hole_offset_z",
+        "axial_push_speed",
+        "axial_push_start_dist",
+        "axial_push_stop_force",
+    )
+    nonfinite = [
+        name
+        for name in finite_float_names
+        if getattr(args, name) is not None
+        and not np.isfinite(float(getattr(args, name)))
+    ]
+    if nonfinite:
+        raise ValueError(
+            "rollout float arguments must be finite: " + ", ".join(nonfinite)
+        )
     if args.chunk_len <= 0 or args.force_window_len <= 0 or args.max_rollout_steps <= 0:
-        print("error: chunk/window/rollout lengths must be positive", file=sys.stderr)
-        return 2
+        raise ValueError("chunk/window/rollout lengths must be positive")
     if args.force_window_duration < 0 or args.policy_rate_hz <= 0:
-        print("error: force window duration must be non-negative and policy rate positive", file=sys.stderr)
-        return 2
+        raise ValueError(
+            "force window duration must be non-negative and policy rate positive"
+        )
     if args.image_width <= 0 or args.image_height <= 0 or args.image_size <= 0:
-        print("error: image dimensions must be positive", file=sys.stderr)
-        return 2
+        raise ValueError("image dimensions must be positive")
     if not 0.0 <= args.ema_alpha <= 1.0:
-        print("error: --ema-alpha must be in [0, 1]", file=sys.stderr)
-        return 2
+        raise ValueError("--ema-alpha must be in [0, 1]")
     if args.max_delta_q <= 0 or args.force_stop_threshold <= 0:
-        print("error: --max-delta-q and --force-stop-threshold must be positive", file=sys.stderr)
-        return 2
+        raise ValueError("--max-delta-q and --force-stop-threshold must be positive")
     if (
         args.success_distance_threshold <= 0
         or args.success_lateral_threshold <= 0
         or args.success_force_threshold <= 0
         or args.success_hold_steps <= 0
     ):
-        print("error: success thresholds and --success-hold-steps must be positive", file=sys.stderr)
-        return 2
+        raise ValueError("success thresholds and --success-hold-steps must be positive")
     args.success_stop_enabled = not args.disable_success_stop
+    contact_recovery_config = _contact_recovery_config(args)
+    args.safe_force_threshold = contact_recovery_config.safe_force_n
+    args.hard_force_threshold = contact_recovery_config.hard_force_n
     hole_offset = np.asarray(
         [args.hole_offset_x, args.hole_offset_y, args.hole_offset_z],
         dtype=np.float64,
     )
     if not np.isfinite(hole_offset).all():
-        print("error: hole offsets must be finite", file=sys.stderr)
-        return 2
+        raise ValueError("hole offsets must be finite")
     if not args.hole_site_name:
-        print("error: --hole-site-name must be non-empty", file=sys.stderr)
-        return 2
+        raise ValueError("--hole-site-name must be non-empty")
     if not args.hole_body_name:
         args.hole_body_name = DEFAULT_HOLE_BODY_NAME
     if not np.isfinite(args.axial_push_speed):
-        print("error: --axial-push-speed must be finite", file=sys.stderr)
-        return 2
+        raise ValueError("--axial-push-speed must be finite")
     if args.axial_push_start_dist < 0 or args.axial_push_stop_force < 0:
-        print(
-            "error: --axial-push-start-dist and --axial-push-stop-force must be non-negative",
-            file=sys.stderr,
+        raise ValueError(
+            "--axial-push-start-dist and --axial-push-stop-force must be non-negative"
         )
-        return 2
     args.hole_axis_world = np.asarray(args.hole_axis_world, dtype=np.float64)
     hole_axis_norm = float(np.linalg.norm(args.hole_axis_world))
     if not np.isfinite(args.hole_axis_world).all() or hole_axis_norm <= 0:
-        print("error: --hole-axis-world must be a finite nonzero vector", file=sys.stderr)
-        return 2
+        raise ValueError("--hole-axis-world must be a finite nonzero vector")
     args.hole_axis_world = args.hole_axis_world / hole_axis_norm
     if args.temporal_agg_decay < 0:
-        print("error: --temporal-agg-decay must be non-negative", file=sys.stderr)
-        return 2
-    try:
-        _selected_action_index(args.chunk_len, args.action_select_mode)
-    except ValueError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 2
+        raise ValueError("--temporal-agg-decay must be non-negative")
+    _selected_action_index(args.chunk_len, args.action_select_mode)
     if args.snapshot_every <= 0:
-        print("error: --snapshot-every must be positive", file=sys.stderr)
-        return 2
+        raise ValueError("--snapshot-every must be positive")
     if args.video_fps <= 0 or args.video_every <= 0:
-        print("error: --video-fps and --video-every must be positive", file=sys.stderr)
+        raise ValueError("--video-fps and --video-every must be positive")
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        _resolve_and_validate_rollout_args(args)
+    except (FileNotFoundError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
         return 2
     args.output_dir.mkdir(parents=True, exist_ok=True)
     try:

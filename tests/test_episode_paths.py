@@ -69,3 +69,35 @@ def test_project_root_relative_entry_is_preferred(tmp_path):
     _write_episode_list(episode_list, "shared/episode.hdf5")
 
     assert resolve_episode_paths([], episode_list, project_root) == [project_episode]
+
+
+def test_resolve_episode_paths_canonically_deduplicates_by_default(tmp_path, capsys):
+    project_root = tmp_path / "project"
+    episode = _touch(project_root / "data" / "episode.hdf5")
+    episode_list = _write_episode_list(
+        project_root / "configs" / "episodes.txt",
+        "data/../data/episode.hdf5",
+    )
+
+    resolved = resolve_episode_paths([episode], episode_list, project_root)
+
+    assert resolved == [episode]
+    assert "duplicate episode path ignored" in capsys.readouterr().err
+
+
+def test_resolve_episode_paths_can_preserve_duplicates_for_legacy_callers(tmp_path):
+    project_root = tmp_path / "project"
+    episode = _touch(project_root / "data" / "episode.hdf5")
+    episode_list = _write_episode_list(
+        project_root / "configs" / "episodes.txt",
+        "data/episode.hdf5",
+    )
+
+    resolved = resolve_episode_paths(
+        [episode],
+        episode_list,
+        project_root,
+        deduplicate=False,
+    )
+
+    assert resolved == [episode, episode]

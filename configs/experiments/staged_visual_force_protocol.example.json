@@ -1,0 +1,295 @@
+{
+  "schema_version": 2,
+  "run_name": "staged_visual_force_50plus50_v1",
+  "seed": 20260722,
+  "deterministic": true,
+  "model": {
+    "policy_variant": "force_aware_act",
+    "pretrained_resnet18": false,
+    "d_model": 128,
+    "z_dim": 16,
+    "action_dim": 7,
+    "force_dim": 6,
+    "nhead": 4,
+    "num_encoder_layers": 1,
+    "num_decoder_layers": 1,
+    "dim_feedforward": 256,
+    "dropout": 0.1
+  },
+  "dataset": {
+    "action_mode": "action",
+    "chunk_len": 10,
+    "force_window_len": 20,
+    "force_window_duration": 0.25,
+    "image_size": [
+      224,
+      224
+    ],
+    "camera_names": [
+      "ee_cam",
+      "base_top_cam"
+    ],
+    "imagenet_normalize": false,
+    "strict_lengths": true,
+    "image_alignment": "latest_past",
+    "max_image_lag_seconds": 0.1
+  },
+  "dataset_manifest": {
+    "path": "../../outputs/staged_visual_force/contracts/dataset_manifest.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "normalization": {
+    "stats_path": "../../outputs/staged_visual_force/contracts/normalization_balanced_train_union.pt",
+    "population_episode_lists": [
+      "../splits/staged_visual_force/r60_train.txt",
+      "../splits/staged_visual_force/r2_train.txt"
+    ],
+    "domain_weights": {
+      "r60_visual": 0.5,
+      "r2_contact": 0.5
+    },
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "stages": [
+    {
+      "name": "spatial_r60",
+      "sources": [
+        {
+          "name": "r60_train",
+          "domain": "r60_visual",
+          "episode_list": "../splits/staged_visual_force/r60_train.txt",
+          "expected_episode_count": 40,
+          "batch_quota": 16
+        }
+      ],
+      "validation_domains": [
+        {
+          "name": "r60_spatial_val",
+          "domain": "r60_visual",
+          "episode_list": "../splits/staged_visual_force/r60_val.txt",
+          "expected_episode_count": 5
+        },
+        {
+          "name": "r2_contact_val",
+          "domain": "r2_contact",
+          "episode_list": "../splits/staged_visual_force/r2_val.txt",
+          "expected_episode_count": 5
+        }
+      ],
+      "batch_size": 16,
+      "freeze_vision_batch_norm": false,
+      "samples_per_epoch": 4096,
+      "max_steps": 30000,
+      "validation_every_steps": 1000,
+      "checkpoint_every_steps": 1000,
+      "optimizer": {
+        "base_lr": 0.0001,
+        "weight_decay": 0.0001,
+        "max_grad_norm": 1.0,
+        "parameter_groups": [
+          {
+            "name": "vision_backbone",
+            "prefixes": [
+              "vision_encoder.backbone."
+            ],
+            "lr_multiplier": 0.5,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "visual_projection",
+            "prefixes": [
+              "vision_encoder.visual_proj."
+            ],
+            "lr_multiplier": 1.0,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "force_fusion",
+            "prefixes": [
+              "force_encoder.",
+              "force_vision_cross_attention."
+            ],
+            "lr_multiplier": 1.0,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "prediction_heads",
+            "prefixes": [
+              "action_head.",
+              "force_head."
+            ],
+            "lr_multiplier": 1.0,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "policy_core",
+            "prefixes": [
+              ""
+            ],
+            "lr_multiplier": 1.0,
+            "weight_decay": 0.0001,
+            "trainable": true
+          }
+        ]
+      },
+      "objective": {
+        "lambda_force": 0.1,
+        "lambda_prior": 0.1,
+        "prior_loss_mode": "mse_mu",
+        "beta_motion_max": 0.0005,
+        "beta_contact_max": 0.0005,
+        "warmup_steps": 2000,
+        "train_latent_mode": "posterior",
+        "train_contact_latent_mode": "posterior",
+        "validation_deployment_mode": "prior"
+      },
+      "monitor": {
+        "primary_domain": "r60_spatial_val",
+        "metric": "deploy_loss",
+        "aggregation": "episode_uniform",
+        "patience": 8,
+        "min_validations": 5,
+        "min_delta": 0.005
+      }
+    },
+    {
+      "name": "contact_r2",
+      "sources": [
+        {
+          "name": "r2_train",
+          "domain": "r2_contact",
+          "episode_list": "../splits/staged_visual_force/r2_train.txt",
+          "expected_episode_count": 40,
+          "batch_quota": 12,
+          "phase_quotas": {
+            "approach": 3,
+            "contact_onset": 3,
+            "recovery": 4,
+            "insertion": 2
+          },
+          "min_episodes_per_phase": 5,
+          "sample_catalog": "../splits/staged_visual_force/r2_train_phase_catalog.json",
+          "sample_catalog_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "name": "r60_rehearsal",
+          "domain": "r60_visual",
+          "episode_list": "../splits/staged_visual_force/r60_train.txt",
+          "expected_episode_count": 40,
+          "batch_quota": 4
+        }
+      ],
+      "validation_domains": [
+        {
+          "name": "r2_contact_val",
+          "domain": "r2_contact",
+          "episode_list": "../splits/staged_visual_force/r2_val.txt",
+          "expected_episode_count": 5
+        },
+        {
+          "name": "r60_spatial_val",
+          "domain": "r60_visual",
+          "episode_list": "../splits/staged_visual_force/r60_val.txt",
+          "expected_episode_count": 5
+        }
+      ],
+      "batch_size": 16,
+      "freeze_vision_batch_norm": true,
+      "samples_per_epoch": 4096,
+      "max_steps": 20000,
+      "validation_every_steps": 500,
+      "checkpoint_every_steps": 500,
+      "optimizer": {
+        "base_lr": 0.00003,
+        "weight_decay": 0.0001,
+        "max_grad_norm": 1.0,
+        "parameter_groups": [
+          {
+            "name": "vision_backbone",
+            "prefixes": [
+              "vision_encoder.backbone."
+            ],
+            "lr_multiplier": 0.1,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "visual_projection",
+            "prefixes": [
+              "vision_encoder.visual_proj."
+            ],
+            "lr_multiplier": 0.25,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "force_fusion",
+            "prefixes": [
+              "force_encoder.",
+              "force_vision_cross_attention."
+            ],
+            "lr_multiplier": 1.0,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "prediction_heads",
+            "prefixes": [
+              "action_head.",
+              "force_head."
+            ],
+            "lr_multiplier": 1.0,
+            "weight_decay": 0.0001,
+            "trainable": true
+          },
+          {
+            "name": "policy_core",
+            "prefixes": [
+              ""
+            ],
+            "lr_multiplier": 1.0,
+            "weight_decay": 0.0001,
+            "trainable": true
+          }
+        ]
+      },
+      "objective": {
+        "lambda_force": 0.1,
+        "lambda_prior": 0.1,
+        "prior_loss_mode": "mse_mu",
+        "beta_motion_max": 0.0005,
+        "beta_contact_max": 0.0005,
+        "warmup_steps": 1000,
+        "train_latent_mode": "posterior",
+        "train_contact_latent_mode": "posterior",
+        "validation_deployment_mode": "prior"
+      },
+      "monitor": {
+        "primary_domain": "r2_contact_val",
+        "metric": "deploy_loss",
+        "aggregation": "episode_uniform",
+        "retention_domain": "r60_spatial_val",
+        "max_retention_regression": 0.05,
+        "patience": 8,
+        "min_validations": 5,
+        "min_delta": 0.005
+      }
+    }
+  ],
+  "test_episode_lists": {
+    "r60_spatial_test": {
+      "domain": "r60_visual",
+      "episode_list": "../splits/staged_visual_force/r60_test.txt",
+      "expected_episode_count": 5
+    },
+    "r2_contact_test": {
+      "domain": "r2_contact",
+      "episode_list": "../splits/staged_visual_force/r2_test.txt",
+      "expected_episode_count": 5
+    }
+  }
+}

@@ -74,7 +74,7 @@ def test_contact_force_hdf5_dataset_shapes(tmp_path):
 
     sample = dataset[5]
 
-    assert len(dataset) == 89
+    assert len(dataset) == 90
     assert sample["images"].shape == (2, 3, 224, 224)
     np.testing.assert_allclose(sample["images"][0].numpy(), np.full((3, 224, 224), 2 / 255.0))
     np.testing.assert_allclose(
@@ -165,7 +165,7 @@ def test_action_mode_action_uses_root_command_labels(tmp_path):
     sample = dataset[5]
     expected = np.arange(35, 63, dtype=np.float32).reshape(4, 7) + 10_000.0
 
-    assert len(dataset) == 96
+    assert len(dataset) == 97
     assert sample["action_chunk"].shape == (4, 7)
     np.testing.assert_array_equal(sample["action_chunk"].numpy(), expected)
 
@@ -305,7 +305,7 @@ def test_perfectly_aligned_episode_has_no_safe_length_trimming(tmp_path):
     dataset = ContactForceHDF5Dataset(episode_path, chunk_len=10)
     safe_lengths = dataset.episode_safe_lengths[episode_path]
 
-    assert len(dataset) == 89
+    assert len(dataset) == 90
     assert safe_lengths.trim_state == 0
     assert safe_lengths.trim_image == 0
     assert safe_lengths.trim_force == 0
@@ -373,3 +373,71 @@ def test_length_mismatch_above_maximum_raises(tmp_path):
             tolerate_length_mismatch=True,
             max_length_mismatch=1,
         )
+
+
+def test_dataset_preflight_rejects_nonfinite_numeric_values(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+    with h5py.File(episode_path, "r+") as handle:
+        handle["observations/joint_pos"][4, 0] = np.nan
+
+    with pytest.raises(ValueError, match="joint_pos contains non-finite"):
+        ContactForceHDF5Dataset(episode_path, action_mode="action")
+
+
+def test_latest_past_alignment_never_uses_future_images_and_enforces_lag(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+    dataset = ContactForceHDF5Dataset(
+        episode_path,
+        chunk_len=4,
+        image_alignment="latest_past",
+        max_image_lag_seconds=0.05,
+    )
+
+    assert dataset.indices
+    assert all(index.state_index % 2 == 0 for index in dataset.indices)
+    sample = dataset[3]
+    with h5py.File(episode_path, "r") as handle:
+        image_time = handle["timestamps/image_episode"][sample["image_index"]]
+    assert float(image_time) <= sample["t_state"]
+    assert sample["t_state"] - float(image_time) <= 0.05
+
+    inclusive = ContactForceHDF5Dataset(
+        episode_path,
+        chunk_len=4,
+        image_alignment="latest_past",
+        max_image_lag_seconds=0.1,
+    )
+    assert len(inclusive) == 96
+
+
+def test_episode_with_exactly_one_action_chunk_is_not_dropped(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path, include_actions=True)
+
+    command_dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="action",
+        chunk_len=100,
+    )
+    joint_position_dataset = ContactForceHDF5Dataset(
+        episode_path,
+        action_mode="joint_pos",
+        chunk_len=99,
+    )
+
+    assert len(command_dataset) == 1
+    assert command_dataset.indices[0].state_index == 0
+    assert len(joint_position_dataset) == 1
+    assert joint_position_dataset.indices[0].state_index == 0
+
+
+def test_dataset_skips_decisions_without_any_past_force_sample(tmp_path):
+    episode_path = tmp_path / "episode.hdf5"
+    _write_fake_episode(episode_path)
+    with h5py.File(episode_path, "r+") as handle:
+        handle["timestamps/force_episode"][:] += np.float32(0.2)
+
+    dataset = ContactForceHDF5Dataset(episode_path, chunk_len=4)
+    assert dataset.indices[0].state_index == 2

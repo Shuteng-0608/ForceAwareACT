@@ -4,12 +4,15 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from scripts.plot_hole_grid_results import aggregate_grid_results, main as plot_grid_main
 from scripts.generate_fibonacci_disk_points import fibonacci_disk_points, write_points_csv
 from scripts.generate_random_disk_points import random_disk_points
 from scripts.run_mujoco_hole_grid import (
     _build_rollout_command,
+    _expected_rollout_contract,
+    _summary_row_from_manifest_run,
     generate_task_points,
     latin_hypercube_points,
     parse_args as parse_grid_args,
@@ -20,6 +23,8 @@ from scripts.run_mujoco_hole_grid import (
     run_grid,
     run_name,
     wilson_ci,
+    write_position_summary_csv,
+    write_random_position_summary,
 )
 from scripts.run_mujoco_policy_rollout import (
     SUMMARY_REQUIRED_KEYS,
@@ -340,6 +345,20 @@ def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):
     assert manifest["policy_config"]["device"] == "cpu"
     assert all(run["device"] == "cpu" for run in manifest["runs"])
     assert manifest["policy_config"]["hole_body_name"] == "wall_task"
+    assert manifest["policy_config"]["contact_enter_force_threshold"] == 5.0
+    assert manifest["policy_config"]["contact_exit_force_threshold"] == 3.0
+    assert manifest["policy_config"]["contact_min_steps"] == 2
+    assert manifest["policy_config"]["safe_force_threshold"] is None
+    assert manifest["policy_config"]["hard_force_threshold"] is None
+    assert manifest["contact_recovery_config"] == {
+        "contact_enter_force_n": 5.0,
+        "contact_exit_force_n": 3.0,
+        "contact_min_steps": 2,
+        "success_force_n": 40.0,
+        "safe_force_n": 40.0,
+        "hard_force_n": 1000.0,
+        "success_hold_steps": 15,
+    }
 
 
 def test_grid_rollout_command_forwards_requested_device(tmp_path):
@@ -386,6 +405,344 @@ def test_grid_rollout_command_forwards_numeric_action_index_and_temporal_decay(t
 
     assert command[command.index("--action-select-mode") + 1] == "7"
     assert command[command.index("--temporal-agg-decay") + 1] == "0.25"
+
+
+def test_grid_rollout_command_forwards_contact_recovery_thresholds(tmp_path):
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+            "--contact-enter-force-threshold",
+            "6.5",
+            "--contact-exit-force-threshold",
+            "2.5",
+            "--contact-min-steps",
+            "4",
+            "--safe-force-threshold",
+            "35",
+            "--hard-force-threshold",
+            "120",
+        ]
+    )
+
+    command = _build_rollout_command(args, tmp_path / "run", 0.0, 0.0, 0.0, seed=0)
+
+    expected = {
+        "--contact-enter-force-threshold": "6.5",
+        "--contact-exit-force-threshold": "2.5",
+        "--contact-min-steps": "4",
+        "--safe-force-threshold": "35.0",
+        "--hard-force-threshold": "120.0",
+    }
+    for option, value in expected.items():
+        assert command[command.index(option) + 1] == value
+
+
+def test_grid_rollout_command_omits_optional_none_thresholds(tmp_path):
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+        ]
+    )
+
+    command = _build_rollout_command(args, tmp_path / "run", 0.0, 0.0, 0.0, seed=0)
+
+    assert "--safe-force-threshold" not in command
+    assert "--hard-force-threshold" not in command
+    assert "None" not in command
+
+
+def test_grid_rejects_invalid_contact_recovery_thresholds_before_writing(tmp_path):
+    output_root = tmp_path / "grid"
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(output_root),
+            "--safe-force-threshold",
+            "4",
+            "--dry-run",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="contact_enter_force_n"):
+        run_grid(args)
+
+    assert not output_root.exists()
+
+
+def test_grid_position_summary_extracts_contact_recovery_metrics(tmp_path):
+    output_dir = tmp_path / "run"
+    output_dir.mkdir()
+    summary = {
+        "success": True,
+        "max_force_norm": 45.0,
+        "recovery_success": True,
+        "safe_recovery_success": False,
+        "contact_recovery_metrics_valid": True,
+        "contact_recovery_metrics": {
+            "contact_event_count": 3,
+            "contact_duration_s": 0.75,
+            "force_excess_integral_n_s": 1.25,
+            "hard_force_violation": False,
+        },
+    }
+    (output_dir / "summary.json").write_text(json.dumps(summary))
+    run = {
+        "point_index": 1,
+        "x_offset": 0.001,
+        "y_offset": 0.0,
+        "z_offset": -0.001,
+        "output_dir": output_dir,
+        "status": "success",
+    }
+
+    row = _summary_row_from_manifest_run(run, success_force_threshold=40.0)
+
+    assert row["success"] is True
+    assert row["safe_success"] is False
+    assert row["recovery_success"] is True
+    assert row["safe_recovery_success"] is False
+    assert row["contact_recovery_metrics_valid"] is True
+    assert row["contact_event_count"] == 3
+    assert row["contact_duration_s"] == pytest.approx(0.75)
+    assert row["force_excess_integral_n_s"] == pytest.approx(1.25)
+    assert row["hard_force_violation"] is False
+
+    csv_path = tmp_path / "position_summary.csv"
+    written_rows = write_position_summary_csv(
+        csv_path,
+        {
+            "success_thresholds": {"success_force_threshold": 40.0},
+            "runs": [run],
+        },
+    )
+    with csv_path.open(newline="") as csv_file:
+        csv_row = next(csv.DictReader(csv_file))
+
+    assert written_rows[0]["contact_event_count"] == 3
+    assert csv_row["recovery_success"] == "True"
+    assert csv_row["safe_recovery_success"] == "False"
+    assert csv_row["contact_recovery_metrics_valid"] == "True"
+    assert csv_row["contact_event_count"] == "3"
+    assert csv_row["contact_duration_s"] == "0.75"
+    assert csv_row["force_excess_integral_n_s"] == "1.25"
+    assert csv_row["hard_force_violation"] == "False"
+
+
+def test_grid_position_summary_keeps_legacy_success_without_fabricating_new_metrics(
+    tmp_path,
+):
+    output_dir = tmp_path / "legacy"
+    output_dir.mkdir()
+    (output_dir / "summary.json").write_text(
+        json.dumps({"success": True, "max_force_norm": 20.0})
+    )
+    run = {
+        "point_index": 1,
+        "x_offset": 0.0,
+        "y_offset": 0.0,
+        "z_offset": 0.0,
+        "output_dir": output_dir,
+        "status": "success",
+    }
+
+    row = _summary_row_from_manifest_run(run, success_force_threshold=40.0)
+
+    assert row["success"] is True
+    assert row["safe_success"] is True
+    assert row["recovery_success"] == ""
+    assert row["safe_recovery_success"] == ""
+    assert row["contact_recovery_metrics_valid"] == ""
+
+
+def test_random_summary_recovery_rates_use_only_valid_metric_runs(tmp_path):
+    rows = [
+        {
+            "success": False,
+            "safe_success": False,
+            "contact_recovery_metrics_valid": True,
+            "recovery_success": True,
+            "safe_recovery_success": True,
+            "hard_force_violation": False,
+            "hole_offset_x": 0.0,
+            "hole_offset_z": 0.0,
+            "radial_offset": 0.0,
+            "quadrant": "center",
+            "success_time": "",
+            "max_force": 10.0,
+            "contact_event_count": 1,
+            "contact_duration_s": 0.1,
+            "force_excess_integral_n_s": 0.0,
+        },
+        {
+            "success": False,
+            "safe_success": False,
+            "contact_recovery_metrics_valid": True,
+            "recovery_success": False,
+            "safe_recovery_success": False,
+            "hard_force_violation": False,
+            "hole_offset_x": 0.001,
+            "hole_offset_z": 0.0,
+            "radial_offset": 0.001,
+            "quadrant": "axis",
+            "success_time": "",
+            "max_force": 20.0,
+            "contact_event_count": 1,
+            "contact_duration_s": 0.1,
+            "force_excess_integral_n_s": 0.0,
+        },
+        {
+            "success": False,
+            "safe_success": False,
+            "contact_recovery_metrics_valid": False,
+            # Invalid results must never increase either numerator.
+            "recovery_success": True,
+            "safe_recovery_success": True,
+            "hard_force_violation": True,
+            "hole_offset_x": -0.001,
+            "hole_offset_z": 0.0,
+            "radial_offset": 0.001,
+            "quadrant": "axis",
+            "success_time": "",
+            "max_force": 30.0,
+            "contact_event_count": "",
+            "contact_duration_s": "",
+            "force_excess_integral_n_s": "",
+        },
+    ]
+    manifest = {
+        "sampling_mode": "grid",
+        "x_min": -0.002,
+        "x_max": 0.002,
+        "z_min": -0.002,
+        "z_max": 0.002,
+        "base_seed": 0,
+        "point_set_seed": 0,
+        "rollout_seed_base": 0,
+        "total_planned_runs": 3,
+        "runs": [{"status": "task_failed"} for _ in range(3)],
+    }
+
+    summary = write_random_position_summary(
+        tmp_path / "random_position_summary.json", manifest, rows
+    )
+
+    assert summary["contact_metrics_reported_runs"] == 3
+    assert summary["contact_metrics_valid_runs"] == 2
+    assert summary["contact_metrics_invalid_runs"] == 1
+    assert summary["recovery_rate_denominator_valid_runs"] == 2
+    assert summary["recovery_successes"] == 1
+    assert summary["safe_recovery_successes"] == 1
+    assert summary["recovery_success_rate"] == pytest.approx(0.5)
+    assert summary["safe_recovery_success_rate"] == pytest.approx(0.5)
+
+
+def _write_legacy_rollout_artifacts(tmp_path):
+    checkpoint = tmp_path / "checkpoint.pt"
+    stats = tmp_path / "stats.pt"
+    model_xml = tmp_path / "model.xml"
+    torch.save({"config": {"policy_variant": "force_aware_act"}}, checkpoint)
+    torch.save(
+        {
+            "qpos_mean": torch.zeros(7),
+            "qpos_std": torch.ones(7),
+            "action_mean": torch.zeros(7),
+            "action_std": torch.ones(7),
+            "force_mean": torch.zeros(6),
+            "force_std": torch.ones(6),
+            "action_mode": "action",
+        },
+        stats,
+    )
+    model_xml.write_text("<mujoco/>")
+    return checkpoint, stats, model_xml
+
+
+def test_grid_skip_existing_requires_exact_contract_and_artifact_hashes(tmp_path):
+    checkpoint, stats, model_xml = _write_legacy_rollout_artifacts(tmp_path)
+    output_root = tmp_path / "grid"
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            str(checkpoint),
+            "--normalization-stats",
+            str(stats),
+            "--model-xml",
+            str(model_xml),
+            "--output-root",
+            str(output_root),
+            "--x-offsets=0",
+            "--z-offsets=0",
+            "--skip-existing",
+            "--no-plot-results",
+        ]
+    )
+    output_dir = output_root / run_name(0.0, 0.0, 1)
+    output_dir.mkdir(parents=True)
+    command = _build_rollout_command(args, output_dir, 0.0, 0.0, 0.0, seed=0)
+    contract = _expected_rollout_contract(command)
+    (output_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "rollout_contract": contract,
+                "success": False,
+                "max_force_norm": 0.0,
+            }
+        )
+    )
+
+    manifest = run_grid(args)
+
+    assert manifest["runs"][0]["status"] == "skipped_existing"
+    model_xml.write_text("<mujoco model='changed'/>")
+    with pytest.raises(ValueError, match="does not exactly match"):
+        run_grid(args)
+
+
+def test_grid_skip_existing_rejects_legacy_summary_without_contract(tmp_path):
+    checkpoint, stats, model_xml = _write_legacy_rollout_artifacts(tmp_path)
+    output_root = tmp_path / "grid"
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            str(checkpoint),
+            "--normalization-stats",
+            str(stats),
+            "--model-xml",
+            str(model_xml),
+            "--output-root",
+            str(output_root),
+            "--x-offsets=0",
+            "--z-offsets=0",
+            "--skip-existing",
+            "--no-plot-results",
+        ]
+    )
+    output_dir = output_root / run_name(0.0, 0.0, 1)
+    output_dir.mkdir(parents=True)
+    (output_dir / "summary.json").write_text(json.dumps({"success": True}))
+
+    with pytest.raises(ValueError, match="without rollout_contract"):
+        run_grid(args)
 
 
 def test_rollout_command_keeps_negative_scientific_offsets_single_token(tmp_path):

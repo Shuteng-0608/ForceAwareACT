@@ -7,6 +7,7 @@ This inventory covers every file directly under `scripts/` as audited on 2026-07
 | script | status | purpose | policies | inputs | outputs | modifies data | MuJoCo | GPU |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `train_minimal.py` | current | Main trainer with epoch accounting, deployment-path validation, and early stopping. | `force_aware_act`, `force_aware_motion_cvae`, `force_aware_contact_cvae` | train HDF5/list, optional validation list and stats | final/best/step checkpoints, train and validation CSV logs | no | no | optional |
+| `train_staged.py` | current | Strict protocol-driven multi-stage training with exact domain/phase quotas, selected-parent lineage, hashed auxiliary resume state, rollback quarantine, and independent retention validation. See [the staged visual-force protocol](../training/STAGED_VISUAL_FORCE_TRAINING.md). | all force-aware variants | protocol JSON, manifest, balanced stats, split lists, optional phase catalog and selected parent checkpoint | versioned best/periodic checkpoints, run manifest, train/validation CSV logs, optional resume quarantine | no | no | optional |
 | `train_act_baseline.py` | current | Train force-free ACT Motion-CVAE baseline with validation and early stopping. | `act_baseline` | train HDF5/list, optional validation list and stats | final/best/step checkpoints, train and validation CSV logs | no | no | optional |
 | `train_contact_prior_stage2.py` | specialized | Stage-2 contact-prior distillation with optional deployment-path validation and early stopping. | `force_aware_act` | Stage-1 checkpoint, train HDF5/list, optional validation list, stats | final/best checkpoints and train/validation CSV logs | no | no | optional |
 
@@ -28,12 +29,14 @@ Limitations: no resume CLI; `train_minimal.py` uses hard-coded small model setti
 | script | status | purpose | inputs | outputs |
 | --- | --- | --- | --- | --- |
 | `split_episode_list.py` | current | Deterministically split a source list at episode granularity. | source episode list, counts, seed | train/validation/test lists with provenance headers |
+| `build_dataset_manifest.py` | current | Build a canonical domain/split manifest and reject UUID, canonical-path, or content-SHA leakage; SHA-derived UUIDs are explicit historical compatibility only. | repeated domain/split episode-list groups | immutable manifest JSON and content SHA-256 |
+| `build_phase_catalog.py` | current | Validate manual phase-segment CSV annotations against the exact usable dataset indices and bind every entry to a pinned dataset manifest; it never infers labels from force thresholds. | annotation CSV, exact domain train episode list, pinned manifest path/content SHA-256, exact dataset semantics | immutable schema-v2 phase-catalog JSON and content SHA-256 |
 
 ## Normalization
 
 | script | status | purpose | policies | inputs | outputs | modifies data | MuJoCo | GPU |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `compute_normalization_stats.py` | current | Compute qpos/action/force mean/std and metadata. | all dataset-backed policies | HDF5/list | `.pt` stats | writes stats only | no | no |
+| `compute_normalization_stats.py` | current | Compute qpos/action/force mean/std and provenance; repeated `--domain` inputs select domain→episode→time balanced raw-stream statistics. | all dataset-backed policies | HDF5/list | `.pt` stats | writes stats only | no | no |
 
 Typical command:
 
@@ -45,7 +48,9 @@ PYTHONPATH=src python scripts/compute_normalization_stats.py --episode-list conf
 
 | script | status | purpose | policies | inputs | outputs | modifies data | MuJoCo | GPU |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `evaluate_inference_modes.py` | current | Compare dual-latent zero/prior/posterior contact modes. | `force_aware_act`; limited ACT fallback | checkpoint, stats, HDF5/list | CSV and optional ranked cases | no | no | optional |
+| `evaluate_inference_modes.py` | diagnostic | Compare dual-latent zero/prior/posterior contact modes; posterior is an oracle diagnostic and this is not the staged protocol's formal test entrypoint. | `force_aware_act`; limited ACT fallback | checkpoint, stats, HDF5/list | CSV and optional ranked cases | no | no | optional |
+| `evaluate_staged_checkpoints.py` | current | Hash-verify the complete Stage-2 checkpoint cadence, evaluate independent validation domains, enforce Stage-1 retention, and emit a non-overwriting shortlist. | all staged force-aware variants | candidate CSV, Stage-1 reference, protocol, stats, validation lists | long-form metrics, decisions, shortlist CSV/JSON, completion attestation | no | no | optional |
+| `evaluate_staged_frozen_test.py` | current/formal | Evaluate the one SHA-pinned shortlist selection once on every protocol test domain using deterministic prior inference, episode-uniform metrics, and fixed episode bootstrap CIs. | contact-prior staged variants | protocol, completed shortlist report, stats | per-episode metrics, per-domain CIs, input/output hashes, completion attestation | no | no | optional |
 | `evaluate_motion_cvae_modes.py` | current | Compare motion-CVAE zero vs posterior oracle. | `force_aware_motion_cvae` | checkpoint, stats, HDF5/list | per-sample CSV and printed summary | no | no | optional |
 | `evaluate_contact_cvae_modes.py` | current | Compare contact-CVAE zero/prior/posterior oracle. | `force_aware_contact_cvae` | checkpoint, stats, HDF5/list | per-sample CSV and printed summary | no | no | optional |
 | `evaluate_act_baseline_modes.py` | current | Compare ACT zero vs posterior motion oracle. | `act_baseline` | checkpoint, stats, HDF5/list | per-sample CSV and printed summary | no | no | optional |
@@ -96,7 +101,7 @@ rollout-seed bases, while each output directory records both seed dimensions.
 New multi-seed runs write `suite_plan.json` before starting MuJoCo, allowing the
 monitor to reconstruct the full queue from `--output-base` alone.
 
-Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-decay`, `--max-delta-q`, `--ema-alpha`, `--force-stop-threshold`, success thresholds, hole offset flags, `--save-videos`, `--skip-existing`, `--dry-run`, `--continue-on-error`.
+Key flags: `--contact-latent-mode`, `--action-select-mode`, `--temporal-agg-decay`, `--max-delta-q`, `--ema-alpha`, `--force-stop-threshold`, success thresholds, contact enter/exit/min-step thresholds, independent safe/hard-force thresholds, hole offset flags, `--save-videos`, `--skip-existing`, `--dry-run`, `--continue-on-error`. New rollout summaries and grid CSV/JSON reports preserve legacy task success while separately reporting recovery success, metric validity, contact duration/events, force-excess integral, and hard-force violations.
 
 ## Visualization and Analysis
 

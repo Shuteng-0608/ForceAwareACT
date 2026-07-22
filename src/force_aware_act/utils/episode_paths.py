@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
 
 
 def _existing_file(path: Path, description: str) -> Path:
@@ -16,7 +16,11 @@ def _existing_file(path: Path, description: str) -> Path:
     return resolved
 
 
-def resolve_episode_entry(entry: str | Path, project_root: Path, episode_list_parent: Path) -> Path:
+def resolve_episode_entry(
+    entry: Union[str, Path],
+    project_root: Path,
+    episode_list_parent: Path,
+) -> Path:
     """Resolve one list entry, preferring project-root-relative paths."""
 
     original = Path(entry).expanduser()
@@ -47,8 +51,20 @@ def resolve_episode_paths(
     direct_paths: Optional[Iterable[Path]],
     episode_list: Optional[Path],
     project_root: Optional[Path] = None,
+    *,
+    deduplicate: bool = True,
 ) -> list[Path]:
-    """Resolve direct episode paths and entries from an optional episode list."""
+    """Resolve episode paths and canonically deduplicate them by default.
+
+    Deduplication preserves the first occurrence across direct paths and list
+    entries.  It operates on resolved paths, so symlink aliases and ``..``
+    spellings cannot silently make one episode count more than once.  Set
+    ``deduplicate=False`` only for legacy callers that intentionally need the
+    old duplicate-preserving behavior.
+    """
+
+    if not isinstance(deduplicate, bool):
+        raise TypeError("deduplicate must be a bool")
 
     root = (Path.cwd() if project_root is None else project_root).expanduser().resolve()
     resolved: list[Path] = []
@@ -72,10 +88,24 @@ def resolve_episode_paths(
                     continue
                 resolved.append(resolve_episode_entry(stripped, root, resolved_list.parent))
 
-    print(f"resolved_episode_count={len(resolved)}")
-    for path in resolved:
+    final_paths = _deduplicate_resolved_paths(resolved) if deduplicate else resolved
+    print(f"resolved_episode_count={len(final_paths)}")
+    for path in final_paths:
         print(f"resolved_episode={path}")
-    return resolved
+    return final_paths
+
+
+def _deduplicate_resolved_paths(paths: Iterable[Path]) -> list[Path]:
+    deduplicated: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        canonical = path.expanduser().resolve()
+        if canonical in seen:
+            print(f"warning: duplicate episode path ignored: {canonical}", file=sys.stderr)
+            continue
+        seen.add(canonical)
+        deduplicated.append(canonical)
+    return deduplicated
 
 
 def validate_episode_paths(paths: Iterable[Path]) -> bool:

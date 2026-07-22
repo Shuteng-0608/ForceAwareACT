@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence, Union
@@ -55,6 +56,55 @@ def nearest_index(timestamps: np.ndarray, target_time: float) -> int:
     return before
 
 
+def latest_past_index(
+    timestamps: np.ndarray,
+    target_time: float | np.floating,
+    *,
+    max_lag_seconds: float | None = None,
+) -> int:
+    """Return the latest timestamp not later than the decision time."""
+
+    if timestamps.ndim != 1 or len(timestamps) == 0:
+        raise ValueError("timestamps must be a non-empty 1D array")
+    target_value = float(target_time)
+    index = int(np.searchsorted(timestamps, target_time, side="right")) - 1
+    if index < 0:
+        raise ValueError("no causal sample exists at or before target_time")
+    lag = float(target_value - timestamps[index])
+    if lag < 0.0:
+        raise RuntimeError("latest-past alignment selected a future sample")
+    floating_epsilons = [np.finfo(np.float64).eps]
+    if np.issubdtype(timestamps.dtype, np.floating):
+        floating_epsilons.append(np.finfo(timestamps.dtype).eps)
+    target_dtype = np.asarray(target_time).dtype
+    if np.issubdtype(target_dtype, np.floating):
+        floating_epsilons.append(np.finfo(target_dtype).eps)
+    comparison_tolerance = max(
+        1.0e-9,
+        8.0
+        * max(floating_epsilons)
+        * max(1.0, abs(target_value), abs(float(timestamps[index]))),
+    )
+    if (
+        max_lag_seconds is not None
+        and lag > max_lag_seconds + comparison_tolerance
+    ):
+        raise ValueError(
+            f"latest-past sample lag {lag:.9g}s exceeds "
+            f"max_lag_seconds={max_lag_seconds:.9g}"
+        )
+    return index
+
+
+def _validate_timestamp_vector(timestamps: np.ndarray, description: str) -> None:
+    if timestamps.ndim != 1 or len(timestamps) == 0:
+        raise ValueError(f"{description} timestamps must be a non-empty 1D array")
+    if not np.isfinite(timestamps).all():
+        raise ValueError(f"{description} timestamps contain non-finite values")
+    if len(timestamps) > 1 and not np.all(np.diff(timestamps) > 0.0):
+        raise ValueError(f"{description} timestamps must be strictly increasing")
+
+
 EpisodePaths = Union[str, Path, Iterable[Union[str, Path]]]
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -92,6 +142,47 @@ def _first_existing_key(handle: h5py.File, keys: Sequence[str]) -> str:
 
 def _read_required_array_any(handle: h5py.File, keys: Sequence[str]) -> np.ndarray:
     return _read_required_array(handle, _first_existing_key(handle, keys))
+
+
+def _validate_numeric_dataset(
+    dataset: h5py.Dataset,
+    *,
+    episode_path: Path,
+    key: str,
+    expected_ndim: int,
+    expected_last_dim: int | None = None,
+    finite: bool = True,
+) -> None:
+    """Validate shape, numeric dtype and finite contents without one huge read."""
+
+    if dataset.ndim != expected_ndim:
+        raise ValueError(
+            f"{episode_path}: {key} must have {expected_ndim} dimensions; "
+            f"got shape {dataset.shape}"
+        )
+    if expected_last_dim is not None and dataset.shape[-1] != expected_last_dim:
+        raise ValueError(
+            f"{episode_path}: {key} last dimension must be {expected_last_dim}; "
+            f"got shape {dataset.shape}"
+        )
+    if not (
+        np.issubdtype(dataset.dtype, np.integer)
+        or np.issubdtype(dataset.dtype, np.floating)
+    ):
+        raise ValueError(f"{episode_path}: {key} must have a real numeric dtype")
+    if not finite or np.issubdtype(dataset.dtype, np.integer):
+        return
+    row_count = len(dataset)
+    block_rows = 1024
+    if dataset.chunks and dataset.chunks[0]:
+        block_rows = max(1, min(4096, int(dataset.chunks[0]) * 8))
+    for start in range(0, row_count, block_rows):
+        values = np.asarray(dataset[start : start + block_rows])
+        if not np.isfinite(values).all():
+            raise ValueError(
+                f"{episode_path}: {key} contains non-finite values in rows "
+                f"[{start},{min(row_count, start + block_rows)})"
+            )
 
 
 def _safe_group_length(
@@ -243,6 +334,8 @@ class ContactForceHDF5Dataset(Dataset):
         image_size: tuple[int, int] = (224, 224),
         normalize_images: bool = True,
         imagenet_normalize: bool = False,
+        image_alignment: str = "nearest",
+        max_image_lag_seconds: float | None = None,
         include_force: bool = True,
         tolerate_length_mismatch: bool = True,
         max_length_mismatch: int = 1,
@@ -256,6 +349,12 @@ class ContactForceHDF5Dataset(Dataset):
         self.image_size = image_size
         self.normalize_images = normalize_images
         self.imagenet_normalize = imagenet_normalize
+        self.image_alignment = image_alignment
+        self.max_image_lag_seconds = (
+            None
+            if max_image_lag_seconds is None
+            else float(max_image_lag_seconds)
+        )
         self.include_force = bool(include_force)
         self.tolerate_length_mismatch = bool(tolerate_length_mismatch)
         self.max_length_mismatch = int(max_length_mismatch)
@@ -274,6 +373,17 @@ class ContactForceHDF5Dataset(Dataset):
             raise ValueError("at least one camera name is required")
         if self.imagenet_normalize and not self.normalize_images:
             raise ValueError("imagenet_normalize=True requires normalize_images=True")
+        if self.image_alignment not in {"nearest", "latest_past"}:
+            raise ValueError("image_alignment must be 'nearest' or 'latest_past'")
+        if self.max_image_lag_seconds is not None and (
+            not math.isfinite(self.max_image_lag_seconds)
+            or self.max_image_lag_seconds < 0.0
+        ):
+            raise ValueError("max_image_lag_seconds must be finite and non-negative")
+        if self.image_alignment == "latest_past" and self.max_image_lag_seconds is None:
+            raise ValueError(
+                "latest_past image alignment requires max_image_lag_seconds"
+            )
         if self.max_length_mismatch < 0:
             raise ValueError("max_length_mismatch must be non-negative")
 
@@ -302,7 +412,14 @@ class ContactForceHDF5Dataset(Dataset):
 
             state_index = sample_index.state_index
             t_state = float(state_ts[state_index])
-            image_index = nearest_index(image_ts, t_state)
+            if self.image_alignment == "latest_past":
+                image_index = latest_past_index(
+                    image_ts,
+                    state_ts[state_index],
+                    max_lag_seconds=self.max_image_lag_seconds,
+                )
+            else:
+                image_index = nearest_index(image_ts, t_state)
 
             images = self._read_images(handle, image_index, safe_lengths.image_len)
 
@@ -365,6 +482,56 @@ class ContactForceHDF5Dataset(Dataset):
             )
         return sample
 
+    def _validate_episode_schema(
+        self, handle: h5py.File, episode_path: Path
+    ) -> None:
+        vector_specs = {
+            "observations/ee_pose": 7,
+            "observations/joint_pos": 7,
+            "observations/joint_vel": 7,
+            "observations/joint_torque": 7,
+            self._action_dataset_key(): self.action_dim,
+        }
+        if self.include_force:
+            vector_specs["observations/ft_wrench"] = 6
+        for key, width in vector_specs.items():
+            if key not in handle:
+                raise KeyError(f"{episode_path}: missing required HDF5 dataset: {key}")
+            _validate_numeric_dataset(
+                handle[key],
+                episode_path=episode_path,
+                key=key,
+                expected_ndim=2,
+                expected_last_dim=width,
+            )
+        timestamp_keys = [
+            _first_existing_key(handle, TIMESTAMP_STATE_KEYS),
+            _first_existing_key(handle, TIMESTAMP_IMAGE_KEYS),
+        ]
+        if self.include_force:
+            timestamp_keys.append(_first_existing_key(handle, TIMESTAMP_FORCE_KEYS))
+        for key in timestamp_keys:
+            _validate_numeric_dataset(
+                handle[key],
+                episode_path=episode_path,
+                key=key,
+                expected_ndim=1,
+            )
+        for camera_name in self.camera_names:
+            key = f"observations/images/{camera_name}"
+            if key not in handle:
+                raise KeyError(f"{episode_path}: missing required HDF5 dataset: {key}")
+            dataset = handle[key]
+            _validate_numeric_dataset(
+                dataset,
+                episode_path=episode_path,
+                key=key,
+                expected_ndim=4,
+                expected_last_dim=3,
+            )
+            if dataset.shape[1] <= 0 or dataset.shape[2] <= 0:
+                raise ValueError(f"{episode_path}: {key} has an empty image dimension")
+
     def _build_indices(self) -> list[EpisodeIndex]:
         indices: list[EpisodeIndex] = []
         for episode_path in self.episode_paths:
@@ -380,14 +547,51 @@ class ContactForceHDF5Dataset(Dataset):
                 self.episode_safe_lengths[episode_path] = safe_lengths
                 action_len = self._safe_action_length(handle, episode_path, safe_lengths.state_len)
                 self.episode_action_lengths[episode_path] = action_len
+                self._validate_episode_schema(handle, episode_path)
                 n_state = safe_lengths.state_len
-                max_start = min(n_state, action_len) - self.chunk_len - self.action_offset
-                if max_start <= 0:
-                    continue
-                indices.extend(
-                    EpisodeIndex(episode_path=episode_path, state_index=state_index)
-                    for state_index in range(max_start)
+                num_starts = (
+                    min(n_state, action_len)
+                    - self.chunk_len
+                    - self.action_offset
+                    + 1
                 )
+                if num_starts <= 0:
+                    continue
+                state_ts = _read_required_array_any(handle, TIMESTAMP_STATE_KEYS)[
+                    : safe_lengths.state_len
+                ]
+                image_ts = _read_required_array_any(handle, TIMESTAMP_IMAGE_KEYS)[
+                    : safe_lengths.image_len
+                ]
+                _validate_timestamp_vector(state_ts, f"{episode_path}:state")
+                _validate_timestamp_vector(image_ts, f"{episode_path}:image")
+                if self.include_force:
+                    force_ts = _read_required_array_any(handle, TIMESTAMP_FORCE_KEYS)[
+                        : safe_lengths.force_len
+                    ]
+                    _validate_timestamp_vector(force_ts, f"{episode_path}:force")
+                for state_index in range(num_starts):
+                    if self.include_force and int(
+                        np.searchsorted(
+                            force_ts, float(state_ts[state_index]), side="right"
+                        )
+                    ) == 0:
+                        continue
+                    if self.image_alignment == "latest_past":
+                        try:
+                            latest_past_index(
+                                image_ts,
+                                state_ts[state_index],
+                                max_lag_seconds=self.max_image_lag_seconds,
+                            )
+                        except ValueError:
+                            continue
+                    indices.append(
+                        EpisodeIndex(
+                            episode_path=episode_path,
+                            state_index=state_index,
+                        )
+                    )
         return indices
 
     def _read_images(self, handle: h5py.File, image_index: int, image_len: int) -> np.ndarray:

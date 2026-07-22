@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import math
@@ -20,7 +21,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from run_mujoco_policy_rollout import DEFAULT_HOLE_BODY_NAME, DEFAULT_HOLE_SITE_NAME  # noqa: E402
+from run_mujoco_policy_rollout import (  # noqa: E402
+    DEFAULT_HOLE_BODY_NAME,
+    DEFAULT_HOLE_SITE_NAME,
+    _contact_recovery_config,
+    _prepare_rollout_artifacts,
+    _resolve_and_validate_rollout_args,
+    parse_args as parse_rollout_args,
+)
 from summarize_rollouts import collect_rollouts, write_summary_csv  # noqa: E402
 
 POSITION_SUMMARY_COLUMNS = [
@@ -37,6 +45,13 @@ POSITION_SUMMARY_COLUMNS = [
     "quadrant",
     "success",
     "safe_success",
+    "recovery_success",
+    "safe_recovery_success",
+    "contact_recovery_metrics_valid",
+    "contact_event_count",
+    "contact_duration_s",
+    "force_excess_integral_n_s",
+    "hard_force_violation",
     "success_step",
     "success_time",
     "stop_reason",
@@ -157,6 +172,59 @@ def validate_sampling_bounds(args: argparse.Namespace) -> None:
         raise ValueError("--z-min must be <= --z-max")
     if args.num_points <= 0:
         raise ValueError("--num-points must be positive")
+
+
+def validate_rollout_parameters(args: argparse.Namespace) -> None:
+    """Reject invalid values before a grid or even a dry-run manifest is written."""
+
+    float_names = (
+        "temporal_agg_decay",
+        "force_window_duration",
+        "policy_rate_hz",
+        "max_delta_q",
+        "force_stop_threshold",
+        "y_offset",
+        "success_distance_threshold",
+        "success_lateral_threshold",
+        "success_force_threshold",
+        "contact_enter_force_threshold",
+        "contact_exit_force_threshold",
+        "safe_force_threshold",
+        "hard_force_threshold",
+    )
+    nonfinite = [
+        name
+        for name in float_names
+        if getattr(args, name) is not None
+        and not math.isfinite(float(getattr(args, name)))
+    ]
+    if nonfinite:
+        raise ValueError(
+            "grid rollout float arguments must be finite: " + ", ".join(nonfinite)
+        )
+    if args.temporal_agg_decay < 0 or args.force_window_duration < 0:
+        raise ValueError("temporal decay and force-window duration must be non-negative")
+    if args.policy_rate_hz <= 0 or args.max_delta_q <= 0 or args.force_stop_threshold <= 0:
+        raise ValueError("policy rate, max delta, and force-stop threshold must be positive")
+    if (
+        args.success_distance_threshold <= 0
+        or args.success_lateral_threshold <= 0
+        or args.success_force_threshold <= 0
+        or args.success_hold_steps <= 0
+    ):
+        raise ValueError("success thresholds and hold steps must be positive")
+    if args.chunk_len <= 0 or args.force_window_len <= 0 or args.max_rollout_steps <= 0:
+        raise ValueError("chunk/window/rollout lengths must be positive")
+    axis = np.asarray(args.hole_axis_world, dtype=np.float64)
+    if not np.isfinite(axis).all() or float(np.linalg.norm(axis)) <= 0.0:
+        raise ValueError("--hole-axis-world must be a finite nonzero vector")
+    for label, raw_offsets in (
+        ("--x-offsets", args.x_offsets),
+        ("--z-offsets", args.z_offsets),
+    ):
+        if not all(math.isfinite(value) for value in parse_offset_list(raw_offsets)):
+            raise ValueError(f"{label} must contain only finite values")
+    _contact_recovery_config(args)
 
 
 def resolved_sampling_mode(args: argparse.Namespace) -> str:
@@ -309,9 +377,151 @@ def _read_summary(path: Path) -> Optional[dict[str, Any]]:
         return None
     try:
         with path.open() as summary_file:
-            return json.load(summary_file)
+            value = json.load(summary_file)
+        return value if isinstance(value, dict) else None
     except Exception:
         return None
+
+
+def _expected_rollout_contract(
+    command: Sequence[str],
+    *,
+    mujoco_gl: Optional[str] = None,
+    contract_template: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Recreate the rollout's exact contract without launching MuJoCo."""
+
+    if len(command) < 3:
+        raise ValueError("rollout command is incomplete")
+    rollout_args = parse_rollout_args(command[2:])
+    _resolve_and_validate_rollout_args(rollout_args)
+    if contract_template is not None:
+        # Grid commands vary only in these per-point fields. Reusing the
+        # already-verified invariant portion avoids deserializing and hashing a
+        # potentially large checkpoint once per completed point.
+        contract = copy.deepcopy(contract_template)
+        contract["runtime"]["seed"] = rollout_args.seed
+        contract["runtime"]["hole_offset"] = [
+            rollout_args.hole_offset_x,
+            rollout_args.hole_offset_y,
+            rollout_args.hole_offset_z,
+        ]
+        contract["runtime"]["mujoco_gl"] = (
+            os.environ.get("MUJOCO_GL") if mujoco_gl is None else mujoco_gl
+        )
+        contract["output_dir"] = str(rollout_args.output_dir.resolve())
+        return contract
+    _, _, _, contract = _prepare_rollout_artifacts(
+        rollout_args,
+        mujoco_gl=mujoco_gl,
+    )
+    return contract
+
+
+def _validate_existing_summary_contract(
+    summary: dict[str, Any],
+    command: Sequence[str],
+    summary_path: Path,
+    *,
+    mujoco_gl: Optional[str] = None,
+    contract_template: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Authorize --skip-existing only for an exact, auditable contract match."""
+
+    recorded = summary.get("rollout_contract")
+    if not isinstance(recorded, dict):
+        raise ValueError(
+            "refusing --skip-existing for a legacy or incomplete summary without "
+            f"rollout_contract: {summary_path}"
+        )
+    expected = _expected_rollout_contract(
+        command,
+        mujoco_gl=mujoco_gl,
+        contract_template=contract_template,
+    )
+    try:
+        recorded_json = json.dumps(
+            recorded,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "refusing --skip-existing because rollout_contract is not canonical "
+            f"finite JSON: {summary_path}"
+        ) from error
+    expected_json = json.dumps(
+        expected,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    if recorded_json != expected_json:
+        raise ValueError(
+            "refusing --skip-existing because the existing rollout_contract does "
+            f"not exactly match the requested rollout: {summary_path}"
+        )
+    return expected
+
+
+def _artifact_stat_signature(args: argparse.Namespace) -> tuple[tuple[int, int, int], ...]:
+    """Cheaply detect artifact changes while reusing a verified grid template."""
+
+    signature = []
+    for path in (args.checkpoint, args.normalization_stats, args.model_xml):
+        stat_result = Path(path).expanduser().resolve().stat()
+        signature.append(
+            (int(stat_result.st_ino), int(stat_result.st_size), int(stat_result.st_mtime_ns))
+        )
+    return tuple(signature)
+
+
+def _contact_recovery_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    """Extract canonical contact/recovery fields without inventing legacy values."""
+
+    raw_metrics = summary.get("contact_recovery_metrics", {})
+    metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
+
+    def first_present(*keys_and_mappings: tuple[str, dict[str, Any]]) -> Any:
+        for key, mapping in keys_and_mappings:
+            if key in mapping:
+                return mapping[key]
+        return ""
+
+    return {
+        "recovery_success": first_present(
+            ("recovery_success", summary),
+            ("recovery_success", metrics),
+        ),
+        "safe_recovery_success": first_present(
+            ("safe_recovery_success", summary),
+            ("safe_success", metrics),
+        ),
+        "contact_recovery_metrics_valid": first_present(
+            ("contact_recovery_metrics_valid", summary),
+            ("contact_metrics_valid", summary),
+            ("metrics_valid", metrics),
+        ),
+        "contact_event_count": first_present(
+            ("contact_event_count", summary),
+            ("contact_event_count", metrics),
+        ),
+        "contact_duration_s": first_present(
+            ("contact_duration_s", summary),
+            ("contact_duration_s", metrics),
+        ),
+        "force_excess_integral_n_s": first_present(
+            ("force_excess_integral_n_s", summary),
+            ("force_excess_integral_n_s", metrics),
+        ),
+        "hard_force_violation": first_present(
+            ("hard_force_violation", summary),
+            ("hard_force_violation", metrics),
+        ),
+    }
 
 
 def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
@@ -402,7 +612,16 @@ def _summary_row_from_manifest_run(run: dict[str, Any], success_force_threshold:
     z_offset = float(run["z_offset"])
     success = bool(summary.get("success", False)) if summary else False
     max_force = summary.get("max_force_norm", "")
-    safe_success = bool(success and max_force != "" and float(max_force) < success_force_threshold)
+    try:
+        finite_max_force = float(max_force)
+    except (TypeError, ValueError):
+        finite_max_force = float("nan")
+    safe_success = bool(
+        success
+        and math.isfinite(finite_max_force)
+        and finite_max_force < success_force_threshold
+    )
+    contact_recovery_fields = _contact_recovery_fields(summary)
     return {
         "point_index": run.get("point_index"),
         "sampling_mode": run.get("sampling_mode"),
@@ -417,6 +636,7 @@ def _summary_row_from_manifest_run(run: dict[str, Any], success_force_threshold:
         "quadrant": quadrant(x_offset, z_offset),
         "success": success,
         "safe_success": safe_success,
+        **contact_recovery_fields,
         "success_step": summary.get("success_step", ""),
         "success_time": summary.get("success_time", ""),
         "stop_reason": summary.get("stop_reason", run.get("status", "")),
@@ -502,9 +722,49 @@ def write_random_position_summary(path: Path, manifest: dict[str, Any], rows: li
     completed = rows
     successes = [row for row in completed if _bool_value(row["success"])]
     safe_successes = [row for row in completed if _bool_value(row["safe_success"])]
+    contact_metrics_reported = [
+        row
+        for row in completed
+        if row.get("contact_recovery_metrics_valid") not in ("", None)
+    ]
+    contact_metrics_valid = [
+        row
+        for row in contact_metrics_reported
+        if _bool_value(row["contact_recovery_metrics_valid"])
+    ]
+    recovery_successes = [
+        row
+        for row in contact_metrics_valid
+        if _bool_value(row.get("recovery_success", False))
+    ]
+    safe_recovery_successes = [
+        row
+        for row in contact_metrics_valid
+        if _bool_value(row.get("safe_recovery_success", False))
+    ]
+    hard_force_violations = [
+        row
+        for row in contact_metrics_valid
+        if _bool_value(row.get("hard_force_violation", False))
+    ]
     lower, upper = wilson_ci(len(successes), len(completed))
     success_times = [float(row["success_time"]) for row in successes if row.get("success_time") not in ("", None)]
     max_forces = [float(row["max_force"]) for row in completed if row.get("max_force") not in ("", None)]
+    contact_event_counts = [
+        float(row["contact_event_count"])
+        for row in contact_metrics_valid
+        if row.get("contact_event_count") not in ("", None)
+    ]
+    contact_durations = [
+        float(row["contact_duration_s"])
+        for row in contact_metrics_valid
+        if row.get("contact_duration_s") not in ("", None)
+    ]
+    force_excess_integrals = [
+        float(row["force_excess_integral_n_s"])
+        for row in contact_metrics_valid
+        if row.get("force_excess_integral_n_s") not in ("", None)
+    ]
     summary = {
         "sampling_mode": manifest["sampling_mode"],
         "requested_bounds": {
@@ -524,12 +784,39 @@ def write_random_position_summary(path: Path, manifest: dict[str, Any], rows: li
         "safe_successes": len(safe_successes),
         "success_rate": len(successes) / len(completed) if completed else 0.0,
         "safe_success_rate": len(safe_successes) / len(completed) if completed else 0.0,
+        "recovery_successes": len(recovery_successes),
+        "safe_recovery_successes": len(safe_recovery_successes),
+        "recovery_success_rate": (
+            len(recovery_successes) / len(contact_metrics_valid)
+            if contact_metrics_valid
+            else float("nan")
+        ),
+        "safe_recovery_success_rate": (
+            len(safe_recovery_successes) / len(contact_metrics_valid)
+            if contact_metrics_valid
+            else float("nan")
+        ),
+        "recovery_rate_denominator_valid_runs": len(contact_metrics_valid),
+        "contact_metrics_reported_runs": len(contact_metrics_reported),
+        "contact_metrics_valid_runs": len(contact_metrics_valid),
+        "contact_metrics_invalid_runs": (
+            len(contact_metrics_reported) - len(contact_metrics_valid)
+        ),
+        "hard_force_violations": len(hard_force_violations),
+        "hard_force_violation_rate": (
+            len(hard_force_violations) / len(contact_metrics_valid)
+            if contact_metrics_valid
+            else float("nan")
+        ),
         "success_rate_ci95_lower": lower,
         "success_rate_ci95_upper": upper,
         "mean_success_time": _mean(success_times),
         "median_success_time": _median(success_times),
         "mean_max_force": _mean(max_forces),
         "max_force": max(max_forces) if max_forces else float("nan"),
+        "mean_contact_event_count": _mean(contact_event_counts),
+        "mean_contact_duration_s": _mean(contact_durations),
+        "mean_force_excess_integral_n_s": _mean(force_excess_integrals),
         "success_rate_by_z_sign": _group_rate(completed, lambda row: "+z" if float(row["hole_offset_z"]) > 0 else ("-z" if float(row["hole_offset_z"]) < 0 else "z0")),
         "success_rate_by_x_sign": _group_rate(completed, lambda row: "+x" if float(row["hole_offset_x"]) > 0 else ("-x" if float(row["hole_offset_x"]) < 0 else "x0")),
         "success_rate_by_quadrant": _group_rate(completed, lambda row: row["quadrant"]),
@@ -602,12 +889,22 @@ def _build_rollout_command(args: argparse.Namespace, output_dir: Path, x_offset:
         str(args.success_force_threshold),
         "--success-hold-steps",
         str(args.success_hold_steps),
+        "--contact-enter-force-threshold",
+        str(args.contact_enter_force_threshold),
+        "--contact-exit-force-threshold",
+        str(args.contact_exit_force_threshold),
+        "--contact-min-steps",
+        str(args.contact_min_steps),
         "--output-dir",
         str(output_dir),
         "--seed",
         str(seed),
         "--execute-actions",
     ]
+    if args.safe_force_threshold is not None:
+        command.extend(("--safe-force-threshold", str(args.safe_force_threshold)))
+    if args.hard_force_threshold is not None:
+        command.extend(("--hard-force-threshold", str(args.hard_force_threshold)))
     if args.save_videos:
         command.append("--save-videos")
     return command
@@ -640,6 +937,8 @@ def _plot_results(summary_csv: Path, output_root: Path, formats: str) -> None:
 
 
 def run_grid(args: argparse.Namespace) -> dict[str, Any]:
+    validate_rollout_parameters(args)
+    contact_recovery_config = _contact_recovery_config(args)
     point_set_seed = resolve_point_set_seed(args)
     rollout_seed_base = resolve_rollout_seed_base(args)
     task_points = generate_task_points(args)
@@ -693,6 +992,11 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
             "max_rollout_steps": args.max_rollout_steps,
             "max_delta_q": args.max_delta_q,
             "force_stop_threshold": args.force_stop_threshold,
+            "contact_enter_force_threshold": args.contact_enter_force_threshold,
+            "contact_exit_force_threshold": args.contact_exit_force_threshold,
+            "contact_min_steps": args.contact_min_steps,
+            "safe_force_threshold": args.safe_force_threshold,
+            "hard_force_threshold": args.hard_force_threshold,
             "hole_site_name": args.hole_site_name,
             "hole_body_name": args.hole_body_name,
         },
@@ -702,6 +1006,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
             "success_force_threshold": args.success_force_threshold,
             "success_hold_steps": args.success_hold_steps,
         },
+        "contact_recovery_config": contact_recovery_config.to_dict(),
         "runs": [],
     }
 
@@ -709,6 +1014,8 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
     if args.mujoco_gl:
         env["MUJOCO_GL"] = args.mujoco_gl
 
+    skip_contract_template: Optional[dict[str, Any]] = None
+    skip_artifact_signature: Optional[tuple[tuple[int, int, int], ...]] = None
     for point in task_points:
         x_offset = point["hole_offset_x"]
         y_offset = point["hole_offset_y"]
@@ -744,9 +1051,30 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
             "end_time": None,
         }
         summary_path = output_dir / "summary.json"
-        if args.skip_existing and _read_summary(summary_path) is not None:
+        existing_summary = None
+        if args.skip_existing and summary_path.exists():
+            existing_summary = _read_summary(summary_path)
+            if existing_summary is None:
+                raise ValueError(
+                    "refusing --skip-existing because summary.json is not a valid "
+                    "JSON object: "
+                    f"{summary_path}"
+                )
+            current_artifact_signature = _artifact_stat_signature(args)
+            if current_artifact_signature != skip_artifact_signature:
+                skip_contract_template = None
+            skip_contract_template = _validate_existing_summary_contract(
+                existing_summary,
+                command,
+                summary_path,
+                mujoco_gl=args.mujoco_gl,
+                contract_template=skip_contract_template,
+            )
+            skip_artifact_signature = current_artifact_signature
+        if existing_summary is not None:
             run_entry["status"] = "skipped_existing"
             run_entry["return_code"] = 0
+            run_entry.update(_contact_recovery_fields(existing_summary))
             manifest["runs"].append(run_entry)
             continue
         if args.dry_run:
@@ -770,6 +1098,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
         summary = _read_summary(summary_path) or {}
         run_entry["status"] = "success" if summary.get("success") else "task_failed"
         run_entry["stop_reason"] = summary.get("stop_reason")
+        run_entry.update(_contact_recovery_fields(summary))
         manifest["runs"].append(run_entry)
         _write_manifest(manifest_path, manifest)
 
@@ -864,6 +1193,21 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
     parser.add_argument("--success-force-threshold", type=float, default=40.0)
     parser.add_argument("--success-hold-steps", type=int, default=15)
+    parser.add_argument("--contact-enter-force-threshold", type=float, default=5.0)
+    parser.add_argument("--contact-exit-force-threshold", type=float, default=3.0)
+    parser.add_argument("--contact-min-steps", type=int, default=2)
+    parser.add_argument(
+        "--safe-force-threshold",
+        type=float,
+        default=None,
+        help="Optional peak-force ceiling for safe recovery; rollout default applies when omitted.",
+    )
+    parser.add_argument(
+        "--hard-force-threshold",
+        type=float,
+        default=None,
+        help="Optional hard-violation threshold; rollout default applies when omitted.",
+    )
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument(
@@ -906,8 +1250,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     if args.repeats <= 0:
         raise ValueError("--repeats must be positive")
-    if args.temporal_agg_decay < 0 or not math.isfinite(args.temporal_agg_decay):
-        raise ValueError("--temporal-agg-decay must be finite and non-negative")
     if args.sampling_mode == "file" and args.task_points_csv is None:
         raise ValueError("--sampling-mode file requires --task-points-csv")
     if args.task_points_csv is None:
