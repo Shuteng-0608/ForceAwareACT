@@ -561,6 +561,8 @@ def _build_rollout_command(args: argparse.Namespace, output_dir: Path, x_offset:
         args.action_mode,
         "--action-select-mode",
         args.action_select_mode,
+        "--temporal-agg-decay",
+        str(args.temporal_agg_decay),
         "--chunk-len",
         str(args.chunk_len),
         "--force-window-len",
@@ -683,6 +685,7 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
             "contact_latent_mode": args.contact_latent_mode,
             "action_mode": args.action_mode,
             "action_select_mode": args.action_select_mode,
+            "temporal_agg_decay": args.temporal_agg_decay,
             "chunk_len": args.chunk_len,
             "force_window_len": args.force_window_len,
             "force_window_duration": args.force_window_duration,
@@ -842,6 +845,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="zero")
     parser.add_argument("--action-mode", default="action")
     parser.add_argument("--action-select-mode", default="mid")
+    parser.add_argument("--temporal-agg-decay", type=float, default=0.3)
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
@@ -902,6 +906,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     if args.repeats <= 0:
         raise ValueError("--repeats must be positive")
+    if args.temporal_agg_decay < 0 or not math.isfinite(args.temporal_agg_decay):
+        raise ValueError("--temporal-agg-decay must be finite and non-negative")
     if args.sampling_mode == "file" and args.task_points_csv is None:
         raise ValueError("--sampling-mode file requires --task-points-csv")
     if args.task_points_csv is None:

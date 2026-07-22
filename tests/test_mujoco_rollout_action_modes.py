@@ -13,6 +13,7 @@ from scripts.run_mujoco_policy_rollout import (
     _success_condition,
     _update_success_hold_counter,
     _selected_action_delta_norm_raw_to_current,
+    _selected_action_index,
     _validate_stats_action_mode,
     _validate_summary_schema,
 )
@@ -146,6 +147,22 @@ def test_selected_action_delta_norm_uses_prediction_minus_qpos_for_absolute_mode
     value = _selected_action_delta_norm_raw_to_current(pred_action, qpos, "action")
 
     assert value == pytest.approx(np.linalg.norm(pred_action - qpos))
+
+
+def test_one_based_action_chunk_selection_maps_to_zero_based_indices():
+    assert [_selected_action_index(10, str(index)) for index in range(1, 11)] == list(
+        range(10)
+    )
+    assert _selected_action_index(10, "first") == 0
+    assert _selected_action_index(10, "mid") == 5
+    assert _selected_action_index(10, "last") == 9
+    assert _selected_action_index(10, "temporal") == -1
+
+
+@pytest.mark.parametrize("mode", ["0", "11", "unknown"])
+def test_action_chunk_selection_rejects_out_of_range_or_unknown_modes(mode):
+    with pytest.raises(ValueError, match="action selection|unknown action"):
+        _selected_action_index(10, mode)
 
 
 def test_stats_action_mode_mismatch_raises_clear_error():

@@ -709,6 +709,8 @@ def _selected_action_delta_norm_raw_to_current(
 
 
 def _selected_action_index(action_chunk_len: int, mode: str) -> int:
+    if action_chunk_len <= 0:
+        raise ValueError("action chunk length must be positive")
     if mode == "first":
         return 0
     if mode == "mid":
@@ -717,7 +719,17 @@ def _selected_action_index(action_chunk_len: int, mode: str) -> int:
         return action_chunk_len - 1
     if mode == "temporal":
         return -1
-    raise ValueError(f"unknown action selection mode: {mode}")
+    if mode.isdecimal():
+        one_based_index = int(mode)
+        if 1 <= one_based_index <= action_chunk_len:
+            return one_based_index - 1
+        raise ValueError(
+            f"action selection index must be in [1, {action_chunk_len}], got {mode}"
+        )
+    raise ValueError(
+        "unknown action selection mode: "
+        f"{mode!r}; use first, mid, last, temporal, or a 1-based chunk index"
+    )
 
 
 def _temporal_aggregate_action(
@@ -1702,8 +1714,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
     parser.add_argument(
         "--action-select-mode",
-        choices=("first", "mid", "last", "temporal"),
         default="first",
+        help=(
+            "Select first/mid/last, temporal aggregation, or a 1-based "
+            "action-chunk index such as 1 or 10."
+        ),
     )
     parser.add_argument("--temporal-agg-decay", type=float, default=0.3)
     parser.add_argument("--chunk-len", type=int, default=10)
@@ -1811,6 +1826,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args.hole_axis_world = args.hole_axis_world / hole_axis_norm
     if args.temporal_agg_decay < 0:
         print("error: --temporal-agg-decay must be non-negative", file=sys.stderr)
+        return 2
+    try:
+        _selected_action_index(args.chunk_len, args.action_select_mode)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
         return 2
     if args.snapshot_every <= 0:
         print("error: --snapshot-every must be positive", file=sys.stderr)

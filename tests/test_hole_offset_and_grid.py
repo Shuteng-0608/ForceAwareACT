@@ -364,6 +364,30 @@ def test_grid_rollout_command_forwards_requested_device(tmp_path):
     assert command[device_index + 1] == "cuda"
 
 
+def test_grid_rollout_command_forwards_numeric_action_index_and_temporal_decay(tmp_path):
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+            "--action-select-mode",
+            "7",
+            "--temporal-agg-decay",
+            "0.25",
+        ]
+    )
+
+    command = _build_rollout_command(args, tmp_path / "run", 0.0, 0.0, 0.0, seed=0)
+
+    assert command[command.index("--action-select-mode") + 1] == "7"
+    assert command[command.index("--temporal-agg-decay") + 1] == "0.25"
+
+
 def test_rollout_command_keeps_negative_scientific_offsets_single_token(tmp_path):
     source_offsets = {
         "--hole-offset-x": -6.87416984117234e-05,

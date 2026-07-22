@@ -183,7 +183,7 @@ PYTHONPATH=src python scripts/inspect_hole_assembly.py \
 4. 应用可选 hole offset；
 5. 渲染 `ee_cam` 和 `base_top_cam`，构造 qpos 与历史 force 输入；
 6. 执行 deployable inference；
-7. 反归一化动作，并按 `first/mid/last/temporal` 选择 chunk 动作；
+7. 反归一化动作，并按 `first/mid/last/temporal` 或 1-based chunk 索引选择动作；
 8. 按 action mode 转成绝对 control target；
 9. 依次执行 `max_delta_q`、EMA 和 actuator ctrlrange 裁剪；
 10. 可选写入 `data.ctrl`，执行 MuJoCo stepping；
@@ -299,7 +299,7 @@ PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
 | `--model-xml` | MuJoCo 模型 XML；默认路径也是 `../arm_teleop/model/pangu_all_right.xml`。 |
 | `--contact-latent-mode` | `zero` 或 deployable `prior`；Motion-CVAE/ACT 分支忽略它。 |
 | `--action-mode` | 输出解释方式；必须与训练和 stats 一致。 |
-| `--action-select-mode` | `first`、`mid`、`last` 或 `temporal`。 |
+| `--action-select-mode` | `first`、`mid`、`last`、`temporal`，或从 `1` 开始的具体 chunk 位置。长度 10 时可用 `1`–`10`。 |
 | `--temporal-agg-decay` | temporal aggregation 衰减，单次脚本默认 `0.3`。 |
 | `--policy-rate-hz` | 策略调用频率；物理仿真在策略步之间继续 stepping。 |
 | `--max-rollout-steps` | 最大策略步数。 |
@@ -330,6 +330,7 @@ PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
 | `mid` | 使用 chunk 中间动作。当前批量实验常用。 |
 | `last` | 使用 chunk 最后动作。 |
 | `temporal` | 聚合当前及历史预测 chunk 中对齐到当前时刻的动作。 |
+| `1`–`K` | 使用当前新预测 chunk 的第 1 到第 K 个动作，编号为 1-based；不是先缓存 chunk 再顺序执行。长度 10 时 `1=first`、`6=mid`、`10=last`。 |
 
 不同 action-select mode 属于 rollout 控制协议差异。比较模型时必须保持一致，或将它作为显式实验变量。
 
@@ -949,7 +950,7 @@ hard force stop threshold
 
 - Grid runner 能读取 task-point CSV，但不能把旧 `grid_manifest.json` 直接作为输入；
 - Grid runner 没有 subprocess timeout 和自动 retry；
-- Grid runner 没有显式转发 `temporal-agg-decay`，使用单次脚本默认值 `0.3`；
+- Grid runner 会显式转发 `temporal-agg-decay`；suite 仍应在协议计划中冻结并记录该值；
 - x/z suite 只支持 `MODEL_SPECS` 中的固定 checkpoint；
 - 多 seed wrapper 只暴露部分 x/z suite 参数，自定义成功阈值等协议时应检查它是否能转发；
 - `--skip-existing` 依据 `summary.json`，不会自动验证旧目录与当前协议一致；
