@@ -20,9 +20,9 @@ Stage 2 的主指标是 `r2_contact_val/deploy_loss`，但只有 `r60_spatial_va
 
 ## 先冻结数据，再训练
 
-推荐把每个 50 条域固定划为 40 train / 5 val / 5 test。若更看重 checkpoint 选择稳定性，也可以在训练前一次性预注册 35/10/5；不能看到结果后再换比例。划分应在 episode 级按条件分层：R60 至少兼顾孔位半径/方向，R2 至少兼顾接触方向、模式与恢复类型，再在层内使用固定 seed。不要按帧随机切分；同一 episode 的任何副本都只能属于一个 split。划分种子、分层表、生成命令和 list 文件都应版本化。
+推荐把每个 50 条域固定划为约 80% train / 10% val / 10% test。若更看重 checkpoint 选择稳定性，也可以在训练前一次性预注册约 70%/20%/10%；不能看到结果后再换比例。划分应在 episode 级按条件分层：R60 至少兼顾孔位半径/方向，R2 至少兼顾接触方向、模式与恢复类型，再在层内使用固定 seed。不要按帧随机切分；同一 episode 的任何副本都只能属于一个 split。若同一 R60 孔位有重复采集，重复项必须作为不可拆分的组；由此得到 38/6/6 等偶数计数比为凑 40/5/5 而泄漏孔位更严谨。划分种子、分层表、生成命令和 list 文件都应版本化。
 
-无论 40/5/5 还是 35/10/5，5 条 test 的 episode 级样本量都很小。最终报告应给出逐 episode 结果和不确定性，避免把大量相关时间片误当成独立样本；任务层结论还应依赖预注册的成对 MuJoCo 点集，而不是只报告一个小 test 的均值。
+无论采用哪种预注册比例，每域约 5–10 条 test 的 episode 级样本量都很小。最终报告应给出逐 episode 结果和不确定性，避免把大量相关时间片误当成独立样本；任务层结论还应依赖预注册的成对 MuJoCo 点集，而不是只报告一个小 test 的均值。
 
 正式新 episode 应在 HDF5 根属性 `episode_uuid` 或同目录 `metadata.json` 中携带有效且稳定的 UUID。manifest 在三条彼此独立的轴上检查泄漏：UUID、规范化绝对路径和文件内容 SHA-256。因此，改名或复制相同 HDF5 也不能绕过检查。manifest 还把每个文件绑定到唯一的 `domain` 与 `split`：
 
@@ -235,7 +235,7 @@ PYTHONPATH=src python scripts/evaluate_staged_checkpoints.py \
 
 该命令拒绝覆盖已有报告，并输出长表指标、逐候选决策和 shortlist，最后写入 `evaluation_completion.json`。只有该证明为 `status=complete`，且其中四个报告文件的路径和 SHA-256 都能复验，shortlist 才可进入 frozen test。评估强制 `protocol.deterministic=true` 和 PyTorch deterministic algorithms，并在报告中固定 seed、batch size、worker 数、解析后的 device 与 Python/PyTorch/NumPy/HDF5/CUDA/cuDNN 版本；候选循环结束后还会重新核验 CSV、checkpoint、protocol、stats、list、manifest、run evidence 和每个 validation HDF5 的哈希，任何中途变更都使本次运行失败。Stage 1 reference 必须是已完成上一阶段的最终 selected-best 别名；Stage 2 候选必须来自同一 run，`global_step` 严格递增并精确覆盖 completion 声明的完整周期集合，而且都要把该 reference 的文件 SHA-256 记录为父 lineage。objective/retention 域、metric、相对退化和最小改善量必须与 Stage 2 `monitor` 完全一致；CLI 写错会直接失败，不能另造一套门禁。候选集合、顺序、metric 和阈值必须在打开 test 之前冻结。若无 Stage 2 候选通过 retention gate，应回退 Stage 1 reference，而不是放宽门槛直到某个候选通过。
 
-选定唯一 checkpoint 后，先把 `shortlist.json` 的普通文件哈希写入冻结实验记录，再用一个命令打开协议内全部 test 域。正式入口不接受 checkpoint 或 test-list 覆盖参数；它只读取经过哈希固定的 shortlist 中的唯一选择，以及协议中预注册的 5+5 test：
+选定唯一 checkpoint 后，先把 `shortlist.json` 的普通文件哈希写入冻结实验记录，再用一个命令打开协议内全部 test 域。正式入口不接受 checkpoint 或 test-list 覆盖参数；它只读取经过哈希固定的 shortlist 中的唯一选择，以及协议中每域至少 5 条、数量可不同但已预注册并由 list 哈希固定的 test：
 
 ```bash
 sha256sum outputs/staged/staged_visual_force_50plus50_v1/validation_gate_v1/shortlist.json
@@ -256,7 +256,7 @@ PYTHONPATH=src python scripts/evaluate_staged_frozen_test.py \
 
 `evaluate_inference_modes.py` 保留为 zero/prior/posterior 模式对照和 oracle 诊断工具，不是本协议的正式 frozen-test 入口。posterior 使用未来标签，不能作为部署结果，也不能用它重新选择 checkpoint。
 
-不要在这 100 条正式新数据上反复看 test、改超参数、重新选择 checkpoint 再看 test。尤其是保留的 5+5 test，一旦用于决策就失去无偏测试资格；需要继续迭代时，应从 train/val 设计新实验，或另采一批全新的 final test。
+不要在这 100 条正式新数据上反复看 test、改超参数、重新选择 checkpoint 再看 test。保留的 test 一旦用于决策就失去无偏测试资格；需要继续迭代时，应从 train/val 设计新实验，或另采一批全新的 final test。
 
 ## 阶段升级与验收门槛
 

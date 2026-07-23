@@ -1,0 +1,6 @@
+/home/stw/ForceAwareACT_workspace/ForceAwareACT/mujoco_data/hole_random_r60/20260723_160238_teleop_019/episode.hdf5
+/home/stw/ForceAwareACT_workspace/ForceAwareACT/mujoco_data/hole_random_r60/20260723_160446_teleop_025/episode.hdf5
+/home/stw/ForceAwareACT_workspace/ForceAwareACT/mujoco_data/hole_random_r60/20260723_161356_teleop_044/episode.hdf5
+/home/stw/ForceAwareACT_workspace/ForceAwareACT/mujoco_data/hole_random_r60/20260723_161953_teleop_055/episode.hdf5
+/home/stw/ForceAwareACT_workspace/ForceAwareACT/mujoco_data/hole_random_r60/20260723_162601_teleop_069/episode.hdf5
+/home/stw/ForceAwareACT_workspace/ForceAwareACT/mujoco_data/hole_random_r60/20260723_163459_teleop_087/episode.hdf5

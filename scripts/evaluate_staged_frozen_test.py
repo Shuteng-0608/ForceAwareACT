@@ -57,7 +57,7 @@ from force_aware_act.utils import resolve_episode_paths  # noqa: E402
 FROZEN_TEST_SCHEMA_VERSION = 1
 SELECTION_REPORT_SCHEMA_VERSIONS = (2,)
 FORMAL_TEST_DOMAIN_COUNT = 2
-FORMAL_EPISODES_PER_DOMAIN = 5
+MIN_FORMAL_EPISODES_PER_DOMAIN = 5
 DEPLOYMENT_MODE = "prior"
 AGGREGATION = "episode_uniform"
 MIN_BOOTSTRAP_REPLICATES = 1000
@@ -506,7 +506,7 @@ def load_selection_artifact(
 
 
 def resolve_frozen_test_domains(protocol: ResolvedProtocol) -> Tuple[FrozenTestDomain, ...]:
-    """Resolve every protocol test list and enforce the registered 5+5 design."""
+    """Resolve every preregistered test list and enforce its exact population."""
 
     specs = protocol.test_episode_lists
     if len(specs) != FORMAL_TEST_DOMAIN_COUNT:
@@ -518,10 +518,10 @@ def resolve_frozen_test_domains(protocol: ResolvedProtocol) -> Tuple[FrozenTestD
     seen_paths: Dict[Path, str] = {}
     seen_manifest_domains = set()
     for name, spec in specs.items():
-        if spec.expected_episode_count != FORMAL_EPISODES_PER_DOMAIN:
+        if spec.expected_episode_count < MIN_FORMAL_EPISODES_PER_DOMAIN:
             raise ValueError(
-                f"formal test domain {name!r} must preregister exactly "
-                f"{FORMAL_EPISODES_PER_DOMAIN} episodes"
+                f"formal test domain {name!r} must preregister at least "
+                f"{MIN_FORMAL_EPISODES_PER_DOMAIN} episodes"
             )
         list_path = _strict_regular_file(spec.episode_list, context=f"test list {name}")
         resolved = resolve_episode_paths(
@@ -1368,7 +1368,11 @@ def run(args: argparse.Namespace) -> Mapping[str, Any]:
         "aggregation": AGGREGATION,
         "metric_units": "normalized_l1",
         "test_domains": FORMAL_TEST_DOMAIN_COUNT,
-        "episodes_per_domain": FORMAL_EPISODES_PER_DOMAIN,
+        "minimum_episodes_per_domain": MIN_FORMAL_EPISODES_PER_DOMAIN,
+        "episode_counts": {
+            domain.name: len(domain.episode_paths) for domain in domains
+        },
+        "total_episodes": sum(len(domain.episode_paths) for domain in domains),
         "batch_size": args.batch_size,
         "num_workers": 0,
         "device": str(device),

@@ -184,7 +184,42 @@ def test_load_selection_artifact_requires_pinned_consistent_report(tmp_path: Pat
         )
 
 
-def test_resolve_frozen_test_domains_requires_exact_registered_five_plus_five(
+def test_resolve_frozen_test_domains_accepts_preregistered_unequal_counts(
+    tmp_path: Path,
+) -> None:
+    specs = {}
+    for domain_index, (name, manifest_domain, episode_count) in enumerate(
+        (
+            ("r60_test", "r60_visual", 6),
+            ("r2_test", "r2_contact", 5),
+        )
+    ):
+        episodes = []
+        for episode_index in range(episode_count):
+            path = tmp_path / f"{domain_index}_{episode_index}.hdf5"
+            path.write_bytes(b"episode")
+            episodes.append(path)
+        episode_list = tmp_path / f"{name}.txt"
+        episode_list.write_text(
+            "".join(f"{path.resolve()}\n" for path in episodes), encoding="utf-8"
+        )
+        specs[name] = SimpleNamespace(
+            domain=manifest_domain,
+            episode_list=episode_list,
+            expected_episode_count=episode_count,
+        )
+    protocol = SimpleNamespace(test_episode_lists=specs)
+
+    domains = frozen.resolve_frozen_test_domains(protocol)
+    assert [domain.name for domain in domains] == ["r60_test", "r2_test"]
+    assert [len(domain.episode_paths) for domain in domains] == [6, 5]
+
+    specs["r2_test"].expected_episode_count = 4
+    with pytest.raises(ValueError, match="at least 5"):
+        frozen.resolve_frozen_test_domains(protocol)
+
+
+def test_resolve_frozen_test_domains_rejects_list_count_mismatch(
     tmp_path: Path,
 ) -> None:
     specs = {}
@@ -203,17 +238,13 @@ def test_resolve_frozen_test_domains_requires_exact_registered_five_plus_five(
         specs[name] = SimpleNamespace(
             domain=manifest_domain,
             episode_list=episode_list,
-            expected_episode_count=5,
+            expected_episode_count=6 if name == "r60_test" else 5,
         )
-    protocol = SimpleNamespace(test_episode_lists=specs)
 
-    domains = frozen.resolve_frozen_test_domains(protocol)
-    assert [domain.name for domain in domains] == ["r60_test", "r2_test"]
-    assert [len(domain.episode_paths) for domain in domains] == [5, 5]
-
-    specs["r2_test"].expected_episode_count = 4
-    with pytest.raises(ValueError, match="exactly 5"):
-        frozen.resolve_frozen_test_domains(protocol)
+    with pytest.raises(ValueError, match="episode count mismatch"):
+        frozen.resolve_frozen_test_domains(
+            SimpleNamespace(test_episode_lists=specs)
+        )
 
 
 def test_manifest_validation_requires_native_uuid_and_current_episode_bytes(
