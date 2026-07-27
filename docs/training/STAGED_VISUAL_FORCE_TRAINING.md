@@ -2,21 +2,25 @@
 
 ## 当前状态与使用边界
 
-这套协议面向尚未完成采集的两组新数据：60 mm 孔位随机化 50 条，以及约 2 mm 孔位抖动、接触恢复模式更丰富的 50 条。示例配置只是可审计的起点，不能在新数据到齐、质检、划分和冻结前直接宣称正式实验成立。
+这套协议面向 60 mm 大范围孔位随机化与约 2 mm 小范围接触精修数据。任何正式实验都必须先完成数据质检、episode 级划分、manifest、归一化统计和协议冻结；历史数据或兼容性 smoke 不能替代正式数据，也不能被写成新协议的性能结论。
 
-现有 `mujoco_data/hole_random_60mm_hmj` 与 `mujoco_data/peg_hole_hmj_60N_limit` 只能用于只读的加载兼容性、数据契约和验证流程冒烟。它们不得替代新采数据，不得被重新包装成正式协议的 train/val/test，也不得把冒烟结果写成新协议的性能结论。历史文件缺少 UUID 时，只有历史兼容清单才允许显式使用 `--derive-uuid-from-sha256`；新采集数据不得使用这个退路。
-
-当前工作区实际扫描到的历史 HDF5 数量分别是 100 和 177，并不是各 50。本轮只读冒烟按规范化路径字典序临时取各自前 50 条：R60 的 50 条都成功建立索引，共 19,745 个可用 decision state；R2 的 50 条也全部建立索引，共 22,172 个。必需数值字段、严格时间戳/长度、因果图像对齐与抽样张量形状均通过。这个选择没有落成正式 list，只是可重复的兼容性 smoke；正式实验仍必须人工冻结明确的 list 并记录哈希。该结果不代表图像内容、phase 标签、专家质量或模型效果已经验收。
-
-示例协议位于 `configs/experiments/staged_visual_force_protocol.example.json`。其中所有路径都相对该 JSON 文件；两个全零 SHA-256 是故意设置的阻断占位符。创建正式 manifest 和归一化统计后，必须替换它们，未替换时 `train_staged.py` 应当失败。
+示例协议位于 `configs/experiments/staged_visual_force_protocol.example.json`。其中全零 SHA-256 是故意设置的阻断占位符；创建正式 manifest 和归一化统计后必须替换它们。已经开始或完成的协议、checkpoint、日志和评估结果都属于不可变实验证据，后续调整应创建新的 protocol 与输出目录。
 
 ## 协议要解决的两件事
 
 Stage 1 `spatial_r60` 只使用大范围孔位训练集，目标是建立孔位、末端与接近动作之间的视觉空间表征。训练批次为 16 个 R60 样本；视觉 backbone 使用基础学习率的 0.5 倍，其他模块正常更新。R2 验证集仍单独记录，但不参与 Stage 1 checkpoint 选择。
 
-Stage 2 `contact_r2` 从 Stage 1 最佳 checkpoint 初始化，目标是学习接触建立、恢复与插入。每个 16 样本批次固定为 12 个 R2 样本和 4 个 R60 rehearsal 样本，即 75%/25%；视觉 backbone 降到基础学习率的 0.1 倍，避免接触精修抹掉视觉泛化。R2 的 12 个样本进一步按 `approach=3`、`contact_onset=3`、`recovery=4`、`insertion=2` 采样。该配比是首轮假设，不是已经由数据证明的最优值。
+Stage 2 `contact_r2` 从 Stage 1 最佳 checkpoint 初始化，目标是学习接触建立、恢复与插入。每个 16 样本批次固定为 12 个 R2 样本和 4 个 R60 rehearsal 样本，即 75%/25%；视觉 backbone 降到基础学习率的 0.1 倍，避免接触精修抹掉视觉泛化。示例中的 phase 配比只是候选假设；没有经过人工复核的 catalog 时，应取消 phase quota 并使用域内 episode-balanced 采样。
 
 Stage 2 的主指标是 `r2_contact_val/deploy_loss`，但只有 `r60_spatial_val/deploy_loss` 相对 Stage 2 初始化基线退化不超过 5% 时，候选 checkpoint 才能通过 retention gate。两个验证域始终独立统计，不能把它们拼成一个平均数掩盖遗忘。
+
+### 等效 epoch、最低训练量与学习率
+
+协议中的等效 epoch 应由主训练域的完整样本量和该域每 batch 配额计算，而不是设置一个与数据规模无关的固定窗口。Stage 1 通常使用 `ceil(r60_samples / r60_batch_quota)`；Stage 2 使用 `ceil(r2_samples / r2_batch_quota)`。
+
+`monitor.min_stage_steps` 是实际训练量保护。在达到该边界前仍正常验证并保存更好的 checkpoint，但未改善验证不累计 early-stop patience。达到边界后，连续 `monitor.patience` 次正式验证没有产生可选 checkpoint 才允许早停；带 retention gate 的阶段只有同时满足主目标改善和保留域约束才算产生可选 checkpoint。
+
+可选的 `optimizer.scheduler` 当前支持可恢复的 `ReduceLROnPlateau`。scheduler 只在达到最低训练量后依据主验证指标更新，使学习率衰减后仍有继续优化窗口。scheduler 状态与 optimizer、sampler、monitor 和 RNG 一起写入 checkpoint；各参数组实际学习率写入 `validation_log.csv`。`min_stage_steps`、scheduler patience、early-stop patience 和硬上限都应在正式运行前按等效 epoch 预注册。
 
 ## 先冻结数据，再训练
 
@@ -38,7 +42,7 @@ R2 数据不能只增加碰撞数量。每条专家示范应尽量形成“接�
 
 ### R2 phase catalog
 
-示例配置启用了 phase quota，因此 `r2_train_phase_catalog.json` 是正式协议资产。它采用 `src/force_aware_act/training/catalog.py` 的 schema version 2：每个训练 episode 同时固定 `path`、`domain`、原生 `episode_uuid`、`file_sha256`，并用不重叠的 `[start, stop)` state-index 段标为 `approach`、`contact_onset`、`recovery` 或 `insertion`。catalog 必须覆盖数据集可产生的每个 state index，并在训练前由人工结合力曲线、动作与视频抽查边界；不要仅凭一个未经验证的力阈值自动生成“真值”。
+示例配置展示了 phase quota；如果启用，`r2_train_phase_catalog.json` 就成为正式协议资产。catalog 采用 `src/force_aware_act/training/catalog.py` 的 schema version 2：每个训练 episode 同时固定 `path`、`domain`、原生 `episode_uuid`、`file_sha256`，并用不重叠的 `[start, stop)` state-index 段标为 `approach`、`contact_onset`、`recovery` 或 `insertion`。catalog 必须覆盖数据集可产生的每个 state index，并在训练前由人工结合力曲线、动作与视频抽查边界；不要仅凭一个未经验证的力阈值自动生成“真值”。
 
 先制作人工标注 CSV。四列都是必需的，`start` 包含、`stop` 不包含；本协议的 `phase` 只能使用示例配置中的四个名称：
 
@@ -201,7 +205,7 @@ PYTHONPATH=src python scripts/train_staged.py \
 
 ## 验证、候选选择和最终 test
 
-Stage 2 完成后，不要只看训练过程中的一个 `checkpoint_best.pt`。将 `stage_completion.json` 中 `candidate_checkpoints` 的每一行按原顺序写入候选 CSV；不得删掉表现不好的中间点、增加别的 checkpoint、改变顺序或跨 run 混合。评估器会根据 run manifest、completion 和训练 cadence 复验候选集合必须完整且唯一。路径相对 CSV 文件，SHA-256 是 checkpoint 文件的普通文件哈希，`epoch`、`step` 两列可省略。下面两行只是短运行的格式示意；正式示例配置应包含每个 500-step 周期点：
+Stage 2 完成后，不要只看训练过程中的一个 `checkpoint_best.pt`。将 `stage_completion.json` 中 `candidate_checkpoints` 的每一行按原顺序写入候选 CSV；不得删掉表现不好的中间点、增加别的 checkpoint、改变顺序或跨 run 混合。评估器会根据 run manifest、completion 和训练 cadence 复验候选集合必须完整且唯一。路径相对 CSV 文件，SHA-256 是 checkpoint 文件的普通文件哈希，`epoch`、`step` 两列可省略。下面两行只是格式示意；正式协议应包含每个验证周期点：
 
 ```csv
 candidate_id,checkpoint_path,checkpoint_sha256
@@ -252,19 +256,34 @@ PYTHONPATH=src python scripts/evaluate_staged_frozen_test.py \
   --output-dir outputs/staged/staged_visual_force_50plus50_v1/final_test_v1
 ```
 
-该入口强制 deterministic prior 与 episode-uniform 聚合，并重新校验 v2 checkpoint、protocol/normalization/manifest 哈希、原生 episode UUID、每个文件的 SHA-256、`split=test`、域分配、list 哈希和精确条数。输出包含逐 episode 指标、两个域各自的 episode bootstrap 95% CI、所有输入/输出哈希；`completion.json` 最后原子写入，只有 `status=complete` 且其中的 artifact 哈希复验通过，才算一次完整测试。输出目录必须事先不存在，命令拒绝 symlink 和覆盖。
+该入口强制 deterministic prior 与 episode-uniform 聚合，并重新校验 checkpoint、protocol/normalization/manifest 哈希、原生 episode UUID、每个文件的 SHA-256、`split=test`、域分配、list 哈希和精确条数。输出包含逐 episode 指标、两个域各自的 episode bootstrap 95% CI、所有输入/输出哈希；`completion.json` 最后原子写入，只有 `status=complete` 且其中的 artifact 哈希复验通过，才算一次完整测试。输出目录必须事先不存在，命令拒绝 symlink 和覆盖。
 
 `evaluate_inference_modes.py` 保留为 zero/prior/posterior 模式对照和 oracle 诊断工具，不是本协议的正式 frozen-test 入口。posterior 使用未来标签，不能作为部署结果，也不能用它重新选择 checkpoint。
 
 不要在这 100 条正式新数据上反复看 test、改超参数、重新选择 checkpoint 再看 test。保留的 test 一旦用于决策就失去无偏测试资格；需要继续迭代时，应从 train/val 设计新实验，或另采一批全新的 final test。
 
+## 只读训练监控
+
+监控脚本只读取 protocol、CSV、completion 和系统进程，不会加载或改写训练 checkpoint，也不会向训练进程发送信号：
+
+```bash
+python scripts/monitor_staged_training.py \
+  --protocol configs/experiments/staged_visual_force_protocol.example.json \
+  --stage spatial_r60 \
+  --output-dir outputs/staged/staged_visual_force_50plus50_v1/spatial_r60 \
+  --watch \
+  --interval 10
+```
+
+按 `Ctrl+C` 只会停止监控，不会停止训练。若运行环境无法自动发现 PID，可额外传入 `--pid <训练PID>`；单次查看时移除 `--watch`。报告同时给出硬上限进度、主域等效 epoch、最低训练保护期、patience、最近训练指标、梯度裁剪率、主验证指标、各参数组学习率、GPU，以及“后续没有新 checkpoint 被选中”与“跑满硬上限”两种 ETA。
+
 ## 阶段升级与验收门槛
 
 以下门槛应在第一轮正式训练前写入实验记录，不能看到结果后再修改：
 
-1. 数据门槛：两域 episode 数与预注册 split 计数（示例为 40/5/5）、UUID/path/content 三轴无泄漏；全部新 HDF5 通过 schema、有限值、时间戳、图像和长度检查；R2 四个 phase 均有多个 episode 覆盖，不能靠单条轨迹填满一个 bucket。
-2. Stage 1 升级门槛：无 NaN/Inf 或梯度异常；实际采样计数与 R60=16 完全一致；至少完成 `min_validations=5`；`r60_spatial_val` 的离线指标和预注册的空间 rollout 指标都优于预先定义的基线。仅凭 train loss 下降不得升级。
-3. Stage 2 接受门槛：实际批次严格为 R2=12、R60=4，R2 phase 为 3/3/4/2；冻结视觉 backbone 的 BatchNorm running statistics（affine 参数仍按 optimizer group 配置训练），避免 40 条局部数据改写视觉统计；R2 主指标相对 Stage 1 baseline 达到预注册改善量；R60 retention 相对退化不超过 5%；接触恢复 rollout 同时报告成功率、恢复率、峰值力和 force-stop，不能用更大碰撞换取成功率。
+1. 数据门槛：两域 episode 数与预注册 split 计数、UUID/path/content 三轴无泄漏；全部新 HDF5 通过 schema、有限值、时间戳、图像和长度检查。只有启用 phase catalog 的后续协议才要求 R2 四个 phase 均有多个 episode 覆盖。
+2. Stage 1 升级门槛：无 NaN/Inf 或梯度异常；实际采样计数与协议 quota 完全一致；至少达到预注册的 `min_stage_steps` 和 `min_validations`；主验证域的离线指标和预注册空间 rollout 指标都优于预先定义的基线。仅凭 train loss 下降不得升级。
+3. Stage 2 接受门槛：实际批次严格符合协议 quota；冻结视觉 backbone 的 BatchNorm running statistics（affine 参数仍按 optimizer group 配置训练），避免局部数据改写视觉统计；至少达到预注册的 `min_stage_steps`；主指标相对 Stage 1 baseline 达到预注册改善量；保留域退化不超过协议阈值；接触恢复 rollout 同时报告成功率、恢复率、峰值力和 force-stop，不能用更大碰撞换取成功率。
 4. 最终门槛：唯一 checkpoint 与所有阈值冻结后，只运行一次独立 test；分别报告 R60 与 R2，不合并成一个总分；最终结论同时包含离线 deployment-path 指标和 rollout 任务/安全指标。
 
 `deploy_loss` 是归一化离线误差，不等价于插入成功率。具体 rollout 成功率、恢复率与力阈值应先用 train/val 和任务安全约束预注册；本示例不凭空给出一个看似精确的合格百分比。
@@ -287,6 +306,7 @@ PYTHONPATH=src python -m pytest -q \
   tests/test_training_multisplit_validation.py \
   tests/test_training_engine.py \
   tests/test_train_staged_integration.py \
+  tests/test_monitor_staged_training.py \
   tests/test_evaluate_staged_checkpoints.py \
   tests/test_evaluate_staged_frozen_test.py \
   tests/test_contact_recovery_metrics.py \

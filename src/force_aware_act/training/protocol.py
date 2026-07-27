@@ -116,11 +116,22 @@ class ParameterGroupSpec:
 
 
 @dataclass(frozen=True)
+class LRSchedulerSpec:
+    name: str
+    factor: float
+    patience: int
+    threshold: float
+    cooldown: int
+    min_lr: float
+
+
+@dataclass(frozen=True)
 class OptimizerSpec:
     base_lr: float
     weight_decay: float
     max_grad_norm: Optional[float]
     parameter_groups: Tuple[ParameterGroupSpec, ...]
+    scheduler: Optional[LRSchedulerSpec]
 
 
 @dataclass(frozen=True)
@@ -173,6 +184,7 @@ class MonitorSpec:
     max_retention_regression: Optional[float]
     patience: int
     min_validations: int
+    min_stage_steps: int
     min_delta: float
 
 
@@ -504,7 +516,13 @@ def _parse_parameter_group(value: Any, index: int) -> ParameterGroupSpec:
 def _parse_optimizer(value: Any, stage_context: str) -> OptimizerSpec:
     context = f"{stage_context}.optimizer"
     data = _require_mapping(value, context)
-    allowed = ("base_lr", "weight_decay", "max_grad_norm", "parameter_groups")
+    allowed = (
+        "base_lr",
+        "weight_decay",
+        "max_grad_norm",
+        "parameter_groups",
+        "scheduler",
+    )
     _reject_unknown(data, allowed, context)
     groups = data.get(
         "parameter_groups",
@@ -529,6 +547,12 @@ def _parse_optimizer(value: Any, stage_context: str) -> OptimizerSpec:
     )
     if base_lr == 0.0:
         raise ValueError(f"{context}.base_lr must be positive")
+    scheduler_value = data.get("scheduler")
+    scheduler = (
+        None
+        if scheduler_value is None
+        else _parse_lr_scheduler(scheduler_value, context)
+    )
     return OptimizerSpec(
         base_lr=base_lr,
         weight_decay=_finite_float(
@@ -536,6 +560,32 @@ def _parse_optimizer(value: Any, stage_context: str) -> OptimizerSpec:
         ),
         max_grad_norm=parsed_max_grad_norm,
         parameter_groups=parsed_groups,
+        scheduler=scheduler,
+    )
+
+
+def _parse_lr_scheduler(value: Any, optimizer_context: str) -> LRSchedulerSpec:
+    context = f"{optimizer_context}.scheduler"
+    data = _require_mapping(value, context)
+    allowed = ("name", "factor", "patience", "threshold", "cooldown", "min_lr")
+    _reject_unknown(data, allowed, context)
+    name = _nonempty_string(_required(data, "name", context), f"{context}.name")
+    if name != "reduce_on_plateau":
+        raise ValueError(f"{context}.name currently supports only 'reduce_on_plateau'")
+    factor = _finite_float(data.get("factor", 0.3), f"{context}.factor", minimum=0.0)
+    if not 0.0 < factor < 1.0:
+        raise ValueError(f"{context}.factor must be in (0, 1)")
+    return LRSchedulerSpec(
+        name=name,
+        factor=factor,
+        patience=_nonnegative_int(data.get("patience", 4), f"{context}.patience"),
+        threshold=_finite_float(
+            data.get("threshold", 0.005),
+            f"{context}.threshold",
+            minimum=0.0,
+        ),
+        cooldown=_nonnegative_int(data.get("cooldown", 0), f"{context}.cooldown"),
+        min_lr=_finite_float(data.get("min_lr", 0.0), f"{context}.min_lr", minimum=0.0),
     )
 
 
@@ -720,6 +770,7 @@ def _parse_monitor(value: Any, stage_context: str, validation_names: Sequence[st
         "max_retention_regression",
         "patience",
         "min_validations",
+        "min_stage_steps",
         "min_delta",
     )
     _reject_unknown(data, allowed, context)
@@ -775,6 +826,9 @@ def _parse_monitor(value: Any, stage_context: str, validation_names: Sequence[st
         patience=_positive_int(data.get("patience", 8), f"{context}.patience"),
         min_validations=_nonnegative_int(
             data.get("min_validations", 1), f"{context}.min_validations"
+        ),
+        min_stage_steps=_nonnegative_int(
+            data.get("min_stage_steps", 0), f"{context}.min_stage_steps"
         ),
         min_delta=min_delta,
     )
@@ -860,6 +914,15 @@ def _parse_stage(value: Any, index: int, base_dir: Path) -> StageSpec:
     monitor = _parse_monitor(
         _required(data, "monitor", context), context, validation_names
     )
+    if monitor.min_stage_steps > max_steps:
+        raise ValueError(
+            f"{context}.monitor.min_stage_steps must not exceed max_steps={max_steps}"
+        )
+    if monitor.min_stage_steps % validation_every_steps != 0:
+        raise ValueError(
+            f"{context}.monitor.min_stage_steps must be divisible by "
+            "validation_every_steps so the patience boundary is formally validated"
+        )
     scheduled_validations = (
         max_steps + validation_every_steps - 1
     ) // validation_every_steps

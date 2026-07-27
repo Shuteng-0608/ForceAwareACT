@@ -60,6 +60,16 @@ def test_early_stopping_uses_relative_delta_and_patience():
     assert state.best_epoch == 1
 
 
+def test_early_stopping_can_record_best_without_counting_patience():
+    state = EarlyStoppingState(patience=1, min_epochs=0, min_delta=0.01)
+
+    assert state.update(1.0, epoch=1, step=1, count_patience=False) == (True, False)
+    assert state.update(1.1, epoch=2, step=2, count_patience=False) == (False, False)
+    assert state.epochs_without_improvement == 0
+    assert state.update(1.2, epoch=3, step=3, count_patience=True) == (False, True)
+    assert state.epochs_without_improvement == 1
+
+
 def test_deployment_mode_resolution_is_variant_aware():
     assert resolve_validation_deployment_mode(
         policy_variant="force_aware_contact_cvae",
@@ -130,4 +140,3 @@ def test_validation_restores_mixed_submodule_training_states():
 
     assert model.training is False
     assert model.mixed_mode_child.training is True
-

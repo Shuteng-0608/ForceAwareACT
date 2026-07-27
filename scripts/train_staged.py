@@ -33,6 +33,7 @@ import numpy as np
 import h5py
 import torch
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import ConcatDataset, DataLoader
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -126,6 +127,7 @@ VALIDATION_LOG_FIELDS = (
     "selected",
     "retention_passed",
     "decision_reason",
+    "learning_rates",
 )
 STAGE_COMPLETION_FILENAME = "stage_completion.json"
 TRAINING_LOCK_FILENAME = ".train_staged.lock"
@@ -156,6 +158,7 @@ class MonitorRuntime:
     retention_selector: Optional[RetentionGatedCheckpointSelector]
     validation_count: int = 0
     validations_without_selection: int = 0
+    min_stage_steps: int = 0
     last_metrics: Optional[Mapping[str, Mapping[str, float]]] = None
 
     def state_dict(self) -> Dict[str, Any]:
@@ -164,6 +167,7 @@ class MonitorRuntime:
             "kind": self.kind,
             "validation_count": self.validation_count,
             "validations_without_selection": self.validations_without_selection,
+            "min_stage_steps": self.min_stage_steps,
             "last_metrics": self.last_metrics,
         }
         if self.early_stopping is not None:
@@ -181,6 +185,27 @@ class ResumeArtifactPlan:
     moves: Tuple[Tuple[Path, Path], ...]
     best_restore_source: Optional[Path]
     best_alias: Path
+
+
+class _FiniteStateReduceLROnPlateau(ReduceLROnPlateau):
+    """Serialize PyTorch's infinity sentinels without non-finite floats."""
+
+    _SENTINEL_KEYS = ("best", "mode_worse")
+
+    def state_dict(self):
+        state = super().state_dict()
+        for key in self._SENTINEL_KEYS:
+            value = state.get(key)
+            if isinstance(value, float) and not math.isfinite(value):
+                state[key] = None
+        return state
+
+    def load_state_dict(self, state_dict):
+        state = dict(state_dict)
+        for key in self._SENTINEL_KEYS:
+            if state.get(key) is None:
+                state[key] = math.inf
+        super().load_state_dict(state)
 
 
 def configure_reproducibility(seed: int, deterministic: bool) -> None:
@@ -1275,6 +1300,31 @@ def _optimizer_group_manifest(parameter_groups: Sequence[Mapping[str, Any]]) -> 
     ]
 
 
+def _optimizer_learning_rates(optimizer) -> str:
+    rates = {
+        str(group.get("name", f"group_{index}")): float(group["lr"])
+        for index, group in enumerate(optimizer.param_groups)
+    }
+    return json.dumps(rates, sort_keys=True)
+
+
+def _build_lr_scheduler(optimizer, scheduler_spec):
+    if scheduler_spec is None:
+        return None
+    if scheduler_spec.name != "reduce_on_plateau":
+        raise ValueError(f"unsupported LR scheduler: {scheduler_spec.name!r}")
+    return _FiniteStateReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=scheduler_spec.factor,
+        patience=scheduler_spec.patience,
+        threshold=scheduler_spec.threshold,
+        threshold_mode="rel",
+        cooldown=scheduler_spec.cooldown,
+        min_lr=scheduler_spec.min_lr,
+    )
+
+
 def _checkpoint_config(
     prepared: PreparedStage,
     optimizer_groups: Sequence[Mapping[str, Any]],
@@ -1285,6 +1335,9 @@ def _checkpoint_config(
 ) -> Dict[str, Any]:
     protocol = prepared.protocol
     dataset = protocol.dataset
+    batches_per_equivalent_epoch = (
+        prepared.stage.samples_per_epoch // prepared.stage.batch_size
+    )
     return {
         "policy_variant": protocol.model.policy_variant,
         "action_mode": dataset.action_mode,
@@ -1312,6 +1365,19 @@ def _checkpoint_config(
         "checkpoint_every_steps": prepared.stage.checkpoint_every_steps,
         "validation_every_steps": prepared.stage.validation_every_steps,
         "minimum_validations": prepared.stage.monitor.min_validations,
+        "minimum_stage_steps": prepared.stage.monitor.min_stage_steps,
+        "batches_per_equivalent_epoch": batches_per_equivalent_epoch,
+        "minimum_equivalent_epochs": (
+            prepared.stage.monitor.min_stage_steps / batches_per_equivalent_epoch
+        ),
+        "maximum_equivalent_epochs": (
+            prepared.stage.max_steps / batches_per_equivalent_epoch
+        ),
+        "lr_scheduler": (
+            None
+            if prepared.stage.optimizer.scheduler is None
+            else asdict(prepared.stage.optimizer.scheduler)
+        ),
         "training_code_sha256": _training_code_sha256(),
         "runtime_versions": _runtime_versions(),
         "protocol_path": str(protocol.source_path),
@@ -1496,6 +1562,7 @@ def _new_monitor(stage: StageSpec, initial_metrics=None) -> MonitorRuntime:
                 min_delta=monitor.min_delta,
             ),
             retention_selector=None,
+            min_stage_steps=monitor.min_stage_steps,
         )
     if initial_metrics is None:
         raise ValueError("retention-gated stages require initial validation metrics")
@@ -1515,6 +1582,7 @@ def _new_monitor(stage: StageSpec, initial_metrics=None) -> MonitorRuntime:
         kind="retention",
         early_stopping=None,
         retention_selector=selector,
+        min_stage_steps=monitor.min_stage_steps,
         last_metrics=initial_metrics,
     )
 
@@ -1523,12 +1591,18 @@ def _restore_monitor(stage: StageSpec, state: Mapping[str, Any]) -> MonitorRunti
     if state.get("version") != 1:
         raise ValueError("unsupported monitor checkpoint state")
     kind = state.get("kind")
+    stored_min_stage_steps = int(state.get("min_stage_steps", 0))
+    if stored_min_stage_steps != stage.monitor.min_stage_steps:
+        raise ValueError(
+            "resume monitor min_stage_steps disagrees with the current protocol"
+        )
     runtime = MonitorRuntime(
         kind=str(kind),
         early_stopping=None,
         retention_selector=None,
         validation_count=int(state.get("validation_count", 0)),
         validations_without_selection=int(state.get("validations_without_selection", 0)),
+        min_stage_steps=stored_min_stage_steps,
         last_metrics=state.get("last_metrics"),
     )
     if kind == "single":
@@ -1570,12 +1644,18 @@ def _update_monitor(
     *,
     epoch: int,
     global_step: int,
+    stage_step: int,
 ) -> Tuple[bool, bool, bool, str]:
     runtime.validation_count += 1
     runtime.last_metrics = metrics
     if runtime.kind == "single":
         value = float(metrics[stage.monitor.primary_domain][stage.monitor.metric])
-        selected, _ = runtime.early_stopping.update(value, epoch=epoch, step=global_step)
+        selected, _ = runtime.early_stopping.update(
+            value,
+            epoch=epoch,
+            step=global_step,
+            count_patience=stage_step >= stage.monitor.min_stage_steps,
+        )
         retention_passed = True
         reason = "selected" if selected else "objective_not_improved"
     else:
@@ -1585,9 +1665,9 @@ def _update_monitor(
         reason = decision.reason
     if selected:
         runtime.validations_without_selection = 0
-    else:
+    elif stage_step >= stage.monitor.min_stage_steps:
         runtime.validations_without_selection += 1
-    should_stop = _monitor_should_stop(runtime, stage)
+    should_stop = _monitor_should_stop(runtime, stage, stage_step=stage_step)
     return selected, retention_passed, should_stop, reason
 
 
@@ -1614,11 +1694,17 @@ def _validate_validation_episode_counts(
             )
 
 
-def _monitor_should_stop(runtime: MonitorRuntime, stage: StageSpec) -> bool:
+def _monitor_should_stop(
+    runtime: MonitorRuntime,
+    stage: StageSpec,
+    *,
+    stage_step: int,
+) -> bool:
     """Return the persisted early-stop condition without mutating state."""
 
     return (
-        runtime.validation_count >= stage.monitor.min_validations
+        stage_step >= stage.monitor.min_stage_steps
+        and runtime.validation_count >= stage.monitor.min_validations
         and runtime.validations_without_selection >= stage.monitor.patience
     )
 
@@ -1664,6 +1750,7 @@ def _checkpoint_payload(
     *,
     model,
     optimizer,
+    scheduler,
     config,
     prepared,
     sampler,
@@ -1680,6 +1767,7 @@ def _checkpoint_payload(
     payload = build_checkpoint_v2(
         model=model,
         optimizer=optimizer,
+        scheduler=scheduler,
         config=config,
         global_step=global_step,
         stage_step=stage_step,
@@ -2037,8 +2125,14 @@ def _reconcile_resume_logs(
         raise ValueError(
             "resume validation selections disagree with checkpoint monitor best_step"
         )
+    min_stage_steps = int(monitor_state.get("min_stage_steps", 0))
+    eligible_checkpoint_indices = [
+        index
+        for index in checkpoint_indices
+        if group_metadata[index]["stage_step"] >= min_stage_steps
+    ]
     trailing_unselected = 0
-    for index in reversed(checkpoint_indices):
+    for index in reversed(eligible_checkpoint_indices):
         if group_metadata[index]["selected"]:
             break
         trailing_unselected += 1
@@ -2610,6 +2704,7 @@ def _write_stage_completion(
     *,
     overwrite: bool,
     minimum_validations: int,
+    minimum_stage_steps: int,
 ) -> None:
     validation_count = final_payload["monitor_state"].get("validation_count")
     if (
@@ -2620,6 +2715,16 @@ def _write_stage_completion(
         raise ValueError(
             "cannot attest stage completion before monitor.min_validations: "
             f"observed={validation_count!r} required={minimum_validations}"
+        )
+    final_stage_step = final_payload["training_state"].get("stage_step")
+    if (
+        isinstance(final_stage_step, bool)
+        or not isinstance(final_stage_step, int)
+        or final_stage_step < minimum_stage_steps
+    ):
+        raise ValueError(
+            "cannot attest stage completion before monitor.min_stage_steps: "
+            f"observed={final_stage_step!r} required={minimum_stage_steps}"
         )
     config = final_payload["config"]
     run_id = _validate_run_id(config.get("run_id"), "checkpoint run_id")
@@ -2663,6 +2768,7 @@ def _write_stage_completion(
         "final_model_sha256": final_payload["integrity"]["model_state_sha256"],
         "validation_count": validation_count,
         "minimum_validations": minimum_validations,
+        "minimum_stage_steps": minimum_stage_steps,
         "checkpoint_every_steps": config["checkpoint_every_steps"],
         "stage_initial_global_step": config["stage_initial_global_step"],
         "candidate_checkpoints": candidate_checkpoints,
@@ -2871,6 +2977,10 @@ def _train_impl(
         default_weight_decay=prepared.stage.optimizer.weight_decay,
     )
     optimizer = AdamW(parameter_groups)
+    scheduler = _build_lr_scheduler(
+        optimizer,
+        prepared.stage.optimizer.scheduler,
+    )
     deployment_mode = resolve_validation_deployment_mode(
         policy_variant=protocol.model.policy_variant,
         requested_mode=prepared.stage.objective.validation_deployment_mode,
@@ -2914,6 +3024,7 @@ def _train_impl(
             expected_protocol_sha256=protocol.content_sha256,
             expected_normalization_sha256=prepared.normalization_sha256,
             compatibility_keys=RESUME_COMPATIBILITY_KEYS + ("data_provenance",),
+            scheduler=scheduler,
             sampler=sampler,
             map_location=device,
             strict_cuda_rng=True,
@@ -2936,6 +3047,8 @@ def _train_impl(
         "phase_quotas": sampler.phase_quotas,
         "phase_episode_counts": sampler.phase_episode_counts,
         "optimizer_groups": config["optimizer_groups"],
+        "lr_scheduler": config["lr_scheduler"],
+        "minimum_stage_steps": prepared.stage.monitor.min_stage_steps,
         "training_device": training_device,
         "run_id": run_id,
         "run_manifest_sha256": config["run_manifest_sha256"],
@@ -3077,6 +3190,7 @@ def _train_impl(
                 output_dir,
                 model=model,
                 optimizer=optimizer,
+                scheduler=scheduler,
                 config=config,
                 prepared=prepared,
                 sampler=sampler,
@@ -3091,7 +3205,12 @@ def _train_impl(
             monitor = _new_monitor(prepared.stage)
 
     resume_is_terminal = bool(
-        resume_mode and _monitor_should_stop(monitor, prepared.stage)
+        resume_mode
+        and _monitor_should_stop(
+            monitor,
+            prepared.stage,
+            stage_step=stage_step,
+        )
     )
     stop_reason = "early_stopping" if resume_is_terminal else "max_steps"
     batch_iterator = iter(train_loader) if not resume_is_terminal else None
@@ -3120,6 +3239,7 @@ def _train_impl(
                         "selected": True,
                         "retention_passed": True,
                         "decision_reason": "stage_initialization_baseline",
+                        "learning_rates": _optimizer_learning_rates(optimizer),
                     }
                 )
             _flush_and_fsync_logs(train_handle, validation_handle)
@@ -3195,7 +3315,19 @@ def _train_impl(
                     metrics,
                     epoch=epoch,
                     global_step=global_step,
+                    stage_step=stage_step,
                 )
+                if (
+                    scheduler is not None
+                    and stage_step >= prepared.stage.monitor.min_stage_steps
+                ):
+                    scheduler.step(
+                        float(
+                            metrics[prepared.stage.monitor.primary_domain][
+                                prepared.stage.monitor.metric
+                            ]
+                        )
+                    )
                 for domain, domain_metrics in metrics.items():
                     validation_writer.writerow(
                         {
@@ -3213,6 +3345,7 @@ def _train_impl(
                             "selected": selected,
                             "retention_passed": retention_passed,
                             "decision_reason": reason,
+                            "learning_rates": _optimizer_learning_rates(optimizer),
                         }
                     )
                 _flush_and_fsync_logs(train_handle, validation_handle)
@@ -3221,6 +3354,7 @@ def _train_impl(
                         output_dir,
                         model=model,
                         optimizer=optimizer,
+                        scheduler=scheduler,
                         config=config,
                         prepared=prepared,
                         sampler=sampler,
@@ -3237,6 +3371,7 @@ def _train_impl(
                 checkpoint_kwargs = dict(
                     model=model,
                     optimizer=optimizer,
+                    scheduler=scheduler,
                     config=config,
                     prepared=prepared,
                     sampler=sampler,
@@ -3260,6 +3395,7 @@ def _train_impl(
     final_kwargs = dict(
         model=model,
         optimizer=optimizer,
+        scheduler=scheduler,
         config=config,
         prepared=prepared,
         sampler=sampler,
@@ -3281,6 +3417,7 @@ def _train_impl(
         final_payload,
         overwrite=resume_mode,
         minimum_validations=prepared.stage.monitor.min_validations,
+        minimum_stage_steps=prepared.stage.monitor.min_stage_steps,
     )
     print(
         json.dumps(

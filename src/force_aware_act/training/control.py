@@ -125,13 +125,22 @@ class EarlyStoppingState:
         if not 0.0 <= self.min_delta < 1.0:
             raise ValueError("early-stop min_delta must be in [0, 1)")
 
-    def update(self, metric: float, *, epoch: int, step: int) -> tuple[bool, bool]:
+    def update(
+        self,
+        metric: float,
+        *,
+        epoch: int,
+        step: int,
+        count_patience: bool = True,
+    ) -> tuple[bool, bool]:
         """Update state and return ``(improved, should_stop)``."""
 
         if not math.isfinite(metric):
             raise ValueError("early-stop metric must be finite")
         if epoch <= 0 or step <= 0:
             raise ValueError("epoch and step must be positive")
+        if not isinstance(count_patience, bool):
+            raise TypeError("count_patience must be boolean")
 
         improved = self.best_metric is None
         if self.best_metric is not None:
@@ -143,11 +152,12 @@ class EarlyStoppingState:
             self.best_epoch = epoch
             self.best_step = step
             self.epochs_without_improvement = 0
-        elif epoch >= self.min_epochs:
+        elif epoch >= self.min_epochs and count_patience:
             self.epochs_without_improvement += 1
 
         should_stop = (
             epoch >= self.min_epochs
+            and count_patience
             and not improved
             and self.epochs_without_improvement >= self.patience
         )

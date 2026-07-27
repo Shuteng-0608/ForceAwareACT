@@ -54,8 +54,11 @@ TASK_SITE_NAMES = ("peg_tip_site", "hole_goal_site")
 TASK_BODY_NAMES = ("peg_tool", "wall_task")
 DEFAULT_HOLE_SITE_NAME = "hole_goal_site"
 DEFAULT_HOLE_BODY_NAME = "wall_task"
+DEFAULT_FT_GRAVITY_TOOL_BODY_NAMES = ("peg_tool",)
+DEFAULT_FT_GRAVITY_WORLD = (0.0, 0.0, -9.81)
+DEFAULT_FT_GRAVITY_SENSOR_SIGN = -1.0
 DEFAULT_HARD_FORCE_THRESHOLD = 1000.0
-ROLLOUT_CONTRACT_SCHEMA_VERSION = 1
+ROLLOUT_CONTRACT_SCHEMA_VERSION = 2
 EXPECTED_HOLE_GEOM_NAMES = tuple(
     f"wall_hole_ring_{index:02d}" for index in range(24)
 ) + ("hole_back_stop",)
@@ -94,6 +97,10 @@ SUMMARY_REQUIRED_KEYS = (
     "chunk_len",
     "force_window_len",
     "force_window_duration",
+    "ft_compensation_mode",
+    "ft_gravity_tool_body_names",
+    "ft_gravity_world",
+    "ft_gravity_sensor_sign",
     "policy_rate_hz",
     "max_rollout_steps",
     "max_delta_q",
@@ -389,6 +396,10 @@ def _build_rollout_contract(
             "chunk_len": args.chunk_len,
             "force_window_len": args.force_window_len,
             "force_window_duration": args.force_window_duration,
+            "ft_compensation_mode": args.ft_compensation_mode,
+            "ft_gravity_tool_body_names": list(args.ft_gravity_tool_body_names),
+            "ft_gravity_world": np.asarray(args.ft_gravity_world).tolist(),
+            "ft_gravity_sensor_sign": args.ft_gravity_sensor_sign,
             "policy_rate_hz": args.policy_rate_hz,
             "max_rollout_steps": args.max_rollout_steps,
             "image_width": args.image_width,
@@ -760,6 +771,84 @@ def _read_wrench(data, force_slice: slice, torque_slice: slice) -> np.ndarray:
     )
 
 
+def _tool_mass_and_com_world(
+    model,
+    data,
+    tool_body_ids: Sequence[int],
+) -> tuple[float, np.ndarray]:
+    total_mass = 0.0
+    weighted_com = np.zeros(3, dtype=np.float64)
+    for body_id in tool_body_ids:
+        mass = float(model.body_mass[int(body_id)])
+        if mass <= 0.0:
+            continue
+        total_mass += mass
+        weighted_com += mass * np.asarray(data.xipos[int(body_id)], dtype=np.float64)
+    if total_mass <= 1.0e-12:
+        raise ValueError("FT gravity compensation tool bodies have zero total mass")
+    return total_mass, weighted_com / total_mass
+
+
+def _gravity_wrench_sensor_frame(
+    model,
+    data,
+    sensor_site_id: int,
+    tool_body_ids: Sequence[int],
+    gravity_world: Sequence[float],
+    sensor_sign: float,
+) -> np.ndarray:
+    """Match the gravity-wrench convention used by the HDF5 data recorder."""
+
+    tool_mass, tool_com_world = _tool_mass_and_com_world(model, data, tool_body_ids)
+    sensor_pos_world = np.asarray(data.site_xpos[sensor_site_id], dtype=np.float64)
+    rotation_world_from_sensor = np.asarray(
+        data.site_xmat[sensor_site_id], dtype=np.float64
+    ).reshape(3, 3)
+    rotation_sensor_from_world = rotation_world_from_sensor.T
+    force_gravity_world = tool_mass * np.asarray(gravity_world, dtype=np.float64)
+    force_gravity_sensor = rotation_sensor_from_world @ force_gravity_world
+    com_from_sensor_sensor = rotation_sensor_from_world @ (
+        tool_com_world - sensor_pos_world
+    )
+    torque_gravity_sensor = np.cross(
+        com_from_sensor_sensor,
+        force_gravity_sensor,
+    )
+    gravity_wrench = np.concatenate(
+        [force_gravity_sensor, torque_gravity_sensor]
+    )
+    return float(sensor_sign) * gravity_wrench
+
+
+def _read_wrench_components(
+    data,
+    force_slice: slice,
+    torque_slice: slice,
+    *,
+    model,
+    compensation_mode: str,
+    sensor_site_id: int,
+    tool_body_ids: Sequence[int],
+    gravity_world: Sequence[float],
+    sensor_sign: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    raw_wrench = _read_wrench(data, force_slice, torque_slice)
+    if compensation_mode == "none":
+        gravity_wrench = np.zeros(6, dtype=np.float64)
+        return raw_wrench, gravity_wrench, raw_wrench.copy()
+    if compensation_mode != "gravity":
+        raise ValueError(f"unsupported FT compensation mode: {compensation_mode!r}")
+    gravity_wrench = _gravity_wrench_sensor_frame(
+        model,
+        data,
+        sensor_site_id,
+        tool_body_ids,
+        gravity_world,
+        sensor_sign,
+    )
+    return raw_wrench, gravity_wrench, raw_wrench - gravity_wrench
+
+
 def _render_images(
     renderer,
     data,
@@ -1070,6 +1159,8 @@ def _fieldnames() -> list[str]:
     fields.extend(f"qpos_{index}" for index in range(7))
     fields.extend(f"qvel_{index}" for index in range(7))
     fields.extend(f"ft_{index}" for index in range(6))
+    fields.extend(f"ft_raw_{index}" for index in range(6))
+    fields.extend(f"ft_gravity_{index}" for index in range(6))
     fields.extend(f"qcmd_{index}" for index in range(7))
     fields.extend(
         [
@@ -1382,6 +1473,26 @@ def run_rollout(args: argparse.Namespace) -> int:
     joint_dofadr = np.asarray(mj_model.jnt_dofadr[joint_ids], dtype=np.int64)
     force_slice = _sensor_slice(mj_model, int(sensor_ids[0]), 3, SENSOR_NAMES[0])
     torque_slice = _sensor_slice(mj_model, int(sensor_ids[1]), 3, SENSOR_NAMES[1])
+    sensor_site_id = int(mj_model.sensor_objid[int(sensor_ids[0])])
+    torque_sensor_site_id = int(mj_model.sensor_objid[int(sensor_ids[1])])
+    if sensor_site_id != torque_sensor_site_id:
+        raise ValueError(
+            "force and torque sensors must reference the same FT sensor site"
+        )
+    if (
+        int(mj_model.sensor_objtype[int(sensor_ids[0])])
+        != int(mujoco.mjtObj.mjOBJ_SITE)
+        or int(mj_model.sensor_objtype[int(sensor_ids[1])])
+        != int(mujoco.mjtObj.mjOBJ_SITE)
+    ):
+        raise ValueError("force and torque sensors must reference a MuJoCo site")
+    gravity_tool_body_ids = _resolve_ids(
+        mujoco,
+        mj_model,
+        mujoco.mjtObj.mjOBJ_BODY,
+        tuple(args.ft_gravity_tool_body_names),
+        "FT gravity tool bodies",
+    )
 
     internal_initial = PUBLIC_INITIAL * ARM_SIGN
     mujoco.mj_resetData(mj_model, data)
@@ -1415,7 +1526,19 @@ def run_rollout(args: argparse.Namespace) -> int:
     physics_steps_per_policy = max(
         1, int(round(1.0 / (args.policy_rate_hz * float(mj_model.opt.timestep))))
     )
-    current_wrench = _read_wrench(data, force_slice, torque_slice)
+    initial_raw_wrench, initial_gravity_wrench, current_wrench = (
+        _read_wrench_components(
+            data,
+            force_slice,
+            torque_slice,
+            model=mj_model,
+            compensation_mode=args.ft_compensation_mode,
+            sensor_site_id=sensor_site_id,
+            tool_body_ids=gravity_tool_body_ids,
+            gravity_world=args.ft_gravity_world,
+            sensor_sign=args.ft_gravity_sensor_sign,
+        )
+    )
     force_history: deque[tuple[float, np.ndarray]] = deque(
         [(float(data.time), current_wrench.copy())],
     )
@@ -1429,6 +1552,8 @@ def run_rollout(args: argparse.Namespace) -> int:
 
     rows: list[dict[str, object]] = []
     force_norm_history: list[float] = []
+    raw_force_norm_history: list[float] = []
+    gravity_force_norm_history: list[float] = []
     distance_history: list[tuple[int, float]] = []
     axial_error_history: list[tuple[int, float]] = []
     lateral_error_history: list[tuple[int, float]] = []
@@ -1473,9 +1598,22 @@ def run_rollout(args: argparse.Namespace) -> int:
         for step in range(args.max_rollout_steps):
             qpos = np.asarray(data.qpos[joint_qposadr], dtype=np.float32).copy()
             qvel = np.asarray(data.qvel[joint_dofadr], dtype=np.float32).copy()
-            wrench = _read_wrench(data, force_slice, torque_slice).astype(np.float32)
+            raw_wrench, gravity_wrench, compensated_wrench = _read_wrench_components(
+                data,
+                force_slice,
+                torque_slice,
+                model=mj_model,
+                compensation_mode=args.ft_compensation_mode,
+                sensor_site_id=sensor_site_id,
+                tool_body_ids=gravity_tool_body_ids,
+                gravity_world=args.ft_gravity_world,
+                sensor_sign=args.ft_gravity_sensor_sign,
+            )
+            wrench = compensated_wrench.astype(np.float32)
             force_norm = float(np.linalg.norm(wrench[:3]))
             force_norm_history.append(force_norm)
+            raw_force_norm_history.append(float(np.linalg.norm(raw_wrench[:3])))
+            gravity_force_norm_history.append(float(np.linalg.norm(gravity_wrench[:3])))
             force_window_np = _resample_force_window(
                 force_history,
                 float(data.time),
@@ -1801,6 +1939,18 @@ def run_rollout(args: argparse.Namespace) -> int:
             row.update({f"current_qpos_{index}": float(value) for index, value in enumerate(qpos)})
             row.update({f"qvel_{index}": float(value) for index, value in enumerate(qvel)})
             row.update({f"ft_{index}": float(value) for index, value in enumerate(wrench)})
+            row.update(
+                {
+                    f"ft_raw_{index}": float(value)
+                    for index, value in enumerate(raw_wrench)
+                }
+            )
+            row.update(
+                {
+                    f"ft_gravity_{index}": float(value)
+                    for index, value in enumerate(gravity_wrench)
+                }
+            )
             row.update({f"qcmd_{index}": float(value) for index, value in enumerate(qcmd)})
             row.update({f"applied_ctrl_{index}": float(value) for index, value in enumerate(qcmd)})
             row.update(
@@ -1924,7 +2074,17 @@ def run_rollout(args: argparse.Namespace) -> int:
 
             for _ in range(physics_steps_per_policy):
                 mujoco.mj_step(mj_model, data)
-                sampled_wrench = _read_wrench(data, force_slice, torque_slice)
+                _, _, sampled_wrench = _read_wrench_components(
+                    data,
+                    force_slice,
+                    torque_slice,
+                    model=mj_model,
+                    compensation_mode=args.ft_compensation_mode,
+                    sensor_site_id=sensor_site_id,
+                    tool_body_ids=gravity_tool_body_ids,
+                    gravity_world=args.ft_gravity_world,
+                    sensor_sign=args.ft_gravity_sensor_sign,
+                )
                 force_history.append((float(data.time), sampled_wrench.copy()))
             oldest_needed = float(data.time) - args.force_window_duration - float(mj_model.opt.timestep)
             while len(force_history) > 1 and force_history[1][0] < oldest_needed:
@@ -1979,6 +2139,16 @@ def run_rollout(args: argparse.Namespace) -> int:
         "chunk_len": args.chunk_len,
         "force_window_len": args.force_window_len,
         "force_window_duration": args.force_window_duration,
+        "ft_compensation_mode": args.ft_compensation_mode,
+        "ft_gravity_tool_body_names": list(args.ft_gravity_tool_body_names),
+        "ft_gravity_world": np.asarray(args.ft_gravity_world, dtype=np.float64),
+        "ft_gravity_sensor_sign": args.ft_gravity_sensor_sign,
+        "ft_gravity_tool_mass": _tool_mass_and_com_world(
+            mj_model, data, gravity_tool_body_ids
+        )[0],
+        "initial_ft_wrench_raw": initial_raw_wrench,
+        "initial_ft_wrench_gravity": initial_gravity_wrench,
+        "initial_ft_wrench": current_wrench,
         "policy_rate_hz": args.policy_rate_hz,
         "max_rollout_steps": args.max_rollout_steps,
         "max_delta_q": args.max_delta_q,
@@ -2001,6 +2171,8 @@ def run_rollout(args: argparse.Namespace) -> int:
         "final_time": float(data.time),
         "max_force_norm": max_force_norm,
         "mean_force_norm": mean_force_norm,
+        "max_raw_force_norm": _finite_max(raw_force_norm_history),
+        "max_gravity_force_norm": _finite_max(gravity_force_norm_history),
         "initial_peg_tip_position": initial_task["peg_tip"],
         "final_peg_tip_position": final_task["peg_tip"],
         "initial_hole_center_position": initial_task["hole_center"],
@@ -2062,6 +2234,20 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"final_qcmd={np.array2string(final_qcmd, precision=6, separator=',')}")
     print(f"action_mode={args.action_mode}")
     print(f"action_select_mode={args.action_select_mode}")
+    print(f"ft_compensation_mode={args.ft_compensation_mode}")
+    print(f"ft_gravity_tool_body_names={list(args.ft_gravity_tool_body_names)}")
+    print(
+        "initial_ft_wrench_raw="
+        f"{np.array2string(initial_raw_wrench, precision=6, separator=',')}"
+    )
+    print(
+        "initial_ft_wrench_gravity="
+        f"{np.array2string(initial_gravity_wrench, precision=6, separator=',')}"
+    )
+    print(
+        "initial_ft_wrench="
+        f"{np.array2string(current_wrench, precision=6, separator=',')}"
+    )
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
     print(f"hole_site_name={hole_offset_metadata['hole_site_name']}")
     print(f"hole_body_name={hole_offset_metadata['hole_body_name']}")
@@ -2206,6 +2392,31 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
+    parser.add_argument(
+        "--ft-compensation-mode",
+        choices=("none", "gravity"),
+        default="none",
+        help=(
+            "Wrench preprocessing before normalization and safety checks. Use "
+            "'gravity' when the training HDF5 uses gravity-compensated ft_wrench."
+        ),
+    )
+    parser.add_argument(
+        "--ft-gravity-tool-body-names",
+        nargs="+",
+        default=DEFAULT_FT_GRAVITY_TOOL_BODY_NAMES,
+    )
+    parser.add_argument(
+        "--ft-gravity-world",
+        type=float,
+        nargs=3,
+        default=DEFAULT_FT_GRAVITY_WORLD,
+    )
+    parser.add_argument(
+        "--ft-gravity-sensor-sign",
+        type=float,
+        default=DEFAULT_FT_GRAVITY_SENSOR_SIGN,
+    )
     parser.add_argument("--policy-rate-hz", type=float, default=30.0)
     parser.add_argument("--max-rollout-steps", type=int, default=100)
     parser.add_argument("--image-width", type=int, default=640)
@@ -2276,6 +2487,7 @@ def _resolve_and_validate_rollout_args(args: argparse.Namespace) -> None:
     finite_float_names = (
         "temporal_agg_decay",
         "force_window_duration",
+        "ft_gravity_sensor_sign",
         "policy_rate_hz",
         "ema_alpha",
         "max_delta_q",
@@ -2309,6 +2521,20 @@ def _resolve_and_validate_rollout_args(args: argparse.Namespace) -> None:
     if args.force_window_duration < 0 or args.policy_rate_hz <= 0:
         raise ValueError(
             "force window duration must be non-negative and policy rate positive"
+        )
+    gravity_world = np.asarray(args.ft_gravity_world, dtype=np.float64)
+    if not np.isfinite(gravity_world).all():
+        raise ValueError("--ft-gravity-world must contain only finite values")
+    if abs(abs(args.ft_gravity_sensor_sign) - 1.0) > 1.0e-12:
+        raise ValueError("--ft-gravity-sensor-sign must be either -1 or 1")
+    if (
+        not args.ft_gravity_tool_body_names
+        or any(not str(name).strip() for name in args.ft_gravity_tool_body_names)
+        or len(set(args.ft_gravity_tool_body_names))
+        != len(args.ft_gravity_tool_body_names)
+    ):
+        raise ValueError(
+            "--ft-gravity-tool-body-names must contain unique non-empty names"
         )
     if args.image_width <= 0 or args.image_height <= 0 or args.image_size <= 0:
         raise ValueError("image dimensions must be positive")

@@ -149,6 +149,7 @@ Important flags: `--max-radius-mm` for an explicit symmetric plot extent, `--mar
 | `debug_one_batch.py` | diagnostic | Run one HDF5 batch through dual-latent policy and backprop. | `force_aware_act` | one episode | printed shapes/loss |
 | `debug_inference_modes.py` | diagnostic | Compare one-batch zero/prior/posterior dual-latent outputs. | `force_aware_act` | checkpoint, stats, HDF5/list | printed metrics |
 | `run_policy_inference_smoke.py` | diagnostic | Run deployable inference on one recorded sample. | force-aware variants | episode, checkpoint, stats | printed/chunk outputs |
+| `monitor_staged_training.py` | current/diagnostic | Read-only staged-run monitor with equivalent epochs, minimum-step floor, patience, LR, clipping rate, GPU and plateau/hard-limit ETA. | n/a | protocol, stage, output directory, optional PID | printed report or live terminal view |
 | `forceact_eta.py` | diagnostic | Estimate ETA from a training log and PID. | n/a | log, max steps, PID | printed ETA |
 
 ## Replay and Geometry Validation

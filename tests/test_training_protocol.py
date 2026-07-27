@@ -106,6 +106,14 @@ def _protocol_document():
                     "base_lr": 0.00003,
                     "weight_decay": 0.0001,
                     "max_grad_norm": 1.0,
+                    "scheduler": {
+                        "name": "reduce_on_plateau",
+                        "factor": 0.3,
+                        "patience": 2,
+                        "threshold": 0.005,
+                        "cooldown": 1,
+                        "min_lr": 1.0e-7,
+                    },
                     "parameter_groups": [
                         {
                             "name": "vision",
@@ -120,6 +128,7 @@ def _protocol_document():
                     "aggregation": "episode_uniform",
                     "retention_domain": "visual_wide",
                     "max_retention_regression": 0.05,
+                    "min_stage_steps": 2,
                 },
             },
         ],
@@ -160,7 +169,10 @@ def test_protocol_resolves_paths_and_stage_specs(tmp_path):
     assert dict(stage.sources[0].phase_quotas) == {"contact": 2, "pre_contact": 1}
     assert stage.sources[0].sample_catalog_sha256 == "1" * 64
     assert stage.monitor.retention_domain == "visual_wide"
+    assert stage.monitor.min_stage_steps == 2
     assert stage.optimizer.parameter_groups[0].lr_multiplier == pytest.approx(0.1)
+    assert stage.optimizer.scheduler.name == "reduce_on_plateau"
+    assert stage.optimizer.scheduler.factor == pytest.approx(0.3)
     assert stage.objective.lambda_force == pytest.approx(0.1)
     assert stage.objective.validation_deployment_mode == "auto"
     assert protocol.test_episode_lists["visual_wide"].domain == "r60_visual"
@@ -250,6 +262,20 @@ def test_protocol_hash_is_key_order_independent():
         (
             lambda d: d["stages"][0]["monitor"].update({"aggregation": "sample"}),
             "must be one of: episode_uniform",
+        ),
+        (
+            lambda d: d["stages"][0]["monitor"].update({"min_stage_steps": 12}),
+            "must not exceed max_steps",
+        ),
+        (
+            lambda d: d["stages"][0]["monitor"].update({"min_stage_steps": 2}),
+            "must be divisible by validation_every_steps",
+        ),
+        (
+            lambda d: d["stages"][1]["optimizer"]["scheduler"].update(
+                {"factor": 1.0}
+            ),
+            "factor must be in",
         ),
     ],
 )

@@ -624,6 +624,15 @@ def _validate_stage_completion_artifact(
         or final_global_step != initial_global_step + final_stage_step
     ):
         raise ValueError("stage completion final step chronology is invalid")
+    minimum_stage_steps = checkpoint.config.get("minimum_stage_steps", 0)
+    if (
+        isinstance(minimum_stage_steps, bool)
+        or not isinstance(minimum_stage_steps, int)
+        or minimum_stage_steps < 0
+        or final_stage_step < minimum_stage_steps
+        or document.get("minimum_stage_steps", 0) != minimum_stage_steps
+    ):
+        raise ValueError("stage completion minimum-stage-step gate is invalid")
 
     final_path = checkpoint.path.parent / "checkpoint.pt"
     best_path = checkpoint.path.parent / "checkpoint_best.pt"

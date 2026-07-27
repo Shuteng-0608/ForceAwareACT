@@ -350,6 +350,7 @@ def test_grid_dry_run_creates_manifest_with_all_commands(tmp_path):
     assert manifest["policy_config"]["contact_min_steps"] == 2
     assert manifest["policy_config"]["safe_force_threshold"] is None
     assert manifest["policy_config"]["hard_force_threshold"] is None
+    assert manifest["policy_config"]["ft_compensation_mode"] == "none"
     assert manifest["contact_recovery_config"] == {
         "contact_enter_force_n": 5.0,
         "contact_exit_force_n": 3.0,
@@ -405,6 +406,41 @@ def test_grid_rollout_command_forwards_numeric_action_index_and_temporal_decay(t
 
     assert command[command.index("--action-select-mode") + 1] == "7"
     assert command[command.index("--temporal-agg-decay") + 1] == "0.25"
+
+
+def test_grid_rollout_command_forwards_ft_gravity_compensation(tmp_path):
+    args = parse_grid_args(
+        [
+            "--checkpoint",
+            "checkpoint.pt",
+            "--normalization-stats",
+            "stats.pt",
+            "--model-xml",
+            "model.xml",
+            "--output-root",
+            str(tmp_path / "grid"),
+            "--ft-compensation-mode",
+            "gravity",
+            "--ft-gravity-tool-body-names",
+            "peg_tool",
+            "--ft-gravity-world",
+            "0",
+            "0",
+            "-9.81",
+            "--ft-gravity-sensor-sign",
+            "-1",
+        ]
+    )
+
+    command = _build_rollout_command(
+        args, tmp_path / "run", 0.0, 0.0, 0.0, seed=0
+    )
+
+    assert command[command.index("--ft-compensation-mode") + 1] == "gravity"
+    assert command[command.index("--ft-gravity-tool-body-names") + 1] == "peg_tool"
+    gravity_index = command.index("--ft-gravity-world")
+    assert command[gravity_index + 1 : gravity_index + 4] == ["0.0", "0.0", "-9.81"]
+    assert command[command.index("--ft-gravity-sensor-sign") + 1] == "-1.0"
 
 
 def test_grid_rollout_command_forwards_contact_recovery_thresholds(tmp_path):

@@ -1042,6 +1042,72 @@ def test_resume_of_early_stopped_checkpoint_is_idempotent(
     assert resumed["stop_reason"] == "early_stopping"
 
 
+def test_minimum_stage_steps_delays_patience_and_scheduler_is_resumable(
+    tmp_path, tiny_runtime, monkeypatch
+):
+    protocol_path = _make_files_and_protocol(tmp_path, stage1_steps=5)
+    document = json.loads(protocol_path.read_text(encoding="utf-8"))
+    stage = document["stages"][0]
+    stage["monitor"].update({"patience": 2, "min_stage_steps": 3})
+    stage["optimizer"]["scheduler"] = {
+        "name": "reduce_on_plateau",
+        "factor": 0.5,
+        "patience": 0,
+        "threshold": 0.005,
+        "cooldown": 0,
+        "min_lr": 1.0e-6,
+    }
+    protocol_path.write_text(json.dumps(document), encoding="utf-8")
+    calls = {"count": 0}
+
+    def worsening_metrics(*, dataloaders, **_kwargs):
+        calls["count"] += 1
+        value = float(calls["count"])
+        return {
+            name: {
+                "deploy_loss": value,
+                "action_l1": value,
+                "force_l1": value,
+                "num_samples": float(len(loader.dataset)),
+                "num_episodes": float(len(loader.dataset.episode_paths)),
+            }
+            for name, loader in dataloaders.items()
+        }
+
+    monkeypatch.setattr(
+        train_staged, "evaluate_named_deployment_metrics", worsening_metrics
+    )
+    output = tmp_path / "minimum_floor"
+    assert train_staged.train(_args(protocol_path, "spatial_r60", output)) == 0
+    stopped = torch.load(output / "checkpoint.pt", map_location="cpu")
+
+    assert stopped["training_state"]["stage_step"] == 4
+    assert stopped["stop_reason"] == "early_stopping"
+    assert stopped["monitor_state"]["validations_without_selection"] == 2
+    assert stopped["monitor_state"]["min_stage_steps"] == 3
+    assert stopped["scheduler_state_dict"] is not None
+    assert stopped["optimizer_state_dict"]["param_groups"][0]["lr"] == pytest.approx(
+        0.025
+    )
+
+    def unexpected_validation(**_kwargs):
+        raise AssertionError("terminal resume must not perform another validation")
+
+    monkeypatch.setattr(
+        train_staged, "evaluate_named_deployment_metrics", unexpected_validation
+    )
+    resume_args = _args(
+        protocol_path,
+        "spatial_r60",
+        output,
+        resume_from=output / "checkpoint.pt",
+    )
+    assert train_staged.train(resume_args) == 0
+    resumed = torch.load(output / "checkpoint.pt", map_location="cpu")
+    assert resumed["training_state"] == stopped["training_state"]
+    assert resumed["scheduler_state_dict"] == stopped["scheduler_state_dict"]
+
+
 def test_dry_run_validates_without_creating_output(tmp_path, tiny_runtime):
     protocol = _make_files_and_protocol(tmp_path)
     output = tmp_path / "dry"

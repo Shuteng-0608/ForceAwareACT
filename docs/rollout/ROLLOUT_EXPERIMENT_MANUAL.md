@@ -103,10 +103,28 @@ test -f "$MODEL_XML" || echo "missing MuJoCo XML: $MODEL_XML"
 | `action_mode` | 必须与 stats 中的 `action_mode` 一致；command mode 不接受缺少 action-mode metadata 的旧 stats。 |
 | `chunk_len` | 必须与训练模型的输出 chunk 长度一致。 |
 | `force_window_len/duration` | 必须与训练时的历史力输入定义一致。 |
+| `ft_compensation_mode` | 必须与 HDF5 `observations/ft_wrench` 的生成口径一致；重力补偿数据必须显式传 `--ft-compensation-mode gravity`。 |
 | 图像预处理 | 模型输入尺寸、相机和 normalization 语义必须与训练配置兼容。 |
 | MuJoCo XML | 必须含训练/rollout 所需的关节、执行器、相机、力/力矩传感器、peg tip site 和 hole site/body。 |
 
-当前 rollout 从 MuJoCo `peg_ft_force` 与 `peg_ft_torque` 传感器构造 6D wrench。代码没有额外实现 bias removal、重力补偿、滤波、符号或坐标系转换。正式比较前应确认它与 HDF5 `observations/ft_wrench` 的物理约定一致。
+当前 rollout 从 MuJoCo `peg_ft_force` 与 `peg_ft_torque` 传感器构造
+6D wrench。默认 `--ft-compensation-mode none` 保留原始传感器口径；指定
+`gravity` 时，脚本按工具体质量与质心、传感器位姿、世界重力和传感器符号，
+计算与采集器一致的姿态相关重力 wrench，并将
+`raw_wrench - gravity_wrench` 同时用于模型输入、成功判定和安全停止。
+正式比较前必须从 HDF5 `episode_metadata` 核对
+`ft_compensation_mode`、`ft_gravity_tool_body_names`、`ft_gravity_world` 与
+`ft_gravity_sensor_sign`。单次日志会同时保存 `ft_*`、`ft_raw_*` 和
+`ft_gravity_*`，rollout contract 也会绑定这些参数。
+
+例如，使用当前 `hole_random_r2/r60` 的重力补偿口径：
+
+```bash
+--ft-compensation-mode gravity \
+--ft-gravity-tool-body-names peg_tool \
+--ft-gravity-world 0 0 -9.81 \
+--ft-gravity-sensor-sign -1
+```
 
 ## 3. 离线 deployable inference smoke（必须）
 

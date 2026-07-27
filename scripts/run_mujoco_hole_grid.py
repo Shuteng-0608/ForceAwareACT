@@ -180,6 +180,7 @@ def validate_rollout_parameters(args: argparse.Namespace) -> None:
     float_names = (
         "temporal_agg_decay",
         "force_window_duration",
+        "ft_gravity_sensor_sign",
         "policy_rate_hz",
         "max_delta_q",
         "force_stop_threshold",
@@ -204,6 +205,19 @@ def validate_rollout_parameters(args: argparse.Namespace) -> None:
         )
     if args.temporal_agg_decay < 0 or args.force_window_duration < 0:
         raise ValueError("temporal decay and force-window duration must be non-negative")
+    if not all(math.isfinite(value) for value in args.ft_gravity_world):
+        raise ValueError("--ft-gravity-world must contain only finite values")
+    if abs(abs(args.ft_gravity_sensor_sign) - 1.0) > 1.0e-12:
+        raise ValueError("--ft-gravity-sensor-sign must be either -1 or 1")
+    if (
+        not args.ft_gravity_tool_body_names
+        or any(not str(name).strip() for name in args.ft_gravity_tool_body_names)
+        or len(set(args.ft_gravity_tool_body_names))
+        != len(args.ft_gravity_tool_body_names)
+    ):
+        raise ValueError(
+            "--ft-gravity-tool-body-names must contain unique non-empty names"
+        )
     if args.policy_rate_hz <= 0 or args.max_delta_q <= 0 or args.force_stop_threshold <= 0:
         raise ValueError("policy rate, max delta, and force-stop threshold must be positive")
     if (
@@ -856,6 +870,14 @@ def _build_rollout_command(args: argparse.Namespace, output_dir: Path, x_offset:
         str(args.force_window_len),
         "--force-window-duration",
         str(args.force_window_duration),
+        "--ft-compensation-mode",
+        args.ft_compensation_mode,
+        "--ft-gravity-tool-body-names",
+        *args.ft_gravity_tool_body_names,
+        "--ft-gravity-world",
+        *(str(value) for value in args.ft_gravity_world),
+        "--ft-gravity-sensor-sign",
+        str(args.ft_gravity_sensor_sign),
         "--policy-rate-hz",
         str(args.policy_rate_hz),
         "--max-rollout-steps",
@@ -988,6 +1010,10 @@ def run_grid(args: argparse.Namespace) -> dict[str, Any]:
             "chunk_len": args.chunk_len,
             "force_window_len": args.force_window_len,
             "force_window_duration": args.force_window_duration,
+            "ft_compensation_mode": args.ft_compensation_mode,
+            "ft_gravity_tool_body_names": list(args.ft_gravity_tool_body_names),
+            "ft_gravity_world": list(args.ft_gravity_world),
+            "ft_gravity_sensor_sign": args.ft_gravity_sensor_sign,
             "policy_rate_hz": args.policy_rate_hz,
             "max_rollout_steps": args.max_rollout_steps,
             "max_delta_q": args.max_delta_q,
@@ -1178,6 +1204,23 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
+    parser.add_argument(
+        "--ft-compensation-mode",
+        choices=("none", "gravity"),
+        default="none",
+    )
+    parser.add_argument(
+        "--ft-gravity-tool-body-names",
+        nargs="+",
+        default=("peg_tool",),
+    )
+    parser.add_argument(
+        "--ft-gravity-world",
+        type=float,
+        nargs=3,
+        default=(0.0, 0.0, -9.81),
+    )
+    parser.add_argument("--ft-gravity-sensor-sign", type=float, default=-1.0)
     parser.add_argument("--policy-rate-hz", type=float, default=30.0)
     parser.add_argument("--max-rollout-steps", type=int, default=900)
     parser.add_argument("--max-delta-q", type=float, default=0.02)

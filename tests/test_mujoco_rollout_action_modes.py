@@ -13,7 +13,10 @@ from scripts.run_mujoco_policy_rollout import (
     _control_command_is_finite,
     _contact_recovery_config,
     _finalize_contact_recovery_summary,
+    _fieldnames,
+    _gravity_wrench_sensor_frame,
     _interpret_selected_action,
+    _read_wrench_components,
     _position_success_condition,
     _recovery_observation_is_valid,
     _resolve_and_validate_rollout_args,
@@ -27,6 +30,7 @@ from scripts.run_mujoco_policy_rollout import (
     _validate_stats_action_mode,
     _validate_rollout_artifact_semantics,
     _validate_summary_schema,
+    _write_csv,
     parse_args,
 )
 
@@ -85,6 +89,59 @@ def test_explicit_cpu_device_resolution_and_inference_colocation():
 
     assert device == torch.device("cpu")
     _assert_inference_colocation(device)
+
+
+def test_gravity_compensation_matches_dataset_recorder_convention():
+    model = Namespace(body_mass=np.asarray([0.0, 0.115]))
+    data = Namespace(
+        xipos=np.asarray([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]]),
+        site_xpos=np.asarray([[0.0, 0.0, 0.0]]),
+        site_xmat=np.asarray([np.eye(3).reshape(-1)]),
+        sensordata=np.asarray([0.0, 0.0, 2.0, 0.0, 0.0, 0.0]),
+    )
+    gravity = _gravity_wrench_sensor_frame(
+        model,
+        data,
+        sensor_site_id=0,
+        tool_body_ids=[1],
+        gravity_world=[0.0, 0.0, -9.81],
+        sensor_sign=-1.0,
+    )
+    raw, returned_gravity, compensated = _read_wrench_components(
+        data,
+        slice(0, 3),
+        slice(3, 6),
+        model=model,
+        compensation_mode="gravity",
+        sensor_site_id=0,
+        tool_body_ids=[1],
+        gravity_world=[0.0, 0.0, -9.81],
+        sensor_sign=-1.0,
+    )
+
+    np.testing.assert_allclose(
+        gravity,
+        [0.0, 0.0, 1.12815, 0.0, -0.112815, 0.0],
+    )
+    np.testing.assert_allclose(returned_gravity, gravity)
+    np.testing.assert_allclose(raw, [0.0, 0.0, 2.0, 0.0, 0.0, 0.0])
+    np.testing.assert_allclose(compensated, raw - gravity)
+
+
+def test_rollout_csv_accepts_raw_and_gravity_wrench_diagnostics(tmp_path):
+    row = {
+        **{f"ft_{index}": float(index) for index in range(6)},
+        **{f"ft_raw_{index}": float(index + 10) for index in range(6)},
+        **{f"ft_gravity_{index}": float(index + 20) for index in range(6)},
+    }
+    output = tmp_path / "rollout.csv"
+
+    _write_csv(output, [row])
+
+    header = output.read_text().splitlines()[0].split(",")
+    assert header == _fieldnames()
+    assert all(f"ft_raw_{index}" in header for index in range(6))
+    assert all(f"ft_gravity_{index}" in header for index in range(6))
 
 
 def test_auto_device_resolution(monkeypatch):
@@ -520,6 +577,12 @@ def test_summary_schema_includes_contact_recovery_outputs():
         "normalization_stats_file_sha256",
         "model_xml_file_sha256",
         "rollout_contract",
+    }.issubset(SUMMARY_REQUIRED_KEYS)
+    assert {
+        "ft_compensation_mode",
+        "ft_gravity_tool_body_names",
+        "ft_gravity_world",
+        "ft_gravity_sensor_sign",
     }.issubset(SUMMARY_REQUIRED_KEYS)
 
 
