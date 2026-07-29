@@ -21,6 +21,7 @@ from typing import Any, Optional, Sequence
 TRAIN_SCRIPT_NAMES = (
     "train_act_aligned_contact_cvae.py",
     "train_act_aligned_motion_cvae_control.py",
+    "train_official_act.py",
 )
 DEFAULT_TARGET_STEPS = 24_000
 DEFAULT_CHECKPOINT_INTERVAL = 2_000
