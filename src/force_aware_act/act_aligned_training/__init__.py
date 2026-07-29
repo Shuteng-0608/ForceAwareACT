@@ -25,6 +25,9 @@ from force_aware_act.act_aligned_training.data import (
     ACTAlignedSample,
     collate_act_aligned_samples,
 )
+from force_aware_act.act_aligned_training.diagnostics import (
+    run_training_preflight,
+)
 from force_aware_act.act_aligned_training.loop import (
     run_training_epoch,
     run_validation_epoch,
@@ -74,6 +77,7 @@ __all__ = [
     "partition_trainable_parameters",
     "read_act_aligned_checkpoint",
     "run_training_epoch",
+    "run_training_preflight",
     "run_validation_epoch",
     "save_act_aligned_checkpoint",
     "standard_normal_kl",

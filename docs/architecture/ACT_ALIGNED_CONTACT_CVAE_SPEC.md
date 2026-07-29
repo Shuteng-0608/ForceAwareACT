@@ -621,3 +621,43 @@ or format mismatches rather than dispatching to legacy implementations.
 The standalone CLI supports canonical training, exact resume, and a small
 real-data `--smoke` mode. It imports only the new ACT-aligned model and training
 packages.
+
+## 20. Stage-6A Canonical Training Preflight
+
+Long training is gated by:
+
+```text
+src/force_aware_act/act_aligned_training/diagnostics.py
+scripts/preflight_act_aligned_contact_cvae.py
+```
+
+The preflight deliberately performs no optimizer step. It reports:
+
+- exact total/trainable parameter counts by non-overlapping top-level module;
+- complete, duplicate-free optimizer group coverage, LR, and weight decay;
+- training and zero/prior deployment output shapes;
+- one total-loss backward gradient norm for every core module;
+- an isolated prior-match gradient check proving posterior norm is exactly
+  zero while conditional-prior norm is nonzero;
+- forward/backward time and, on CUDA, peak allocated and reserved memory.
+
+CPU/real-data functional smoke:
+
+```text
+python scripts/preflight_act_aligned_contact_cvae.py \
+  --smoke --device cpu --batch-size 1 \
+  --data-root mujoco_data/peg_hole_100
+```
+
+Canonical GPU gate:
+
+```text
+python scripts/preflight_act_aligned_contact_cvae.py \
+  --device cuda --batch-size 1 \
+  --data-root mujoco_data/peg_hole_100 \
+  --output runs/act_aligned_preflight_batch1.json
+```
+
+The canonical command retains pretrained ResNet18 and ImageNet normalization.
+Batch size must be raised only after the batch-1 report passes and its peak
+memory is known.
