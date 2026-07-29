@@ -115,7 +115,7 @@ model state_dict，不保存 optimizer、RNG 或完整配置。
 | 部署 latent | zero | 默认 zero；可选 prior mean/sample | 默认一致 |
 | 主/backbone LR | `1e-5` / `1e-5` | `1e-5` / `1e-5` | 一致 |
 | AdamW/WD | AdamW / `1e-4` | AdamW / `1e-4` | 一致 |
-| epoch/batch/KL weight | 2000 / 8 / 10 | 2000 / 8 / 10 | 一致 |
+| duration/batch/KL weight | 2000 个随机采样 epoch / 8 / 10 | 等价的 24,000 optimizer steps / 8 / 10 | 数据曝光语义对齐 |
 
 新 posterior 的序列为：
 

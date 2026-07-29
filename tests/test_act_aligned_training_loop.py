@@ -77,6 +77,12 @@ def test_epoch_loops_train_and_report_both_deployment_modes():
     assert validation_metrics["deployment_zero_action_l1"] >= 0
     assert validation_metrics["deployment_prior_action_l1"] >= 0
     assert validation_metrics["posterior_kl_standard"] >= 0
+    assert validation_metrics["posterior_zero_action_delta"] >= 0
+    assert validation_metrics["prior_zero_force_delta"] >= 0
+    assert (
+        validation_metrics["posterior_mean_across_sample_variance"] >= 0
+    )
+    assert validation_metrics["prior_mean_across_sample_variance"] >= 0
 
 
 def test_training_epoch_can_stop_and_resume_at_an_exact_batch_offset():

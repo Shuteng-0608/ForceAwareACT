@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import random
@@ -65,15 +66,21 @@ def main() -> None:
             if args.smoke
             else ACTAlignedConfig.canonical_act()
         )
-        training_config = ACTAlignedTrainingConfig(
-            batch_size=2 if args.smoke else args.batch_size,
-            num_epochs=1 if args.smoke else args.epochs,
-            seed=args.seed,
-        )
         manifest = create_episode_split(
             args.data_root,
             validation_fraction=args.validation_fraction,
             seed=args.seed,
+        )
+        training_config = ACTAlignedTrainingConfig(
+            batch_size=2 if args.smoke else args.batch_size,
+            seed=args.seed,
+            reference_train_episodes=(
+                min(4, len(manifest.train_episodes))
+                if args.smoke
+                else len(manifest.train_episodes)
+            ),
+            official_reference_epochs=args.official_reference_epochs,
+            checkpoint_interval_steps=args.checkpoint_interval_steps,
         )
         normalization = compute_normalization_stats(
             args.data_root,
@@ -152,32 +159,37 @@ def main() -> None:
     )
 
     log_path = args.output_dir / "metrics.jsonl"
-    if args.max_train_steps is not None:
-        if global_step >= args.max_train_steps:
-            raise ValueError(
-                "checkpoint global_step has already reached "
-                "--max-train-steps"
-            )
-        if resume_step_in_epoch >= len(train_loader):
-            raise ValueError(
-                "checkpoint step_in_epoch must be smaller than epoch length"
-            )
+    step_limit = (
+        args.max_train_steps
+        if args.run_mode == "burn_in"
+        else training_config.max_optimizer_steps
+    )
+    if step_limit is None:
+        raise RuntimeError("training step limit was not configured")
+    if global_step >= step_limit:
+        raise ValueError(
+            "checkpoint global_step has already reached the run step limit"
+        )
+    if step_limit > training_config.max_optimizer_steps:
+        raise ValueError(
+            "burn-in step limit must not exceed canonical max_optimizer_steps"
+        )
+    if resume_step_in_epoch >= len(train_loader):
+        raise ValueError(
+            "checkpoint step_in_epoch must be smaller than epoch length"
+        )
     run_start_global_step = global_step
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     initial_memory = _cuda_memory_snapshot(device)
     stopped_at_limit = False
     try:
-        for epoch in range(start_epoch, training_config.num_epochs):
+        for epoch in itertools.count(start_epoch):
             step_in_epoch = (
                 resume_step_in_epoch if epoch == start_epoch else 0
             )
             epoch_generator_state = generator.get_state()
-            remaining_steps = (
-                None
-                if args.max_train_steps is None
-                else args.max_train_steps - global_step
-            )
+            remaining_steps = step_limit - global_step
             segment_start_global_step = global_step
 
             def log_step(
@@ -187,13 +199,17 @@ def main() -> None:
                 current_global_step = (
                     segment_start_global_step + segment_step
                 )
+                checkpoint_due = (
+                    current_global_step
+                    % training_config.checkpoint_interval_steps
+                    == 0
+                    and current_global_step < step_limit
+                )
                 should_log = (
                     current_global_step == run_start_global_step + 1
                     or current_global_step % args.log_interval == 0
-                    or (
-                        args.max_train_steps is not None
-                        and current_global_step == args.max_train_steps
-                    )
+                    or current_global_step == step_limit
+                    or checkpoint_due
                 )
                 if not should_log:
                     return
@@ -207,6 +223,43 @@ def main() -> None:
                 }
                 _append_json_record(log_path, record)
                 print(json.dumps(record, sort_keys=True), flush=True)
+                if checkpoint_due:
+                    current_step_in_epoch = step_in_epoch + segment_step
+                    completed_at_checkpoint = (
+                        current_step_in_epoch >= len(train_loader)
+                    )
+                    checkpoint_progress = TrainingProgress(
+                        epoch=(
+                            epoch + 1
+                            if completed_at_checkpoint
+                            else epoch
+                        ),
+                        global_step=current_global_step,
+                        best_metric=best_metric,
+                        step_in_epoch=(
+                            0
+                            if completed_at_checkpoint
+                            else current_step_in_epoch
+                        ),
+                    )
+                    periodic_generator = (
+                        generator
+                        if completed_at_checkpoint
+                        else _generator_from_state(
+                            epoch_generator_state
+                        )
+                    )
+                    _save(
+                        args.output_dir
+                        / f"step_{current_global_step:08d}.pt",
+                        model,
+                        optimizer,
+                        training_config,
+                        checkpoint_progress,
+                        normalization,
+                        manifest,
+                        periodic_generator,
+                    )
 
             train_metrics = run_training_epoch(
                 model,
@@ -236,8 +289,7 @@ def main() -> None:
             )
             training_memory = _cuda_memory_snapshot(device)
             stopped_at_limit = (
-                args.max_train_steps is not None
-                and global_step >= args.max_train_steps
+                global_step >= step_limit
             )
             validation_metrics = {}
             should_validate = stopped_at_limit or (
@@ -287,20 +339,6 @@ def main() -> None:
             }
             _append_json_record(log_path, record)
             print(json.dumps(record, sort_keys=True), flush=True)
-            if (
-                completed_epoch
-                and (epoch + 1) % training_config.checkpoint_interval == 0
-            ):
-                _save(
-                    args.output_dir / f"epoch_{epoch + 1:04d}.pt",
-                    model,
-                    optimizer,
-                    training_config,
-                    progress,
-                    normalization,
-                    manifest,
-                    checkpoint_generator,
-                )
             _save(
                 args.output_dir / "last.pt",
                 model,
@@ -312,9 +350,14 @@ def main() -> None:
                 checkpoint_generator,
             )
             if stopped_at_limit:
-                burn_in_path = args.output_dir / "burn_in.pt"
+                final_name = (
+                    "burn_in.pt"
+                    if args.run_mode == "burn_in"
+                    else "final.pt"
+                )
+                final_path = args.output_dir / final_name
                 _save(
-                    burn_in_path,
+                    final_path,
                     model,
                     optimizer,
                     training_config,
@@ -325,7 +368,7 @@ def main() -> None:
                 )
                 expected_rng_state = _capture_runtime_rng_state()
                 reload_audit = _audit_checkpoint_reload(
-                    burn_in_path,
+                    final_path,
                     model=model,
                     optimizer=optimizer,
                     training_config=training_config,
@@ -336,10 +379,16 @@ def main() -> None:
                     expected_rng_state=expected_rng_state,
                 )
                 summary = {
-                    "mode": "burn_in",
+                    "mode": args.run_mode,
                     "passed": True,
-                    "stop_reason": "max_train_steps_reached",
-                    "requested_max_train_steps": args.max_train_steps,
+                    "stop_reason": "optimizer_step_limit_reached",
+                    "optimizer_step_limit": step_limit,
+                    "official_reference_epochs": (
+                        training_config.official_reference_epochs
+                    ),
+                    "reference_train_episodes": (
+                        training_config.reference_train_episodes
+                    ),
                     "run_start_global_step": run_start_global_step,
                     "global_step": global_step,
                     "progress": {
@@ -362,12 +411,17 @@ def main() -> None:
                         ),
                     },
                     "checkpoint": {
-                        "path": str(burn_in_path.resolve()),
+                        "path": str(final_path.resolve()),
                         "reload_audit": reload_audit,
                     },
                 }
+                summary_name = (
+                    "burn_in_summary.json"
+                    if args.run_mode == "burn_in"
+                    else "training_summary.json"
+                )
                 _atomic_write_json(
-                    args.output_dir / "burn_in_summary.json",
+                    args.output_dir / summary_name,
                     summary,
                 )
                 print(json.dumps(summary, sort_keys=True), flush=True)
@@ -376,10 +430,8 @@ def main() -> None:
     finally:
         train_dataset.close()
         validation_dataset.close()
-    if args.max_train_steps is not None and not stopped_at_limit:
-        raise RuntimeError(
-            "training ended before --max-train-steps was reached"
-        )
+    if not stopped_at_limit:
+        raise RuntimeError("training ended before its optimizer-step limit")
 
 
 def _make_loader(
@@ -446,31 +498,61 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--epochs", type=int, default=2000)
+    parser.add_argument(
+        "--official-reference-epochs",
+        type=int,
+        default=2000,
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        dest="legacy_epochs",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--validation-fraction", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument(
+        "--run-mode",
+        choices=("formal", "burn_in"),
+    )
+    parser.add_argument(
         "--max-train-steps",
         type=int,
-        help="absolute global optimizer-step limit for a controlled burn-in",
+        help="absolute global optimizer-step limit; valid only for burn_in",
     )
     parser.add_argument("--log-interval", type=int, default=10)
+    parser.add_argument(
+        "--checkpoint-interval-steps",
+        type=int,
+        default=2000,
+    )
     args = parser.parse_args()
+    if args.legacy_epochs is not None:
+        args.official_reference_epochs = args.legacy_epochs
+    if args.run_mode is None:
+        args.run_mode = (
+            "burn_in" if args.max_train_steps is not None else "formal"
+        )
     if (
         args.batch_size <= 0
-        or args.epochs <= 0
+        or args.official_reference_epochs <= 0
         or args.num_workers < 0
         or args.log_interval <= 0
+        or args.checkpoint_interval_steps <= 0
     ):
         parser.error(
-            "batch-size/epochs/log-interval must be positive and "
+            "batch-size/official-reference-epochs/log-interval/"
+            "checkpoint-interval-steps must be positive and "
             "num-workers non-negative"
         )
-    if args.max_train_steps is not None and args.max_train_steps <= 0:
-        parser.error("max-train-steps must be positive")
+    if args.run_mode == "burn_in":
+        if args.max_train_steps is None or args.max_train_steps <= 0:
+            parser.error("burn_in requires positive --max-train-steps")
+    elif args.max_train_steps is not None:
+        parser.error("--max-train-steps is valid only for burn_in")
     return args
 
 

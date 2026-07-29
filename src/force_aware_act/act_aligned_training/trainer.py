@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict
+from typing import Any, Dict
 
 import torch
 
@@ -117,7 +117,7 @@ def evaluate_one_batch(
     model: ACTAlignedContactCVAEPolicy,
     criterion: ACTAlignedCriterion,
     batch: ACTAlignedBatch,
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """Evaluate posterior reconstruction and true deployment in one batch.
 
     Future targets are passed to ``forward_train`` only. The deployment
@@ -189,6 +189,30 @@ def evaluate_one_batch(
                 batch.future_padding_mask,
                 name="deployment_prior_force",
             )
+            posterior_zero_action_delta = masked_l1_loss(
+                posterior_outputs["pred_action"],
+                zero_outputs["pred_action"],
+                batch.future_padding_mask,
+                name="posterior_zero_action_delta",
+            )
+            posterior_zero_force_delta = masked_l1_loss(
+                posterior_outputs["pred_force"],
+                zero_outputs["pred_force"],
+                batch.future_padding_mask,
+                name="posterior_zero_force_delta",
+            )
+            prior_zero_action_delta = masked_l1_loss(
+                prior_outputs["pred_action"],
+                zero_outputs["pred_action"],
+                batch.future_padding_mask,
+                name="prior_zero_action_delta",
+            )
+            prior_zero_force_delta = masked_l1_loss(
+                prior_outputs["pred_force"],
+                zero_outputs["pred_force"],
+                batch.future_padding_mask,
+                name="prior_zero_force_delta",
+            )
             posterior_prior_mean_l1 = (
                 posterior_outputs["mu_contact"]
                 - posterior_outputs["mu_contact_prior"]
@@ -223,6 +247,44 @@ def evaluate_one_batch(
         "deployment_zero_force_l1": float(zero_force.item()),
         "deployment_prior_action_l1": float(prior_action.item()),
         "deployment_prior_force_l1": float(prior_force.item()),
+        "posterior_zero_action_delta": float(
+            posterior_zero_action_delta.item()
+        ),
+        "posterior_zero_force_delta": float(
+            posterior_zero_force_delta.item()
+        ),
+        "prior_zero_action_delta": float(prior_zero_action_delta.item()),
+        "prior_zero_force_delta": float(prior_zero_force_delta.item()),
+        "_posterior_mean_sum": (
+            posterior_outputs["mu_contact"]
+            .detach()
+            .double()
+            .sum(dim=0)
+            .cpu()
+        ),
+        "_posterior_mean_square_sum": (
+            posterior_outputs["mu_contact"]
+            .detach()
+            .double()
+            .square()
+            .sum(dim=0)
+            .cpu()
+        ),
+        "_prior_mean_sum": (
+            posterior_outputs["mu_contact_prior"]
+            .detach()
+            .double()
+            .sum(dim=0)
+            .cpu()
+        ),
+        "_prior_mean_square_sum": (
+            posterior_outputs["mu_contact_prior"]
+            .detach()
+            .double()
+            .square()
+            .sum(dim=0)
+            .cpu()
+        ),
     }
 
 

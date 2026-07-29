@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Optional
 
 import torch
 
@@ -109,11 +109,13 @@ class _EpochAccumulator:
         self.training_config = training_config
         self.weighted_sums: Dict[str, float] = {}
         self.weights: Dict[str, float] = {}
+        self.latent_moments: Dict[str, torch.Tensor] = {}
+        self.latent_sample_count = 0
 
     def add_training(
         self,
         batch: ACTAlignedBatch,
-        metrics: Dict[str, float],
+        metrics: Dict[str, Any],
     ) -> None:
         valid_steps = float((~batch.future_padding_mask).sum().item())
         batch_size = float(batch.batch_size)
@@ -150,7 +152,7 @@ class _EpochAccumulator:
     def add_validation(
         self,
         batch: ACTAlignedBatch,
-        metrics: Dict[str, float],
+        metrics: Dict[str, Any],
     ) -> None:
         valid_steps = float((~batch.future_padding_mask).sum().item())
         batch_size = float(batch.batch_size)
@@ -184,6 +186,36 @@ class _EpochAccumulator:
             "prior_std_mean",
         ):
             self._add(name, metrics[name], batch_size)
+        for name in (
+            "posterior_zero_action_delta",
+            "prior_zero_action_delta",
+        ):
+            self._add(name, metrics[name], action_weight)
+        for name in (
+            "posterior_zero_force_delta",
+            "prior_zero_force_delta",
+        ):
+            self._add(name, metrics[name], force_weight)
+        for name in (
+            "_posterior_mean_sum",
+            "_posterior_mean_square_sum",
+            "_prior_mean_sum",
+            "_prior_mean_square_sum",
+        ):
+            value = metrics[name]
+            if not isinstance(value, torch.Tensor) or value.ndim != 1:
+                raise RuntimeError(f"{name} must be a latent vector")
+            if name not in self.latent_moments:
+                self.latent_moments[name] = torch.zeros_like(
+                    value,
+                    dtype=torch.float64,
+                    device="cpu",
+                )
+            self.latent_moments[name] += value.to(
+                dtype=torch.float64,
+                device="cpu",
+            )
+        self.latent_sample_count += batch.batch_size
 
     def training_result(self) -> Dict[str, float]:
         action = self._mean("loss_action")
@@ -225,8 +257,18 @@ class _EpochAccumulator:
             "deployment_zero_force_l1",
             "deployment_prior_action_l1",
             "deployment_prior_force_l1",
+            "posterior_zero_action_delta",
+            "posterior_zero_force_delta",
+            "prior_zero_action_delta",
+            "prior_zero_force_delta",
         )
         result = {name: self._mean(name) for name in names}
+        result["posterior_mean_across_sample_variance"] = (
+            self._latent_variance("posterior")
+        )
+        result["prior_mean_across_sample_variance"] = (
+            self._latent_variance("prior")
+        )
         result["posterior_total"] = (
             self.training_config.action_loss_weight
             * result["posterior_action_l1"]
@@ -247,3 +289,17 @@ class _EpochAccumulator:
         if self.weights.get(name, 0.0) <= 0:
             raise RuntimeError(f"metric {name!r} has no observations")
         return self.weighted_sums[name] / self.weights[name]
+
+    def _latent_variance(self, prefix: str) -> float:
+        if self.latent_sample_count <= 0:
+            raise RuntimeError("latent variance requires validation samples")
+        mean = (
+            self.latent_moments[f"_{prefix}_mean_sum"]
+            / self.latent_sample_count
+        )
+        mean_square = (
+            self.latent_moments[f"_{prefix}_mean_square_sum"]
+            / self.latent_sample_count
+        )
+        variance = (mean_square - mean.square()).clamp_min(0.0)
+        return float(variance.mean().item())

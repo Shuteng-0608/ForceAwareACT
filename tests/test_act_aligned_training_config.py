@@ -18,7 +18,10 @@ def test_canonical_training_config_is_act_style_and_explicit():
     assert config.posterior_kl_weight == 10.0
     assert config.prior_match_weight == 1.0
     assert config.prior_match_mode == "detached_gaussian_kl"
-    assert config.num_epochs == 2000
+    assert config.reference_train_episodes == 90
+    assert config.official_reference_epochs == 2000
+    assert config.max_optimizer_steps == 24000
+    assert config.checkpoint_interval_steps == 2000
     assert config.gradient_clip_norm is None
 
 
@@ -27,6 +30,9 @@ def test_training_checkpoint_metadata_records_objective_and_validation_modes():
 
     assert metadata["optimizer"] == "AdamW"
     assert metadata["scheduler"] is None
+    assert "official_equivalent_optimizer_steps" in metadata[
+        "duration_semantics"
+    ]
     assert "kl_q_standard_normal" in metadata["objective"]
     assert "kl_stopgrad_q_p_conditional" in metadata["objective"]
     assert metadata["posterior_validation_latent"] == "mean"
@@ -34,6 +40,16 @@ def test_training_checkpoint_metadata_records_objective_and_validation_modes():
         "zero",
         "conditional_prior_mean",
     )
+
+
+def test_training_config_derives_official_equivalent_optimizer_steps():
+    config = ACTAlignedTrainingConfig(
+        batch_size=10,
+        reference_train_episodes=90,
+        official_reference_epochs=2000,
+    )
+
+    assert config.max_optimizer_steps == 18000
 
 
 @pytest.mark.parametrize(
@@ -59,6 +75,10 @@ def test_training_checkpoint_metadata_records_objective_and_validation_modes():
         ),
         ({"adam_beta1": 1.0}, r"adam_beta1 must be in \[0, 1\)"),
         ({"batch_size": 0}, "batch_size must be a positive integer"),
+        (
+            {"max_optimizer_steps": 20000},
+            "ceil\\(reference_train_episodes",
+        ),
         ({"gradient_clip_norm": 0.0}, "gradient_clip_norm must be positive"),
         (
             {"selection_metric": "posterior_total"},

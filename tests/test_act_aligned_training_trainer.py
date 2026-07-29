@@ -159,6 +159,10 @@ def test_validation_uses_posterior_mean_and_online_only_deployment_forward():
     assert "deployment_prior_force_l1" in metrics
     assert "posterior_kl_standard" in metrics
     assert "posterior_prior_match_kl" in metrics
+    assert metrics["posterior_zero_action_delta"] >= 0
+    assert metrics["posterior_zero_force_delta"] >= 0
+    assert metrics["prior_zero_action_delta"] >= 0
+    assert metrics["prior_zero_force_delta"] >= 0
     assert model.training is True
 
 
@@ -173,7 +177,12 @@ def test_validation_metrics_are_deterministic_in_eval_paths():
     first = evaluate_one_batch(model, criterion, batch)
     second = evaluate_one_batch(model, criterion, batch)
 
-    assert first == second
+    assert first.keys() == second.keys()
+    for name in first:
+        if isinstance(first[name], torch.Tensor):
+            torch.testing.assert_close(first[name], second[name])
+        else:
+            assert first[name] == second[name]
 
 
 def test_prior_matching_loss_does_not_backpropagate_into_posterior_module():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import random
 from dataclasses import asdict, dataclass
@@ -11,7 +12,11 @@ from typing import Any, Optional
 import numpy as np
 import torch
 
-from force_aware_act.act_aligned_training.config import ACTAlignedTrainingConfig
+from force_aware_act.act_aligned_training.config import (
+    ACT_ALIGNED_TRAINING_VERSION,
+    ACTAlignedTrainingConfig,
+    LEGACY_ACT_ALIGNED_TRAINING_VERSION,
+)
 from force_aware_act.act_aligned_training.normalization import NormalizationStats
 from force_aware_act.act_aligned_training.split import EpisodeSplitManifest
 from force_aware_act.models.act_aligned.policy import ACTAlignedContactCVAEPolicy
@@ -140,7 +145,38 @@ def read_act_aligned_checkpoint(
         payload = dict(payload)
         payload["progress"] = dict(payload["progress"])
         payload["progress"].setdefault("step_in_epoch", 0)
+    payload = _migrate_training_config(payload)
     return payload
+
+
+def _migrate_training_config(payload: dict[str, Any]) -> dict[str, Any]:
+    values = payload["training_config"]
+    if values.get("training_version") != LEGACY_ACT_ALIGNED_TRAINING_VERSION:
+        return payload
+
+    migrated_payload = dict(payload)
+    migrated = dict(values)
+    official_reference_epochs = int(migrated.pop("num_epochs"))
+    migrated.pop("checkpoint_interval")
+    batch_size = int(migrated["batch_size"])
+    reference_train_episodes = len(
+        migrated_payload["split_manifest"]["train_episodes"]
+    )
+    migrated.update(
+        {
+            "training_version": ACT_ALIGNED_TRAINING_VERSION,
+            "reference_train_episodes": reference_train_episodes,
+            "official_reference_epochs": official_reference_epochs,
+            "max_optimizer_steps": (
+                math.ceil(reference_train_episodes / batch_size)
+                * official_reference_epochs
+            ),
+            "checkpoint_interval_steps": 2000,
+        }
+    )
+    migrated_payload["training_version"] = ACT_ALIGNED_TRAINING_VERSION
+    migrated_payload["training_config"] = migrated
+    return migrated_payload
 
 
 def _capture_rng_state() -> dict[str, Any]:

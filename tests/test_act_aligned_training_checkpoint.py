@@ -160,3 +160,46 @@ def test_checkpoint_v2_records_cursor_and_reader_migrates_v1(tmp_path):
     )
 
     assert loaded.progress == TrainingProgress(2, 9, 0.5, step_in_epoch=0)
+
+
+def test_reader_migrates_v1_training_schedule_to_step_semantics(tmp_path):
+    model = ACTAlignedContactCVAEPolicy(_model_config())
+    config = ACTAlignedTrainingConfig()
+    optimizer = build_act_aligned_optimizer(model, config)
+    path = tmp_path / "legacy_training.pt"
+    save_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=config,
+        progress=TrainingProgress(0, 200, 0.3, step_in_epoch=200),
+        normalization=_stats(),
+        split_manifest=_manifest(),
+    )
+    payload = torch.load(path, weights_only=False)
+    legacy = dict(payload["training_config"])
+    legacy["training_version"] = (
+        "act_aligned_conditional_cvae_training_v1"
+    )
+    legacy["num_epochs"] = legacy.pop("official_reference_epochs")
+    legacy["checkpoint_interval"] = 100
+    legacy.pop("reference_train_episodes")
+    legacy.pop("max_optimizer_steps")
+    legacy.pop("checkpoint_interval_steps")
+    payload["training_version"] = legacy["training_version"]
+    payload["training_config"] = legacy
+    torch.save(payload, path)
+
+    migrated_config = ACTAlignedTrainingConfig(
+        reference_train_episodes=1,
+    )
+    loaded = load_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=migrated_config,
+        restore_rng=False,
+    )
+
+    assert loaded.progress.global_step == 200
+    assert migrated_config.max_optimizer_steps == 2000

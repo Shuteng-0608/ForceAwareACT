@@ -602,8 +602,9 @@ with the split manifest.
 
 Epoch aggregation weights reconstruction metrics by valid scalar targets and
 latent metrics by batch samples. Validation reports posterior, zero-deployment,
-and prior-mean-deployment metrics, including posterior/prior mean distance and
-both average standard deviations.
+and prior-mean-deployment metrics, including posterior/prior mean distance,
+both average standard deviations, direct posterior/zero and prior/zero
+prediction deltas, and across-sample variance of posterior/prior latent means.
 
 Checkpoint format V2 stores:
 
@@ -667,9 +668,10 @@ memory is known.
 
 ## 21. Stage-6B Controlled Burn-in
 
-The canonical training CLI accepts an absolute optimizer-step gate:
+Burn-in mode accepts an absolute diagnostic optimizer-step gate:
 
 ```text
+--run-mode burn_in
 --max-train-steps N
 --log-interval M
 ```
@@ -704,12 +706,60 @@ python scripts/train_act_aligned_contact_cvae.py \
   --output-dir runs/act_aligned_burn_in_b8 \
   --device cuda \
   --batch-size 8 \
-  --epochs 2000 \
   --num-workers 2 \
+  --run-mode burn_in \
   --max-train-steps 200 \
   --log-interval 10
 ```
 
-Burn-in output is diagnostic. After it passes, formal 2000-epoch training
-starts in a new output directory from the canonical initialization rather than
-silently treating a diagnostic partial epoch as the final experiment.
+Burn-in output is diagnostic. Formal training starts in a new output directory
+from the canonical initialization rather than silently treating a diagnostic
+partial epoch as the final experiment.
+
+## 22. Stage-6C Official-Equivalent Step Schedule
+
+Official ACT samples one random decision timestep from each train episode per
+reference epoch. The deterministic ACT-aligned dataset instead enumerates
+every decision window. Copying `2000` directly into the latter's data-epoch
+loop would therefore multiply optimization exposure by hundreds.
+
+Training Config V2 records the reference semantics explicitly:
+
+```text
+reference_train_episodes = 90
+batch_size = 8
+official_reference_epochs = 2000
+
+max_optimizer_steps =
+    ceil(reference_train_episodes / batch_size)
+    * official_reference_epochs
+  = 24,000
+```
+
+For the audited 27,676-window train split, one deterministic data epoch has
+3,460 steps. The formal run therefore spans approximately 6.94 data epochs,
+not 2,000 data epochs. Every 2,000 optimizer steps, the CLI writes an exact
+mid-epoch `step_XXXXXXXX.pt` checkpoint. Complete data epochs still trigger
+posterior/zero/prior validation and update `best.pt` and `last.pt`.
+
+Formal training uses no user-supplied burn-in cap:
+
+```text
+python scripts/train_act_aligned_contact_cvae.py \
+  mujoco_data/peg_hole_wst \
+  --output-dir runs/act_aligned_wst_formal_b8 \
+  --device cuda \
+  --batch-size 8 \
+  --num-workers 2 \
+  --run-mode formal \
+  --official-reference-epochs 2000 \
+  --checkpoint-interval-steps 2000 \
+  --log-interval 10
+```
+
+It stops at the derived step limit and writes `final.pt` plus
+`training_summary.json`. Training Config V1 checkpoints are migrated only in
+their scheduling metadata: the split-manifest train-episode count, stored
+batch size, and old reference epoch count derive the V2 step limit. Model,
+optimizer, objective weights, progress, data split, and RNG state remain
+unchanged.
