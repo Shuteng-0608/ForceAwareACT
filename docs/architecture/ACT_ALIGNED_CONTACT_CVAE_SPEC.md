@@ -763,3 +763,17 @@ their scheduling metadata: the split-manifest train-episode count, stored
 batch size, and old reference epoch count derive the V2 step limit. Model,
 optimizer, objective weights, progress, data split, and RNG state remain
 unchanged.
+
+The read-only live monitor reports global-step progress, process-average and
+recent sampled throughput, ETA, estimated finish time, current/recent losses,
+CUDA memory, periodic checkpoints, validation status, and stale-log warnings:
+
+```text
+python scripts/monitor_act_aligned_training.py \
+  runs/act_aligned_wst_formal_v2_b8_seed0 \
+  --watch
+```
+
+It auto-detects the training process from the output directory. For a resumed
+process, `--start-step` must be the checkpoint's global step so process-average
+throughput excludes work completed before the current process started.
