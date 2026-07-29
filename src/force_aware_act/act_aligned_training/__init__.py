@@ -1,0 +1,81 @@
+"""Independent training stack for the ACT-aligned contact-CVAE."""
+
+from force_aware_act.act_aligned_training.batch import ACTAlignedBatch
+from force_aware_act.act_aligned_training.checkpoint import (
+    CHECKPOINT_FORMAT_VERSION,
+    LoadedCheckpoint,
+    TrainingProgress,
+    load_act_aligned_checkpoint,
+    read_act_aligned_checkpoint,
+    save_act_aligned_checkpoint,
+)
+from force_aware_act.act_aligned_training.config import (
+    ACT_ALIGNED_TRAINING_VERSION,
+    ACTAlignedTrainingConfig,
+)
+from force_aware_act.act_aligned_training.losses import (
+    ACTAlignedCriterion,
+    detached_posterior_prior_kl,
+    diagonal_gaussian_kl,
+    masked_l1_loss,
+    standard_normal_kl,
+)
+from force_aware_act.act_aligned_training.data import (
+    ACTAlignedHDF5Dataset,
+    ACTAlignedSample,
+    collate_act_aligned_samples,
+)
+from force_aware_act.act_aligned_training.loop import (
+    run_training_epoch,
+    run_validation_epoch,
+)
+from force_aware_act.act_aligned_training.normalization import (
+    NormalizationStats,
+    compute_normalization_stats,
+)
+from force_aware_act.act_aligned_training.optimizer import (
+    build_act_aligned_optimizer,
+    partition_trainable_parameters,
+)
+from force_aware_act.act_aligned_training.trainer import (
+    evaluate_one_batch,
+    train_one_step,
+)
+from force_aware_act.act_aligned_training.split import (
+    EpisodeRecord,
+    EpisodeSplitManifest,
+    create_episode_split,
+    discover_episodes,
+)
+
+__all__ = [
+    "ACT_ALIGNED_TRAINING_VERSION",
+    "ACTAlignedBatch",
+    "ACTAlignedCriterion",
+    "ACTAlignedHDF5Dataset",
+    "ACTAlignedSample",
+    "ACTAlignedTrainingConfig",
+    "CHECKPOINT_FORMAT_VERSION",
+    "EpisodeRecord",
+    "EpisodeSplitManifest",
+    "LoadedCheckpoint",
+    "NormalizationStats",
+    "TrainingProgress",
+    "build_act_aligned_optimizer",
+    "collate_act_aligned_samples",
+    "compute_normalization_stats",
+    "create_episode_split",
+    "detached_posterior_prior_kl",
+    "diagonal_gaussian_kl",
+    "evaluate_one_batch",
+    "discover_episodes",
+    "load_act_aligned_checkpoint",
+    "masked_l1_loss",
+    "partition_trainable_parameters",
+    "read_act_aligned_checkpoint",
+    "run_training_epoch",
+    "run_validation_epoch",
+    "save_act_aligned_checkpoint",
+    "standard_normal_kl",
+    "train_one_step",
+]

@@ -1,0 +1,196 @@
+"""Immutable configuration for the ACT-aligned contact-CVAE architecture."""
+
+from __future__ import annotations
+
+import math
+from dataclasses import asdict, dataclass
+from typing import Any
+
+
+ACT_ALIGNED_ARCHITECTURE_VERSION = "act_aligned_contact_cvae_v1"
+
+
+@dataclass(frozen=True)
+class ACTAlignedConfig:
+    """Single source of truth for ACT-aligned model dimensions.
+
+    All Transformer encoders deliberately share ``encoder_layers`` as their
+    default depth.  A future experiment may introduce explicit per-encoder
+    overrides, but it must do so through a new architecture version rather
+    than by silently hard-coding a different value in a training script.
+    """
+
+    architecture_version: str = ACT_ALIGNED_ARCHITECTURE_VERSION
+
+    d_model: int = 512
+    nhead: int = 8
+    dim_feedforward: int = 3200
+    encoder_layers: int = 4
+    decoder_layers: int = 7
+    dropout: float = 0.1
+    activation: str = "relu"
+    norm_first: bool = False
+
+    latent_dim: int = 32
+    q_dim: int = 7
+    action_dim: int = 7
+    force_dim: int = 6
+    chunk_len: int = 100
+    force_window_len: int = 20
+
+    num_cameras: int = 2
+    image_height: int = 224
+    image_width: int = 224
+    backbone_output_stride: int = 32
+    backbone_name: str = "resnet18"
+    pretrained_backbone: bool = True
+    frozen_batch_norm: bool = True
+    imagenet_normalize: bool = True
+
+    def __post_init__(self) -> None:
+        positive_int_fields = (
+            "d_model",
+            "nhead",
+            "dim_feedforward",
+            "encoder_layers",
+            "decoder_layers",
+            "latent_dim",
+            "q_dim",
+            "action_dim",
+            "force_dim",
+            "chunk_len",
+            "force_window_len",
+            "num_cameras",
+            "image_height",
+            "image_width",
+            "backbone_output_stride",
+        )
+        for field_name in positive_int_fields:
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise ValueError(f"{field_name} must be a positive integer")
+
+        if self.d_model % self.nhead != 0:
+            raise ValueError("d_model must be divisible by nhead")
+        if self.d_model % 4 != 0:
+            raise ValueError("d_model must be divisible by 4 for 2D sine position encoding")
+        if not 0.0 <= self.dropout < 1.0:
+            raise ValueError("dropout must be in [0, 1)")
+        if self.activation != "relu":
+            raise ValueError("ACT-aligned v1 requires activation='relu'")
+        if self.norm_first:
+            raise ValueError("ACT-aligned v1 requires post-norm Transformer layers")
+        if self.architecture_version != ACT_ALIGNED_ARCHITECTURE_VERSION:
+            raise ValueError(
+                "architecture_version must match "
+                f"{ACT_ALIGNED_ARCHITECTURE_VERSION!r}"
+            )
+        if self.backbone_name != "resnet18":
+            raise ValueError("ACT-aligned v1 requires backbone_name='resnet18'")
+        if self.pretrained_backbone != self.imagenet_normalize:
+            raise ValueError(
+                "pretrained_backbone and imagenet_normalize must be enabled or "
+                "disabled together"
+            )
+
+    @classmethod
+    def canonical_act(cls, **overrides: Any) -> "ACTAlignedConfig":
+        """Return the canonical ACT-depth configuration.
+
+        The default ``chunk_len=100`` matches the official ALOHA ACT example.
+        Experiments that intentionally use a different prediction horizon must
+        override it explicitly and record the value in checkpoint metadata.
+        """
+
+        return cls(**overrides)
+
+    @classmethod
+    def compact_smoke(cls, **overrides: Any) -> "ACTAlignedConfig":
+        """Return a cheap preset for shape, forward, and gradient smoke tests.
+
+        Encoder and decoder depth intentionally remain ACT-aligned.  The preset
+        reduces width only, so a smoke test cannot accidentally validate a
+        one-layer architecture that differs structurally from the canonical
+        model.
+        """
+
+        values: dict[str, Any] = {
+            "d_model": 128,
+            "nhead": 4,
+            "dim_feedforward": 256,
+            "dropout": 0.0,
+            "pretrained_backbone": False,
+            "imagenet_normalize": False,
+        }
+        values.update(overrides)
+        return cls(**values)
+
+    @property
+    def attention_head_dim(self) -> int:
+        return self.d_model // self.nhead
+
+    @property
+    def visual_grid_height(self) -> int:
+        return math.ceil(self.image_height / self.backbone_output_stride)
+
+    @property
+    def visual_grid_width(self) -> int:
+        return math.ceil(self.image_width / self.backbone_output_stride)
+
+    @property
+    def visual_token_count(self) -> int:
+        return self.num_cameras * self.visual_grid_height * self.visual_grid_width
+
+    @property
+    def contact_posterior_token_count(self) -> int:
+        # [CLS, qpos, K time-aligned action-force tokens]
+        return self.chunk_len + 2
+
+    @property
+    def force_encoder_token_count(self) -> int:
+        # [CLS_F, L historical force tokens]
+        return self.force_window_len + 1
+
+    @property
+    def policy_memory_token_count(self) -> int:
+        # [z_contact, qpos, z_F_online, z_VF, visual tokens]
+        return self.visual_token_count + 4
+
+    def checkpoint_metadata(self) -> dict[str, Any]:
+        """Return explicit, serializable architecture metadata."""
+
+        metadata = asdict(self)
+        metadata.update(
+            {
+                "attention_head_dim": self.attention_head_dim,
+                "contact_posterior_encoder_layers": self.encoder_layers,
+                "online_force_encoder_layers": self.encoder_layers,
+                "policy_encoder_layers": self.encoder_layers,
+                "policy_decoder_layers": self.decoder_layers,
+                "decoder_output_layer": "last",
+                "token_layout": "batch_first",
+                "contact_posterior_layout": "time_aligned_action_plus_force",
+                "contact_prior_inputs": (
+                    "qpos_feature",
+                    "online_force_feature",
+                    "force_vision_feature",
+                    "visual_summary",
+                ),
+                "deployment_contact_latent": "zero",
+                "deployment_contact_latent_modes": (
+                    "zero",
+                    "conditional_prior_mean",
+                    "conditional_prior_sample",
+                    "offline_override",
+                ),
+                "prediction_head_input": "final_decoder_hidden",
+                "action_head": f"linear_{self.d_model}_to_{self.action_dim}",
+                "force_head": f"linear_{self.d_model}_to_{self.force_dim}",
+                "force_head_contact_concat": False,
+                "visual_token_count": self.visual_token_count,
+                "contact_posterior_token_count": self.contact_posterior_token_count,
+                "force_encoder_token_count": self.force_encoder_token_count,
+                "policy_memory_token_count": self.policy_memory_token_count,
+            }
+        )
+        return metadata
