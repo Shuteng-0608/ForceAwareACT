@@ -18,7 +18,10 @@ from statistics import mean
 from typing import Any, Optional, Sequence
 
 
-TRAIN_SCRIPT_NAME = "train_act_aligned_contact_cvae.py"
+TRAIN_SCRIPT_NAMES = (
+    "train_act_aligned_contact_cvae.py",
+    "train_act_aligned_motion_cvae_control.py",
+)
 DEFAULT_TARGET_STEPS = 24_000
 DEFAULT_CHECKPOINT_INTERVAL = 2_000
 
@@ -191,7 +194,10 @@ def find_training_process(
     resolved_output_dir = output_dir.resolve()
     matches = []
     for process in processes:
-        if TRAIN_SCRIPT_NAME not in process.command:
+        if not any(
+            script_name in process.command
+            for script_name in TRAIN_SCRIPT_NAMES
+        ):
             continue
         process_output_dir = _command_output_dir(process)
         if process_output_dir == resolved_output_dir:
@@ -447,14 +453,18 @@ def render_report(
     if segment_records:
         validation = segment_records[-1]
         validation_metrics = validation.get("validation", {})
-        lines.append(
+        validation_line = (
             "validation: "
             f"last_step={validation.get('global_step', 'n/a')} "
             f"zero_action_l1="
-            f"{_format_metric(validation_metrics.get('deployment_zero_action_l1'))} "
-            f"prior_action_l1="
-            f"{_format_metric(validation_metrics.get('deployment_prior_action_l1'))}"
+            f"{_format_metric(validation_metrics.get('deployment_zero_action_l1'))}"
         )
+        if "deployment_prior_action_l1" in validation_metrics:
+            validation_line += (
+                " prior_action_l1="
+                f"{_format_metric(validation_metrics.get('deployment_prior_action_l1'))}"
+            )
+        lines.append(validation_line)
     else:
         lines.append("validation: none yet (first full data epoch is about step 3,460)")
 

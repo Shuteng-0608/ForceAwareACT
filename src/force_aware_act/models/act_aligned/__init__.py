@@ -6,6 +6,7 @@ from force_aware_act.models.act_aligned.backbone import (
 )
 from force_aware_act.models.act_aligned.config import (
     ACT_ALIGNED_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
     ACTAlignedConfig,
 )
 from force_aware_act.models.act_aligned.contact_latent import (
@@ -15,10 +16,18 @@ from force_aware_act.models.act_aligned.contact_latent import (
 )
 from force_aware_act.models.act_aligned.contracts import (
     CONTACT_POSTERIOR_TOKEN_GROUPS,
+    MOTION_POLICY_SPECIAL_TOKEN_NAMES,
+    MOTION_POSTERIOR_TOKEN_GROUPS,
     POLICY_SPECIAL_TOKEN_NAMES,
     ACTAlignedShapeContract,
     require_padding_mask,
     require_token_tensor,
+)
+from force_aware_act.models.act_aligned.motion_latent import (
+    ACTAlignedMotionPosterior,
+)
+from force_aware_act.models.act_aligned.motion_policy import (
+    ACTAlignedMotionCVAEControlPolicy,
 )
 from force_aware_act.models.act_aligned.fusion import ACTAlignedForceVisionFusion
 from force_aware_act.models.act_aligned.online_force import (
@@ -52,11 +61,14 @@ from force_aware_act.models.act_aligned.transformer import (
 
 __all__ = [
     "ACT_ALIGNED_ARCHITECTURE_VERSION",
+    "ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION",
     "ACTAlignedResNet18Backbone",
     "ACTAlignedContactPosterior",
     "ACTAlignedContactPrior",
     "ACTAlignedContactCVAEPolicy",
     "ACTAlignedConfig",
+    "ACTAlignedMotionCVAEControlPolicy",
+    "ACTAlignedMotionPosterior",
     "ACTAlignedForceVisionFusion",
     "ACTAlignedOnlineForceEncoder",
     "ACTAlignedShapeContract",
@@ -72,6 +84,8 @@ __all__ = [
     "FrozenBatchNorm2d",
     "LatentTokenAdapter",
     "LearnedSequencePositionEmbedding",
+    "MOTION_POLICY_SPECIAL_TOKEN_NAMES",
+    "MOTION_POSTERIOR_TOKEN_GROUPS",
     "SinusoidalSequencePositionEncoding",
     "POLICY_SPECIAL_TOKEN_NAMES",
     "QposTokenAdapter",

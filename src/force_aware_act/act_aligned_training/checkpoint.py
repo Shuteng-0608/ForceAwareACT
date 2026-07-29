@@ -19,9 +19,6 @@ from force_aware_act.act_aligned_training.config import (
 )
 from force_aware_act.act_aligned_training.normalization import NormalizationStats
 from force_aware_act.act_aligned_training.split import EpisodeSplitManifest
-from force_aware_act.models.act_aligned.policy import ACTAlignedContactCVAEPolicy
-
-
 CHECKPOINT_FORMAT_VERSION = "act_aligned_checkpoint_v2"
 _LEGACY_CHECKPOINT_FORMAT_VERSION = "act_aligned_checkpoint_v1"
 
@@ -45,15 +42,15 @@ class LoadedCheckpoint:
 def save_act_aligned_checkpoint(
     path: Path,
     *,
-    model: ACTAlignedContactCVAEPolicy,
+    model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    training_config: ACTAlignedTrainingConfig,
+    training_config: Any,
     progress: TrainingProgress,
     normalization: NormalizationStats,
     split_manifest: EpisodeSplitManifest,
     dataloader_generator: Optional[torch.Generator] = None,
 ) -> None:
-    """Atomically save a complete, resume-capable checkpoint."""
+    """Atomically save a complete ACT-aligned, resume-capable checkpoint."""
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,9 +80,9 @@ def save_act_aligned_checkpoint(
 def load_act_aligned_checkpoint(
     path: Path,
     *,
-    model: ACTAlignedContactCVAEPolicy,
+    model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    training_config: ACTAlignedTrainingConfig,
+    training_config: Any,
     restore_rng: bool = True,
     map_location: Any = "cpu",
 ) -> LoadedCheckpoint:

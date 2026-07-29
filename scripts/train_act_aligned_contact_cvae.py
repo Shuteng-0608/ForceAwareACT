@@ -9,7 +9,9 @@ import json
 import os
 import random
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -43,7 +45,52 @@ from force_aware_act.models.act_aligned import (  # noqa: E402
 )
 
 
-def main() -> None:
+@dataclass(frozen=True)
+class TrainingStack:
+    """Injectable model/objective stack for shared training orchestration."""
+
+    name: str
+    model_config_type: type
+    training_config_type: type
+    policy_type: type
+    criterion_type: type
+    build_optimizer: Callable[..., torch.optim.Optimizer]
+    run_training_epoch: Callable[..., dict[str, float]]
+    run_validation_epoch: Callable[..., dict[str, float]]
+    smoke_model_config: Callable[[], Any]
+    formal_model_config: Callable[[], Any]
+
+
+def _contact_smoke_model_config() -> ACTAlignedConfig:
+    return ACTAlignedConfig(
+        d_model=32,
+        nhead=4,
+        dim_feedforward=64,
+        dropout=0.0,
+        chunk_len=6,
+        force_window_len=5,
+        image_height=64,
+        image_width=64,
+        pretrained_backbone=False,
+        imagenet_normalize=False,
+    )
+
+
+CONTACT_TRAINING_STACK = TrainingStack(
+    name="contact_conditional_cvae",
+    model_config_type=ACTAlignedConfig,
+    training_config_type=ACTAlignedTrainingConfig,
+    policy_type=ACTAlignedContactCVAEPolicy,
+    criterion_type=ACTAlignedCriterion,
+    build_optimizer=build_act_aligned_optimizer,
+    run_training_epoch=run_training_epoch,
+    run_validation_epoch=run_validation_epoch,
+    smoke_model_config=_contact_smoke_model_config,
+    formal_model_config=ACTAlignedConfig.canonical_act,
+)
+
+
+def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
     args = _parse_args()
     device = torch.device(args.device)
     _seed_everything(args.seed)
@@ -51,27 +98,16 @@ def main() -> None:
 
     if args.resume is None:
         model_config = (
-            ACTAlignedConfig(
-                d_model=32,
-                nhead=4,
-                dim_feedforward=64,
-                dropout=0.0,
-                chunk_len=6,
-                force_window_len=5,
-                image_height=64,
-                image_width=64,
-                pretrained_backbone=False,
-                imagenet_normalize=False,
-            )
+            stack.smoke_model_config()
             if args.smoke
-            else ACTAlignedConfig.canonical_act()
+            else stack.formal_model_config()
         )
         manifest = create_episode_split(
             args.data_root,
             validation_fraction=args.validation_fraction,
             seed=args.seed,
         )
-        training_config = ACTAlignedTrainingConfig(
+        training_config = stack.training_config_type(
             batch_size=2 if args.smoke else args.batch_size,
             seed=args.seed,
             reference_train_episodes=(
@@ -92,8 +128,10 @@ def main() -> None:
         best_metric = float("inf")
     else:
         payload = read_act_aligned_checkpoint(args.resume, map_location="cpu")
-        model_config = ACTAlignedConfig(**payload["model_config"])
-        training_config = ACTAlignedTrainingConfig(**payload["training_config"])
+        model_config = stack.model_config_type(**payload["model_config"])
+        training_config = stack.training_config_type(
+            **payload["training_config"]
+        )
         manifest = EpisodeSplitManifest.from_dict(payload["split_manifest"])
         normalization = NormalizationStats.from_dict(payload["normalization"])
         start_epoch = int(payload["progress"]["epoch"])
@@ -103,9 +141,9 @@ def main() -> None:
         global_step = int(payload["progress"]["global_step"])
         best_metric = float(payload["progress"]["best_metric"])
 
-    model = ACTAlignedContactCVAEPolicy(model_config).to(device)
-    criterion = ACTAlignedCriterion(training_config)
-    optimizer = build_act_aligned_optimizer(model, training_config)
+    model = stack.policy_type(model_config).to(device)
+    criterion = stack.criterion_type(training_config)
+    optimizer = stack.build_optimizer(model, training_config)
     generator = torch.Generator().manual_seed(training_config.seed + 1)
     if args.resume is not None:
         loaded = load_act_aligned_checkpoint(
@@ -261,7 +299,7 @@ def main() -> None:
                         periodic_generator,
                     )
 
-            train_metrics = run_training_epoch(
+            train_metrics = stack.run_training_epoch(
                 model,
                 criterion,
                 optimizer,
@@ -299,7 +337,7 @@ def main() -> None:
             if should_validate:
                 training_rng_state = _capture_runtime_rng_state()
                 try:
-                    validation_metrics = run_validation_epoch(
+                    validation_metrics = stack.run_validation_epoch(
                         model,
                         criterion,
                         validation_loader,
@@ -379,6 +417,7 @@ def main() -> None:
                     expected_rng_state=expected_rng_state,
                 )
                 summary = {
+                    "training_stack": stack.name,
                     "mode": args.run_mode,
                     "passed": True,
                     "stop_reason": "optimizer_step_limit_reached",

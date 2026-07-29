@@ -20,6 +20,21 @@ from force_aware_act.act_aligned_training.losses import (
     masked_l1_loss,
     standard_normal_kl,
 )
+from force_aware_act.act_aligned_training.motion_config import (
+    ACT_ALIGNED_MOTION_CONTROL_TRAINING_VERSION,
+    ACTAlignedMotionTrainingConfig,
+)
+from force_aware_act.act_aligned_training.motion_loop import (
+    run_motion_training_epoch,
+    run_motion_validation_epoch,
+)
+from force_aware_act.act_aligned_training.motion_losses import (
+    ACTAlignedMotionCriterion,
+)
+from force_aware_act.act_aligned_training.motion_trainer import (
+    evaluate_motion_one_batch,
+    train_motion_one_step,
+)
 from force_aware_act.act_aligned_training.data import (
     ACTAlignedHDF5Dataset,
     ACTAlignedSample,
@@ -37,7 +52,9 @@ from force_aware_act.act_aligned_training.normalization import (
     compute_normalization_stats,
 )
 from force_aware_act.act_aligned_training.optimizer import (
+    build_act_aligned_motion_optimizer,
     build_act_aligned_optimizer,
+    partition_motion_trainable_parameters,
     partition_trainable_parameters,
 )
 from force_aware_act.act_aligned_training.trainer import (
@@ -53,9 +70,12 @@ from force_aware_act.act_aligned_training.split import (
 
 __all__ = [
     "ACT_ALIGNED_TRAINING_VERSION",
+    "ACT_ALIGNED_MOTION_CONTROL_TRAINING_VERSION",
     "ACTAlignedBatch",
     "ACTAlignedCriterion",
     "ACTAlignedHDF5Dataset",
+    "ACTAlignedMotionCriterion",
+    "ACTAlignedMotionTrainingConfig",
     "ACTAlignedSample",
     "ACTAlignedTrainingConfig",
     "CHECKPOINT_FORMAT_VERSION",
@@ -65,21 +85,27 @@ __all__ = [
     "NormalizationStats",
     "TrainingProgress",
     "build_act_aligned_optimizer",
+    "build_act_aligned_motion_optimizer",
     "collate_act_aligned_samples",
     "compute_normalization_stats",
     "create_episode_split",
     "detached_posterior_prior_kl",
     "diagonal_gaussian_kl",
     "evaluate_one_batch",
+    "evaluate_motion_one_batch",
     "discover_episodes",
     "load_act_aligned_checkpoint",
     "masked_l1_loss",
     "partition_trainable_parameters",
+    "partition_motion_trainable_parameters",
     "read_act_aligned_checkpoint",
     "run_training_epoch",
+    "run_motion_training_epoch",
+    "run_motion_validation_epoch",
     "run_training_preflight",
     "run_validation_epoch",
     "save_act_aligned_checkpoint",
     "standard_normal_kl",
     "train_one_step",
+    "train_motion_one_step",
 ]

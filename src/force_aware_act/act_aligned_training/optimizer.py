@@ -8,6 +8,12 @@ import torch
 from torch import nn
 
 from force_aware_act.act_aligned_training.config import ACTAlignedTrainingConfig
+from force_aware_act.act_aligned_training.motion_config import (
+    ACTAlignedMotionTrainingConfig,
+)
+from force_aware_act.models.act_aligned.motion_policy import (
+    ACTAlignedMotionCVAEControlPolicy,
+)
 from force_aware_act.models.act_aligned.policy import (
     ACTAlignedContactCVAEPolicy,
 )
@@ -21,6 +27,24 @@ def partition_trainable_parameters(
     if not isinstance(model, ACTAlignedContactCVAEPolicy):
         raise TypeError("model must be an ACTAlignedContactCVAEPolicy")
 
+    return _partition_policy_parameters(model)
+
+
+def partition_motion_trainable_parameters(
+    model: ACTAlignedMotionCVAEControlPolicy,
+) -> Dict[str, List[nn.Parameter]]:
+    """Partition motion-control parameters with the same AdamW grouping."""
+
+    if not isinstance(model, ACTAlignedMotionCVAEControlPolicy):
+        raise TypeError(
+            "model must be an ACTAlignedMotionCVAEControlPolicy"
+        )
+    return _partition_policy_parameters(model)
+
+
+def _partition_policy_parameters(
+    model: nn.Module,
+) -> Dict[str, List[nn.Parameter]]:
     backbone_parameters = [
         parameter
         for parameter in model.vision_backbone.body.parameters()
@@ -67,8 +91,35 @@ def build_act_aligned_optimizer(
     )
 
 
+def build_act_aligned_motion_optimizer(
+    model: ACTAlignedMotionCVAEControlPolicy,
+    config: ACTAlignedMotionTrainingConfig,
+) -> torch.optim.AdamW:
+    """Build the identical two-group AdamW optimizer for the control."""
+
+    partition = partition_motion_trainable_parameters(model)
+    return torch.optim.AdamW(
+        [
+            {
+                "name": "main",
+                "params": partition["main"],
+                "lr": config.learning_rate,
+            },
+            {
+                "name": "backbone",
+                "params": partition["backbone"],
+                "lr": config.backbone_learning_rate,
+            },
+        ],
+        lr=config.learning_rate,
+        betas=(config.adam_beta1, config.adam_beta2),
+        eps=config.adam_epsilon,
+        weight_decay=config.weight_decay,
+    )
+
+
 def _validate_partition(
-    model: ACTAlignedContactCVAEPolicy,
+    model: nn.Module,
     partition: Dict[str, List[nn.Parameter]],
 ) -> None:
     all_parameters = [

@@ -12,6 +12,13 @@ from force_aware_act.models.act_aligned.config import ACTAlignedConfig
 
 CONTACT_POSTERIOR_TOKEN_GROUPS = ("cls", "qpos", "contact_steps")
 POLICY_SPECIAL_TOKEN_NAMES = ("z_contact", "qpos", "z_F_online", "z_VF")
+MOTION_POSTERIOR_TOKEN_GROUPS = ("cls", "qpos", "motion_steps")
+MOTION_POLICY_SPECIAL_TOKEN_NAMES = (
+    "z_motion",
+    "qpos",
+    "z_F_online",
+    "z_VF",
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +48,14 @@ class ACTAlignedShapeContract:
         return (
             batch_size,
             self.config.contact_posterior_token_count,
+            self.config.d_model,
+        )
+
+    def motion_posterior_tokens(self, batch_size: int) -> tuple[int, int, int]:
+        self._validate_batch_size(batch_size)
+        return (
+            batch_size,
+            self.config.motion_posterior_token_count,
             self.config.d_model,
         )
 

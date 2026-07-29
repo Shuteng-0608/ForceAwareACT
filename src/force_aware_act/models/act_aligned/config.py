@@ -1,4 +1,4 @@
-"""Immutable configuration for the ACT-aligned contact-CVAE architecture."""
+"""Immutable configuration for the ACT-aligned model family."""
 
 from __future__ import annotations
 
@@ -8,6 +8,9 @@ from typing import Any
 
 
 ACT_ALIGNED_ARCHITECTURE_VERSION = "act_aligned_contact_cvae_v1"
+ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION = (
+    "act_aligned_motion_cvae_control_v1"
+)
 
 
 @dataclass(frozen=True)
@@ -80,10 +83,14 @@ class ACTAlignedConfig:
             raise ValueError("ACT-aligned v1 requires activation='relu'")
         if self.norm_first:
             raise ValueError("ACT-aligned v1 requires post-norm Transformer layers")
-        if self.architecture_version != ACT_ALIGNED_ARCHITECTURE_VERSION:
+        supported_versions = {
+            ACT_ALIGNED_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
+        }
+        if self.architecture_version not in supported_versions:
             raise ValueError(
-                "architecture_version must match "
-                f"{ACT_ALIGNED_ARCHITECTURE_VERSION!r}"
+                "architecture_version must be one of "
+                f"{sorted(supported_versions)!r}"
             )
         if self.backbone_name != "resnet18":
             raise ValueError("ACT-aligned v1 requires backbone_name='resnet18'")
@@ -103,6 +110,18 @@ class ACTAlignedConfig:
         """
 
         return cls(**overrides)
+
+    @classmethod
+    def motion_control(cls, **overrides: Any) -> "ACTAlignedConfig":
+        """Return the action-only ACT motion-latent control configuration."""
+
+        values: dict[str, Any] = {
+            "architecture_version": (
+                ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION
+            )
+        }
+        values.update(overrides)
+        return cls(**values)
 
     @classmethod
     def compact_smoke(cls, **overrides: Any) -> "ACTAlignedConfig":
@@ -147,6 +166,11 @@ class ACTAlignedConfig:
         return self.chunk_len + 2
 
     @property
+    def motion_posterior_token_count(self) -> int:
+        # Official ACT layout: [CLS, qpos, K action tokens]
+        return self.chunk_len + 2
+
+    @property
     def force_encoder_token_count(self) -> int:
         # [CLS_F, L historical force tokens]
         return self.force_window_len + 1
@@ -160,15 +184,46 @@ class ACTAlignedConfig:
         """Return explicit, serializable architecture metadata."""
 
         metadata = asdict(self)
+        shared_metadata = {
+            "attention_head_dim": self.attention_head_dim,
+            "online_force_encoder_layers": self.encoder_layers,
+            "policy_encoder_layers": self.encoder_layers,
+            "policy_decoder_layers": self.decoder_layers,
+            "decoder_output_layer": "last",
+            "token_layout": "batch_first",
+            "prediction_head_input": "final_decoder_hidden",
+            "action_head": f"linear_{self.d_model}_to_{self.action_dim}",
+            "force_head": f"linear_{self.d_model}_to_{self.force_dim}",
+            "force_head_contact_concat": False,
+            "visual_token_count": self.visual_token_count,
+            "force_encoder_token_count": self.force_encoder_token_count,
+            "policy_memory_token_count": self.policy_memory_token_count,
+        }
+        metadata.update(shared_metadata)
+        if (
+            self.architecture_version
+            == ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION
+        ):
+            metadata.update(
+                {
+                    "motion_posterior_encoder_layers": self.encoder_layers,
+                    "motion_posterior_layout": "official_action_only",
+                    "motion_posterior_inputs": ("qpos", "action_chunk"),
+                    "deployment_motion_latent": "zero",
+                    "deployment_motion_latent_modes": (
+                        "zero",
+                        "offline_override",
+                    ),
+                    "motion_posterior_token_count": (
+                        self.motion_posterior_token_count
+                    ),
+                }
+            )
+            return metadata
+
         metadata.update(
             {
-                "attention_head_dim": self.attention_head_dim,
                 "contact_posterior_encoder_layers": self.encoder_layers,
-                "online_force_encoder_layers": self.encoder_layers,
-                "policy_encoder_layers": self.encoder_layers,
-                "policy_decoder_layers": self.decoder_layers,
-                "decoder_output_layer": "last",
-                "token_layout": "batch_first",
                 "contact_posterior_layout": "time_aligned_action_plus_force",
                 "contact_prior_inputs": (
                     "qpos_feature",
@@ -183,14 +238,7 @@ class ACTAlignedConfig:
                     "conditional_prior_sample",
                     "offline_override",
                 ),
-                "prediction_head_input": "final_decoder_hidden",
-                "action_head": f"linear_{self.d_model}_to_{self.action_dim}",
-                "force_head": f"linear_{self.d_model}_to_{self.force_dim}",
-                "force_head_contact_concat": False,
-                "visual_token_count": self.visual_token_count,
                 "contact_posterior_token_count": self.contact_posterior_token_count,
-                "force_encoder_token_count": self.force_encoder_token_count,
-                "policy_memory_token_count": self.policy_memory_token_count,
             }
         )
         return metadata
