@@ -97,6 +97,26 @@ def test_training_path_assembles_complete_policy_and_uses_posterior():
     assert outputs["mu_contact_prior"].shape == (2, config.latent_dim)
 
 
+def test_mean_posterior_validation_also_uses_deterministic_prior_statistics():
+    config = _small_config()
+    policy = ACTAlignedContactCVAEPolicy(config).eval()
+
+    with torch.no_grad():
+        outputs = policy.forward_train(
+            **_training_inputs(config),
+            sample_posterior=False,
+        )
+
+    torch.testing.assert_close(
+        outputs["z_contact_posterior"],
+        outputs["mu_contact"],
+    )
+    torch.testing.assert_close(
+        outputs["z_contact_prior"],
+        outputs["mu_contact_prior"],
+    )
+
+
 def test_default_deployment_path_uses_zero_and_has_no_future_label_arguments():
     config = _small_config()
     policy = ACTAlignedContactCVAEPolicy(config).eval()

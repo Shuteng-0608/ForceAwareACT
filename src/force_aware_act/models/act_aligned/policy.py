@@ -183,7 +183,7 @@ class ACTAlignedContactCVAEPolicy(nn.Module):
             online["z_F_online"],
             online["z_VF"],
             online["visual_summary"],
-            deterministic=False,
+            deterministic=not sample_posterior,
         )
         decoded = self._decode(
             posterior_latent,

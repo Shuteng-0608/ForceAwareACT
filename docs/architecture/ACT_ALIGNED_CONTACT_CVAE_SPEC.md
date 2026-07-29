@@ -605,7 +605,7 @@ latent metrics by batch samples. Validation reports posterior, zero-deployment,
 and prior-mean-deployment metrics, including posterior/prior mean distance and
 both average standard deviations.
 
-Checkpoint format V1 stores:
+Checkpoint format V2 stores:
 
 ```text
 model/training versions and complete configs
@@ -613,10 +613,13 @@ model and AdamW states
 epoch, global step, and best metric
 normalization and episode split manifest
 Python, NumPy, PyTorch, CUDA, and DataLoader RNG states
+epoch-local batch cursor for exact mid-epoch resume
 ```
 
 Saves use a temporary file followed by atomic replacement. Loads reject config
-or format mismatches rather than dispatching to legacy implementations.
+or unsupported format mismatches rather than dispatching to legacy
+implementations. V1 checkpoints remain readable and are interpreted as
+epoch-boundary checkpoints with `step_in_epoch=0`.
 
 The standalone CLI supports canonical training, exact resume, and a small
 real-data `--smoke` mode. It imports only the new ACT-aligned model and training
@@ -661,3 +664,52 @@ python scripts/preflight_act_aligned_contact_cvae.py \
 The canonical command retains pretrained ResNet18 and ImageNet normalization.
 Batch size must be raised only after the batch-1 report passes and its peak
 memory is known.
+
+## 21. Stage-6B Controlled Burn-in
+
+The canonical training CLI accepts an absolute optimizer-step gate:
+
+```text
+--max-train-steps N
+--log-interval M
+```
+
+At step 1, every `M` steps, and the final step, `metrics.jsonl` records:
+
+```text
+action/force reconstruction losses
+posterior KL and detached prior-match KL
+total gradient norm and both learning rates
+posterior/prior mean magnitude and average standard deviation
+posterior-prior mean L1 distance
+current and peak CUDA allocated/reserved memory
+```
+
+Reaching the limit forces posterior/zero/prior validation, then atomically
+saves `best.pt`, `last.pt`, and `burn_in.pt`. A strict reload checks model,
+optimizer, progress, DataLoader state, and all Python/NumPy/PyTorch/CUDA RNG
+states. `burn_in_summary.json` records the final gate result.
+
+If the limit occurs within an epoch, V2 stores both the epoch index and
+`step_in_epoch`. The checkpoint stores the generator state from the start of
+that epoch. Resume reconstructs the identical shuffle and skips exactly the
+already optimized batches. Validation preserves the training RNG state, so a
+stop/reload does not perturb the future posterior samples or dropout sequence.
+
+RTX 3070 canonical burn-in command:
+
+```text
+python scripts/train_act_aligned_contact_cvae.py \
+  mujoco_data/peg_hole_100 \
+  --output-dir runs/act_aligned_burn_in_b8 \
+  --device cuda \
+  --batch-size 8 \
+  --epochs 2000 \
+  --num-workers 2 \
+  --max-train-steps 200 \
+  --log-interval 10
+```
+
+Burn-in output is diagnostic. After it passes, formal 2000-epoch training
+starts in a new output directory from the canonical initialization rather than
+silently treating a diagnostic partial epoch as the final experiment.

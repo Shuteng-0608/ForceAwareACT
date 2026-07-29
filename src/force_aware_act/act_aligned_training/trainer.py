@@ -75,6 +75,35 @@ def train_one_step(
         name: float(value.detach().item())
         for name, value in losses.items()
     }
+    metrics.update(
+        {
+            "posterior_mean_abs": float(
+                outputs["mu_contact"].detach().abs().mean().item()
+            ),
+            "prior_mean_abs": float(
+                outputs["mu_contact_prior"].detach().abs().mean().item()
+            ),
+            "posterior_std_mean": float(
+                torch.exp(0.5 * outputs["logvar_contact"].detach())
+                .mean()
+                .item()
+            ),
+            "prior_std_mean": float(
+                torch.exp(0.5 * outputs["logvar_contact_prior"].detach())
+                .mean()
+                .item()
+            ),
+            "posterior_prior_mean_l1": float(
+                (
+                    outputs["mu_contact"].detach()
+                    - outputs["mu_contact_prior"].detach()
+                )
+                .abs()
+                .mean()
+                .item()
+            ),
+        }
+    )
     metrics["gradient_norm"] = gradient_norm
     metrics["main_learning_rate"] = _group_learning_rate(optimizer, "main")
     metrics["backbone_learning_rate"] = _group_learning_rate(

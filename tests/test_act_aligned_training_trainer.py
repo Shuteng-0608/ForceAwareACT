@@ -109,6 +109,11 @@ def test_one_training_step_updates_backbone_and_prediction_head():
     assert metrics["loss_posterior_kl"] >= 0
     assert metrics["loss_prior_match"] >= 0
     assert metrics["gradient_norm"] > 0
+    assert metrics["posterior_mean_abs"] >= 0
+    assert metrics["prior_mean_abs"] >= 0
+    assert metrics["posterior_std_mean"] > 0
+    assert metrics["prior_std_mean"] > 0
+    assert metrics["posterior_prior_mean_l1"] >= 0
     assert metrics["main_learning_rate"] == training_config.learning_rate
     assert (
         metrics["backbone_learning_rate"]

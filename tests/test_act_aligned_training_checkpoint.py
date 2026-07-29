@@ -7,6 +7,7 @@ import torch
 pytest.importorskip("torchvision")
 
 from force_aware_act.act_aligned_training import (  # noqa: E402
+    CHECKPOINT_FORMAT_VERSION,
     ACTAlignedTrainingConfig,
     EpisodeRecord,
     EpisodeSplitManifest,
@@ -77,7 +78,7 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
         model=model,
         optimizer=optimizer,
         training_config=training_config,
-        progress=TrainingProgress(3, 17, 0.25),
+        progress=TrainingProgress(3, 17, 0.25, step_in_epoch=5),
         normalization=_stats(),
         split_manifest=_manifest(),
         dataloader_generator=generator,
@@ -95,7 +96,7 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
     actual_random = torch.rand(4)
 
     torch.testing.assert_close(actual_random, expected_random)
-    assert loaded.progress == TrainingProgress(3, 17, 0.25)
+    assert loaded.progress == TrainingProgress(3, 17, 0.25, step_in_epoch=5)
     assert loaded.normalization == _stats()
     assert loaded.split_manifest == _manifest()
     torch.testing.assert_close(
@@ -126,3 +127,36 @@ def test_checkpoint_rejects_mismatched_training_config(tmp_path):
             optimizer=optimizer,
             training_config=ACTAlignedTrainingConfig(prior_match_weight=2.0),
         )
+
+
+def test_checkpoint_v2_records_cursor_and_reader_migrates_v1(tmp_path):
+    model = ACTAlignedContactCVAEPolicy(_model_config())
+    config = ACTAlignedTrainingConfig()
+    optimizer = build_act_aligned_optimizer(model, config)
+    path = tmp_path / "checkpoint.pt"
+    save_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=config,
+        progress=TrainingProgress(2, 9, 0.5, step_in_epoch=3),
+        normalization=_stats(),
+        split_manifest=_manifest(),
+    )
+    payload = torch.load(path, weights_only=False)
+
+    assert payload["format_version"] == CHECKPOINT_FORMAT_VERSION
+    assert payload["progress"]["step_in_epoch"] == 3
+
+    payload["format_version"] = "act_aligned_checkpoint_v1"
+    payload["progress"].pop("step_in_epoch")
+    torch.save(payload, path)
+    loaded = load_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=config,
+        restore_rng=False,
+    )
+
+    assert loaded.progress == TrainingProgress(2, 9, 0.5, step_in_epoch=0)

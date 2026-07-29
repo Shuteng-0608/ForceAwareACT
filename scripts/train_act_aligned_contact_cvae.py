@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -79,6 +80,7 @@ def main() -> None:
             manifest.train_episodes,
         )
         start_epoch = 0
+        resume_step_in_epoch = 0
         global_step = 0
         best_metric = float("inf")
     else:
@@ -88,6 +90,9 @@ def main() -> None:
         manifest = EpisodeSplitManifest.from_dict(payload["split_manifest"])
         normalization = NormalizationStats.from_dict(payload["normalization"])
         start_epoch = int(payload["progress"]["epoch"])
+        resume_step_in_epoch = int(
+            payload["progress"].get("step_in_epoch", 0)
+        )
         global_step = int(payload["progress"]["global_step"])
         best_metric = float(payload["progress"]["best_metric"])
 
@@ -147,8 +152,62 @@ def main() -> None:
     )
 
     log_path = args.output_dir / "metrics.jsonl"
+    if args.max_train_steps is not None:
+        if global_step >= args.max_train_steps:
+            raise ValueError(
+                "checkpoint global_step has already reached "
+                "--max-train-steps"
+            )
+        if resume_step_in_epoch >= len(train_loader):
+            raise ValueError(
+                "checkpoint step_in_epoch must be smaller than epoch length"
+            )
+    run_start_global_step = global_step
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    initial_memory = _cuda_memory_snapshot(device)
+    stopped_at_limit = False
     try:
         for epoch in range(start_epoch, training_config.num_epochs):
+            step_in_epoch = (
+                resume_step_in_epoch if epoch == start_epoch else 0
+            )
+            epoch_generator_state = generator.get_state()
+            remaining_steps = (
+                None
+                if args.max_train_steps is None
+                else args.max_train_steps - global_step
+            )
+            segment_start_global_step = global_step
+
+            def log_step(
+                segment_step: int,
+                step_metrics: dict[str, float],
+            ) -> None:
+                current_global_step = (
+                    segment_start_global_step + segment_step
+                )
+                should_log = (
+                    current_global_step == run_start_global_step + 1
+                    or current_global_step % args.log_interval == 0
+                    or (
+                        args.max_train_steps is not None
+                        and current_global_step == args.max_train_steps
+                    )
+                )
+                if not should_log:
+                    return
+                record = {
+                    "record_type": "step",
+                    "epoch": epoch,
+                    "step_in_epoch": step_in_epoch + segment_step,
+                    "global_step": current_global_step,
+                    "metrics": step_metrics,
+                    "cuda_memory": _cuda_memory_snapshot(device),
+                }
+                _append_json_record(log_path, record)
+                print(json.dumps(record, sort_keys=True), flush=True)
+
             train_metrics = run_training_epoch(
                 model,
                 criterion,
@@ -156,69 +215,171 @@ def main() -> None:
                 train_loader,
                 training_config,
                 device=device,
+                max_optimizer_steps=remaining_steps,
+                skip_batches=step_in_epoch,
+                step_callback=log_step,
             )
-            global_step += int(train_metrics["optimizer_steps"])
+            optimizer_steps = int(train_metrics["optimizer_steps"])
+            global_step += optimizer_steps
+            next_step_in_epoch = step_in_epoch + optimizer_steps
+            completed_epoch = next_step_in_epoch >= len(train_loader)
+            progress = TrainingProgress(
+                epoch=epoch + 1 if completed_epoch else epoch,
+                global_step=global_step,
+                best_metric=best_metric,
+                step_in_epoch=0 if completed_epoch else next_step_in_epoch,
+            )
+            checkpoint_generator = (
+                generator
+                if completed_epoch
+                else _generator_from_state(epoch_generator_state)
+            )
+            training_memory = _cuda_memory_snapshot(device)
+            stopped_at_limit = (
+                args.max_train_steps is not None
+                and global_step >= args.max_train_steps
+            )
             validation_metrics = {}
-            if (epoch + 1) % training_config.validation_interval == 0:
-                validation_metrics = run_validation_epoch(
-                    model,
-                    criterion,
-                    validation_loader,
-                    training_config,
-                    device=device,
-                )
+            should_validate = stopped_at_limit or (
+                completed_epoch
+                and (epoch + 1) % training_config.validation_interval == 0
+            )
+            if should_validate:
+                training_rng_state = _capture_runtime_rng_state()
+                try:
+                    validation_metrics = run_validation_epoch(
+                        model,
+                        criterion,
+                        validation_loader,
+                        training_config,
+                        device=device,
+                    )
+                finally:
+                    _restore_runtime_rng_state(training_rng_state)
                 selected = validation_metrics[training_config.selection_metric]
                 if selected < best_metric:
                     best_metric = selected
+                    progress = TrainingProgress(
+                        progress.epoch,
+                        progress.global_step,
+                        best_metric,
+                        progress.step_in_epoch,
+                    )
                     _save(
                         args.output_dir / "best.pt",
                         model,
                         optimizer,
                         training_config,
-                        epoch + 1,
-                        global_step,
-                        best_metric,
+                        progress,
                         normalization,
                         manifest,
-                        generator,
+                        checkpoint_generator,
                     )
+            validation_memory = _cuda_memory_snapshot(device)
             record = {
-                "epoch": epoch + 1,
+                "record_type": "epoch_segment",
+                "epoch": epoch,
+                "completed_epoch": completed_epoch,
+                "step_in_epoch": progress.step_in_epoch,
                 "global_step": global_step,
                 "train": train_metrics,
                 "validation": validation_metrics,
             }
-            with log_path.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(record, sort_keys=True) + "\n")
+            _append_json_record(log_path, record)
             print(json.dumps(record, sort_keys=True), flush=True)
-            if (epoch + 1) % training_config.checkpoint_interval == 0:
+            if (
+                completed_epoch
+                and (epoch + 1) % training_config.checkpoint_interval == 0
+            ):
                 _save(
                     args.output_dir / f"epoch_{epoch + 1:04d}.pt",
                     model,
                     optimizer,
                     training_config,
-                    epoch + 1,
-                    global_step,
-                    best_metric,
+                    progress,
                     normalization,
                     manifest,
-                    generator,
+                    checkpoint_generator,
                 )
             _save(
                 args.output_dir / "last.pt",
                 model,
                 optimizer,
                 training_config,
-                epoch + 1,
-                global_step,
-                best_metric,
+                progress,
                 normalization,
                 manifest,
-                generator,
+                checkpoint_generator,
             )
+            if stopped_at_limit:
+                burn_in_path = args.output_dir / "burn_in.pt"
+                _save(
+                    burn_in_path,
+                    model,
+                    optimizer,
+                    training_config,
+                    progress,
+                    normalization,
+                    manifest,
+                    checkpoint_generator,
+                )
+                expected_rng_state = _capture_runtime_rng_state()
+                reload_audit = _audit_checkpoint_reload(
+                    burn_in_path,
+                    model=model,
+                    optimizer=optimizer,
+                    training_config=training_config,
+                    expected_progress=progress,
+                    expected_generator_state=(
+                        checkpoint_generator.get_state()
+                    ),
+                    expected_rng_state=expected_rng_state,
+                )
+                summary = {
+                    "mode": "burn_in",
+                    "passed": True,
+                    "stop_reason": "max_train_steps_reached",
+                    "requested_max_train_steps": args.max_train_steps,
+                    "run_start_global_step": run_start_global_step,
+                    "global_step": global_step,
+                    "progress": {
+                        "epoch": progress.epoch,
+                        "step_in_epoch": progress.step_in_epoch,
+                        "best_metric": progress.best_metric,
+                    },
+                    "completed_epoch": completed_epoch,
+                    "train": train_metrics,
+                    "validation": validation_metrics,
+                    "memory": {
+                        "before_training": initial_memory,
+                        "after_training": training_memory,
+                        "after_validation": validation_memory,
+                    },
+                    "optimizer_state": {
+                        "parameter_entries": len(optimizer.state),
+                        "tensor_bytes": _optimizer_state_tensor_bytes(
+                            optimizer
+                        ),
+                    },
+                    "checkpoint": {
+                        "path": str(burn_in_path.resolve()),
+                        "reload_audit": reload_audit,
+                    },
+                }
+                _atomic_write_json(
+                    args.output_dir / "burn_in_summary.json",
+                    summary,
+                )
+                print(json.dumps(summary, sort_keys=True), flush=True)
+                break
+            resume_step_in_epoch = 0
     finally:
         train_dataset.close()
         validation_dataset.close()
+    if args.max_train_steps is not None and not stopped_at_limit:
+        raise RuntimeError(
+            "training ended before --max-train-steps was reached"
+        )
 
 
 def _make_loader(
@@ -247,9 +408,7 @@ def _save(
     model,
     optimizer,
     training_config,
-    epoch,
-    global_step,
-    best_metric,
+    progress,
     normalization,
     manifest,
     generator,
@@ -259,7 +418,7 @@ def _save(
         model=model,
         optimizer=optimizer,
         training_config=training_config,
-        progress=TrainingProgress(epoch, global_step, best_metric),
+        progress=progress,
         normalization=normalization,
         split_manifest=manifest,
         dataloader_generator=generator,
@@ -293,10 +452,160 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument(
+        "--max-train-steps",
+        type=int,
+        help="absolute global optimizer-step limit for a controlled burn-in",
+    )
+    parser.add_argument("--log-interval", type=int, default=10)
     args = parser.parse_args()
-    if args.batch_size <= 0 or args.epochs <= 0 or args.num_workers < 0:
-        parser.error("batch-size/epochs must be positive and num-workers non-negative")
+    if (
+        args.batch_size <= 0
+        or args.epochs <= 0
+        or args.num_workers < 0
+        or args.log_interval <= 0
+    ):
+        parser.error(
+            "batch-size/epochs/log-interval must be positive and "
+            "num-workers non-negative"
+        )
+    if args.max_train_steps is not None and args.max_train_steps <= 0:
+        parser.error("max-train-steps must be positive")
     return args
+
+
+def _append_json_record(path: Path, record: dict) -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def _generator_from_state(state: torch.Tensor) -> torch.Generator:
+    generator = torch.Generator()
+    generator.set_state(state)
+    return generator
+
+
+def _cuda_memory_snapshot(device: torch.device) -> dict:
+    if device.type != "cuda":
+        return {
+            "device": str(device),
+            "allocated_bytes": None,
+            "reserved_bytes": None,
+            "peak_allocated_bytes": None,
+            "peak_reserved_bytes": None,
+        }
+    torch.cuda.synchronize(device)
+    return {
+        "device": str(device),
+        "allocated_bytes": int(torch.cuda.memory_allocated(device)),
+        "reserved_bytes": int(torch.cuda.memory_reserved(device)),
+        "peak_allocated_bytes": int(
+            torch.cuda.max_memory_allocated(device)
+        ),
+        "peak_reserved_bytes": int(torch.cuda.max_memory_reserved(device)),
+    }
+
+
+def _optimizer_state_tensor_bytes(
+    optimizer: torch.optim.Optimizer,
+) -> int:
+    return sum(
+        value.numel() * value.element_size()
+        for state in optimizer.state.values()
+        for value in state.values()
+        if isinstance(value, torch.Tensor)
+    )
+
+
+def _capture_runtime_rng_state() -> dict:
+    return {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state(),
+        "cuda": (
+            torch.cuda.get_rng_state_all()
+            if torch.cuda.is_available()
+            else None
+        ),
+    }
+
+
+def _restore_runtime_rng_state(state: dict) -> None:
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.set_rng_state(state["torch"])
+    if state["cuda"] is not None and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(state["cuda"])
+
+
+def _audit_checkpoint_reload(
+    path: Path,
+    *,
+    model: ACTAlignedContactCVAEPolicy,
+    optimizer: torch.optim.Optimizer,
+    training_config: ACTAlignedTrainingConfig,
+    expected_progress: TrainingProgress,
+    expected_generator_state: torch.Tensor,
+    expected_rng_state: dict,
+) -> dict:
+    loaded = load_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=training_config,
+        restore_rng=True,
+        map_location="cpu",
+    )
+    if loaded.progress != expected_progress:
+        raise RuntimeError("checkpoint reload progress mismatch")
+    if loaded.dataloader_generator_state is None:
+        raise RuntimeError("checkpoint is missing DataLoader generator state")
+    if not torch.equal(
+        loaded.dataloader_generator_state,
+        expected_generator_state,
+    ):
+        raise RuntimeError("checkpoint reload DataLoader state mismatch")
+    actual_rng_state = _capture_runtime_rng_state()
+    if not _rng_states_equal(actual_rng_state, expected_rng_state):
+        raise RuntimeError("checkpoint reload RNG state mismatch")
+    return {
+        "passed": True,
+        "epoch": loaded.progress.epoch,
+        "step_in_epoch": loaded.progress.step_in_epoch,
+        "global_step": loaded.progress.global_step,
+        "optimizer_parameter_entries": len(optimizer.state),
+        "rng_restore_tested": True,
+    }
+
+
+def _rng_states_equal(first: dict, second: dict) -> bool:
+    if first["python"] != second["python"]:
+        return False
+    first_numpy = first["numpy"]
+    second_numpy = second["numpy"]
+    if (
+        first_numpy[0] != second_numpy[0]
+        or not np.array_equal(first_numpy[1], second_numpy[1])
+        or first_numpy[2:] != second_numpy[2:]
+    ):
+        return False
+    if not torch.equal(first["torch"], second["torch"]):
+        return False
+    if first["cuda"] is None or second["cuda"] is None:
+        return first["cuda"] is None and second["cuda"] is None
+    return len(first["cuda"]) == len(second["cuda"]) and all(
+        torch.equal(left, right)
+        for left, right in zip(first["cuda"], second["cuda"])
+    )
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    temporary_path = path.with_suffix(path.suffix + ".tmp")
+    temporary_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary_path, path)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,8 @@ from force_aware_act.act_aligned_training.split import EpisodeSplitManifest
 from force_aware_act.models.act_aligned.policy import ACTAlignedContactCVAEPolicy
 
 
-CHECKPOINT_FORMAT_VERSION = "act_aligned_checkpoint_v1"
+CHECKPOINT_FORMAT_VERSION = "act_aligned_checkpoint_v2"
+_LEGACY_CHECKPOINT_FORMAT_VERSION = "act_aligned_checkpoint_v1"
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class TrainingProgress:
     epoch: int
     global_step: int
     best_metric: float
+    step_in_epoch: int = 0
 
 
 @dataclass(frozen=True)
@@ -113,7 +115,11 @@ def read_act_aligned_checkpoint(
     if not path.is_file():
         raise FileNotFoundError(f"checkpoint does not exist: {path}")
     payload = torch.load(path, map_location=map_location, weights_only=False)
-    if payload.get("format_version") != CHECKPOINT_FORMAT_VERSION:
+    format_version = payload.get("format_version")
+    if format_version not in {
+        CHECKPOINT_FORMAT_VERSION,
+        _LEGACY_CHECKPOINT_FORMAT_VERSION,
+    }:
         raise ValueError("unsupported ACT-aligned checkpoint format")
     required = (
         "architecture_version",
@@ -130,6 +136,10 @@ def read_act_aligned_checkpoint(
     for key in required:
         if key not in payload:
             raise KeyError(f"checkpoint is missing {key!r}")
+    if format_version == _LEGACY_CHECKPOINT_FORMAT_VERSION:
+        payload = dict(payload)
+        payload["progress"] = dict(payload["progress"])
+        payload["progress"].setdefault("step_in_epoch", 0)
     return payload
 
 

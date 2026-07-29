@@ -77,3 +77,80 @@ def test_epoch_loops_train_and_report_both_deployment_modes():
     assert validation_metrics["deployment_zero_action_l1"] >= 0
     assert validation_metrics["deployment_prior_action_l1"] >= 0
     assert validation_metrics["posterior_kl_standard"] >= 0
+
+
+def test_training_epoch_can_stop_and_resume_at_an_exact_batch_offset():
+    model_config = _config()
+    training_config = ACTAlignedTrainingConfig()
+    model = ACTAlignedContactCVAEPolicy(model_config)
+    criterion = ACTAlignedCriterion(training_config)
+    optimizer = build_act_aligned_optimizer(model, training_config)
+    batches = [
+        _batch(model_config, [[False, False, False]])
+        for _ in range(3)
+    ]
+    callback_steps = []
+
+    first = run_training_epoch(
+        model,
+        criterion,
+        optimizer,
+        batches,
+        training_config,
+        device=torch.device("cpu"),
+        max_optimizer_steps=1,
+        step_callback=lambda step, metrics: callback_steps.append(
+            (step, metrics["loss_total"])
+        ),
+    )
+    second = run_training_epoch(
+        model,
+        criterion,
+        optimizer,
+        batches,
+        training_config,
+        device=torch.device("cpu"),
+        max_optimizer_steps=2,
+        skip_batches=1,
+    )
+
+    assert first["optimizer_steps"] == 1.0
+    assert first["batches_skipped"] == 0.0
+    assert second["optimizer_steps"] == 2.0
+    assert second["batches_skipped"] == 1.0
+    assert callback_steps[0][0] == 1
+    assert callback_steps[0][1] > 0
+    for name in (
+        "posterior_mean_abs",
+        "prior_mean_abs",
+        "posterior_std_mean",
+        "prior_std_mean",
+        "posterior_prior_mean_l1",
+    ):
+        assert first[name] >= 0
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"max_optimizer_steps": 0}, "max_optimizer_steps"),
+        ({"skip_batches": -1}, "skip_batches"),
+    ],
+)
+def test_training_epoch_rejects_invalid_step_controls(kwargs, message):
+    model_config = _config()
+    training_config = ACTAlignedTrainingConfig()
+    model = ACTAlignedContactCVAEPolicy(model_config)
+    criterion = ACTAlignedCriterion(training_config)
+    optimizer = build_act_aligned_optimizer(model, training_config)
+
+    with pytest.raises(ValueError, match=message):
+        run_training_epoch(
+            model,
+            criterion,
+            optimizer,
+            [_batch(model_config, [[False, False, False]])],
+            training_config,
+            device=torch.device("cpu"),
+            **kwargs,
+        )

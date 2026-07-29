@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from typing import Callable, Dict, Iterable, Optional
 
 import torch
 
@@ -24,12 +24,43 @@ def run_training_epoch(
     training_config: ACTAlignedTrainingConfig,
     *,
     device: torch.device,
+    max_optimizer_steps: Optional[int] = None,
+    skip_batches: int = 0,
+    step_callback: Optional[Callable[[int, Dict[str, float]], None]] = None,
 ) -> Dict[str, float]:
-    """Train over one iterable and aggregate with correct denominators."""
+    """Train over one iterable and aggregate with correct denominators.
+
+    ``skip_batches`` supports exact mid-epoch resume when the iterable's
+    shuffle generator is restored to its epoch-start state. The callback
+    receives the number of newly completed optimizer steps and their metrics.
+    """
+
+    if max_optimizer_steps is not None:
+        if (
+            not isinstance(max_optimizer_steps, int)
+            or isinstance(max_optimizer_steps, bool)
+            or max_optimizer_steps <= 0
+        ):
+            raise ValueError("max_optimizer_steps must be positive or None")
+    if (
+        not isinstance(skip_batches, int)
+        or isinstance(skip_batches, bool)
+        or skip_batches < 0
+    ):
+        raise ValueError("skip_batches must be a non-negative integer")
 
     accumulator = _EpochAccumulator(model.config, training_config)
     batch_count = 0
-    for batch in batches:
+    skipped_count = 0
+    for batch_index, batch in enumerate(batches):
+        if batch_index < skip_batches:
+            skipped_count += 1
+            continue
+        if (
+            max_optimizer_steps is not None
+            and batch_count >= max_optimizer_steps
+        ):
+            break
         batch = batch.to(device)
         metrics = train_one_step(
             model,
@@ -40,10 +71,13 @@ def run_training_epoch(
         )
         accumulator.add_training(batch, metrics)
         batch_count += 1
+        if step_callback is not None:
+            step_callback(batch_count, dict(metrics))
     if batch_count == 0:
         raise ValueError("training epoch requires at least one batch")
     result = accumulator.training_result()
     result["optimizer_steps"] = float(batch_count)
+    result["batches_skipped"] = float(skipped_count)
     return result
 
 
@@ -104,6 +138,14 @@ class _EpochAccumulator:
             batch_size,
         )
         self._add("gradient_norm", metrics["gradient_norm"], 1.0)
+        for name in (
+            "posterior_mean_abs",
+            "prior_mean_abs",
+            "posterior_std_mean",
+            "prior_std_mean",
+            "posterior_prior_mean_l1",
+        ):
+            self._add(name, metrics[name], batch_size)
 
     def add_validation(
         self,
@@ -161,6 +203,13 @@ class _EpochAccumulator:
             "loss_posterior_kl": posterior_kl,
             "loss_prior_match": prior_match,
             "gradient_norm": self._mean("gradient_norm"),
+            "posterior_mean_abs": self._mean("posterior_mean_abs"),
+            "prior_mean_abs": self._mean("prior_mean_abs"),
+            "posterior_std_mean": self._mean("posterior_std_mean"),
+            "prior_std_mean": self._mean("prior_std_mean"),
+            "posterior_prior_mean_l1": self._mean(
+                "posterior_prior_mean_l1"
+            ),
         }
 
     def validation_result(self) -> Dict[str, float]:
