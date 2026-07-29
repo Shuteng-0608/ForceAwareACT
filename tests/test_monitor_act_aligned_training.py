@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 import pytest
 
 from scripts.monitor_act_aligned_training import (
+    ProcessInfo,
     estimate_eta,
+    find_training_process,
     read_jsonl_records,
 )
 
@@ -60,3 +62,29 @@ def test_estimate_eta_supports_resumed_training_start_step():
     assert estimate is not None
     assert estimate.completed_steps == 1000
     assert estimate.steps_per_second == pytest.approx(2.0)
+
+
+def test_find_training_process_excludes_dataloader_children(
+    tmp_path,
+    monkeypatch,
+):
+    output_dir = tmp_path / "run"
+    output_dir.mkdir()
+    command = (
+        "python scripts/train_act_aligned_contact_cvae.py data "
+        f"--output-dir {output_dir}"
+    )
+    processes = [
+        ProcessInfo(100, 10, 300.0, command),
+        ProcessInfo(101, 100, 290.0, command),
+        ProcessInfo(102, 100, 290.0, command),
+    ]
+    monkeypatch.setattr(
+        "scripts.monitor_act_aligned_training._process_table",
+        lambda: processes,
+    )
+
+    process = find_training_process(output_dir)
+
+    assert process is not None
+    assert process.pid == 100

@@ -26,6 +26,7 @@ DEFAULT_CHECKPOINT_INTERVAL = 2_000
 @dataclass(frozen=True)
 class ProcessInfo:
     pid: int
+    parent_pid: int
     elapsed_seconds: float
     command: str
 
@@ -135,7 +136,7 @@ def estimate_eta(
 
 def _process_table() -> list[ProcessInfo]:
     result = subprocess.run(
-        ["ps", "-eo", "pid=,etimes=,args="],
+        ["ps", "-eo", "pid=,ppid=,etimes=,args="],
         text=True,
         capture_output=True,
         check=False,
@@ -144,15 +145,18 @@ def _process_table() -> list[ProcessInfo]:
         return []
     processes: list[ProcessInfo] = []
     for line in result.stdout.splitlines():
-        parts = line.strip().split(maxsplit=2)
-        if len(parts) != 3:
+        parts = line.strip().split(maxsplit=3)
+        if len(parts) != 4:
             continue
         try:
             pid = int(parts[0])
-            elapsed_seconds = float(parts[1])
+            parent_pid = int(parts[1])
+            elapsed_seconds = float(parts[2])
         except ValueError:
             continue
-        processes.append(ProcessInfo(pid, elapsed_seconds, parts[2]))
+        processes.append(
+            ProcessInfo(pid, parent_pid, elapsed_seconds, parts[3])
+        )
     return processes
 
 
@@ -192,13 +196,21 @@ def find_training_process(
         process_output_dir = _command_output_dir(process)
         if process_output_dir == resolved_output_dir:
             matches.append(process)
-    if len(matches) > 1:
-        pids = ", ".join(str(process.pid) for process in matches)
+    match_pids = {process.pid for process in matches}
+    root_matches = [
+        process
+        for process in matches
+        if process.parent_pid not in match_pids
+    ]
+    if len(root_matches) == 1:
+        return root_matches[0]
+    if len(root_matches) > 1:
+        pids = ", ".join(str(process.pid) for process in root_matches)
         raise RuntimeError(
-            f"multiple training processes match the output directory: {pids}; "
-            "pass --pid explicitly"
+            "multiple root training processes match the output directory: "
+            f"{pids}; pass --pid explicitly"
         )
-    return matches[0] if matches else None
+    return matches[0] if len(matches) == 1 else None
 
 
 def _format_duration(seconds: float) -> str:
