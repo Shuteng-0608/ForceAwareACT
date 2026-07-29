@@ -145,6 +145,24 @@ def _capture_rng() -> dict[str, Any]:
 def _restore_rng(state: dict[str, Any]) -> None:
     random.setstate(state["python"])
     np.random.set_state(state["numpy"])
-    torch.set_rng_state(state["torch"])
+    torch.set_rng_state(_cpu_rng_state(state["torch"]))
     if state["cuda"] is not None and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(state["cuda"])
+        torch.cuda.set_rng_state_all(
+            [_cpu_rng_state(value) for value in state["cuda"]]
+        )
+
+
+def _cpu_rng_state(value: torch.Tensor) -> torch.Tensor:
+    """Return the CPU ByteTensor required by PyTorch RNG restoration.
+
+    A checkpoint loaded with ``map_location='cuda'`` also maps saved CPU RNG
+    tensors to CUDA. Both ``torch.set_rng_state`` and
+    ``torch.cuda.set_rng_state_all`` require CPU uint8 state tensors.
+    """
+
+    if not isinstance(value, torch.Tensor):
+        raise TypeError("RNG state must be a torch.Tensor")
+    state = value.detach().cpu()
+    if state.dtype is not torch.uint8:
+        raise TypeError("RNG state must have dtype torch.uint8")
+    return state

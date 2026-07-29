@@ -1,3 +1,6 @@
+import random
+from unittest.mock import Mock, patch
+
 import h5py
 import numpy as np
 import pytest
@@ -28,6 +31,7 @@ from force_aware_act.official_act_training import (
 from force_aware_act.official_act_training.data import (
     OFFICIAL_ACT_STATS_VERSION,
 )
+from force_aware_act.official_act_training.checkpoint import _restore_rng
 
 
 def _stats():
@@ -235,3 +239,34 @@ def test_official_checkpoint_round_trip_is_strict(tmp_path):
         "best_metric": 0.5,
         "best_epoch": -1,
     }
+
+
+def test_rng_restore_moves_loaded_cpu_and_cuda_states_back_to_cpu():
+    expected_cpu = torch.get_rng_state()
+    expected_cuda = torch.arange(8, dtype=torch.uint8)
+    loaded_cpu = Mock(spec=torch.Tensor)
+    loaded_cuda = Mock(spec=torch.Tensor)
+    loaded_cpu.detach.return_value.cpu.return_value = expected_cpu
+    loaded_cuda.detach.return_value.cpu.return_value = expected_cuda
+    state = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": loaded_cpu,
+        "cuda": [loaded_cuda],
+    }
+
+    with patch(
+        "force_aware_act.official_act_training.checkpoint."
+        "torch.set_rng_state"
+    ) as set_cpu, patch(
+        "force_aware_act.official_act_training.checkpoint."
+        "torch.cuda.is_available",
+        return_value=True,
+    ), patch(
+        "force_aware_act.official_act_training.checkpoint."
+        "torch.cuda.set_rng_state_all"
+    ) as set_cuda:
+        _restore_rng(state)
+
+    set_cpu.assert_called_once_with(expected_cpu)
+    set_cuda.assert_called_once_with([expected_cuda])
