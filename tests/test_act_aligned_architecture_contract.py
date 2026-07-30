@@ -16,24 +16,24 @@ def test_default_sequence_lengths_and_token_order_are_frozen():
 
     assert CONTACT_POSTERIOR_TOKEN_GROUPS == ("cls", "qpos", "contact_steps")
     assert POLICY_SPECIAL_TOKEN_NAMES == ("z_contact", "qpos", "z_F_online", "z_VF")
-    assert config.visual_grid_height == 7
-    assert config.visual_grid_width == 7
-    assert config.visual_token_count == 98
+    assert config.visual_grid_height == 15
+    assert config.visual_grid_width == 20
+    assert config.visual_token_count == 600
     assert config.contact_posterior_token_count == 102
     assert config.force_encoder_token_count == 21
-    assert config.policy_memory_token_count == 102
+    assert config.policy_memory_token_count == 604
 
 
 def test_default_batch_first_shape_contract():
     contract = ACTAlignedShapeContract(ACTAlignedConfig())
 
-    assert contract.visual_tokens(3) == (3, 98, 512)
+    assert contract.visual_tokens(3) == (3, 600, 512)
     assert contract.qpos_token(3) == (3, 1, 512)
     assert contract.action_tokens(3) == (3, 100, 512)
     assert contract.force_window_tokens(3) == (3, 20, 512)
     assert contract.contact_posterior_tokens(3) == (3, 102, 512)
     assert contract.force_encoder_tokens(3) == (3, 21, 512)
-    assert contract.policy_memory(3) == (3, 102, 512)
+    assert contract.policy_memory(3) == (3, 604, 512)
     assert contract.decoder_hidden(3) == (3, 100, 512)
     assert contract.action_output(3) == (3, 100, 7)
     assert contract.force_output(3) == (3, 100, 6)

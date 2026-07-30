@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -70,18 +71,22 @@ def _write_episode(root: Path, name: str, offset: float) -> None:
     )
 
 
-def _config():
+def _config(**overrides):
+    values = {
+        "d_model": 32,
+        "nhead": 4,
+        "dim_feedforward": 64,
+        "dropout": 0.0,
+        "chunk_len": 3,
+        "force_window_len": 2,
+        "image_height": 8,
+        "image_width": 8,
+        "pretrained_backbone": False,
+        "imagenet_normalize": False,
+    }
+    values.update(overrides)
     return ACTAlignedConfig(
-        d_model=32,
-        nhead=4,
-        dim_feedforward=64,
-        dropout=0.0,
-        chunk_len=3,
-        force_window_len=2,
-        image_height=8,
-        image_width=8,
-        pretrained_backbone=False,
-        imagenet_normalize=False,
+        **values,
     )
 
 
@@ -153,3 +158,40 @@ def test_discovery_validates_all_episode_records(tmp_path):
     assert len(records) == 2
     assert records[0].num_steps == 4
     assert records[0].camera_names == ("ee_cam", "base_top_cam")
+
+
+def test_dataset_preserves_native_images_without_interpolation(tmp_path):
+    _write_episode(tmp_path, "episode_a", 0.0)
+    _write_episode(tmp_path, "episode_b", 10.0)
+    manifest = create_episode_split(
+        tmp_path,
+        validation_fraction=0.5,
+        seed=0,
+    )
+    stats = compute_normalization_stats(
+        tmp_path,
+        manifest.train_episodes,
+    )
+    dataset = ACTAlignedHDF5Dataset(
+        tmp_path,
+        manifest.train_episodes,
+        stats,
+        _config(image_height=6, image_width=8),
+    )
+
+    with patch(
+        "force_aware_act.act_aligned_training.data.functional.interpolate",
+        wraps=torch.nn.functional.interpolate,
+    ) as interpolate:
+        sample = dataset[0]
+
+    interpolate.assert_not_called()
+    torch.testing.assert_close(
+        sample.images[0],
+        torch.full((3, 6, 8), 20.0 / 255.0),
+    )
+    torch.testing.assert_close(
+        sample.images[1],
+        torch.full((3, 6, 8), 50.0 / 255.0),
+    )
+    dataset.close()

@@ -79,7 +79,7 @@ def test_backbone_supports_gradient_through_resnet_and_projection():
         (torch.randn(2, 1, 3, 224, 224), "images must have shape"),
         (torch.randn(2, 2, 3, 128, 224), "images must have shape"),
         (
-            torch.ones(2, 2, 3, 224, 224, dtype=torch.int64),
+            torch.ones(2, 2, 3, 64, 64, dtype=torch.int64),
             "floating point",
         ),
     ],

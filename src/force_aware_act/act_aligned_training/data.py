@@ -92,16 +92,18 @@ class ACTAlignedHDF5Dataset(Dataset):
                 for camera_name in record.camera_names
             ]
         ).float().div_(255.0)
-        images = functional.interpolate(
-            images,
-            size=(
-                self.model_config.image_height,
-                self.model_config.image_width,
-            ),
-            mode="bilinear",
-            align_corners=False,
-            antialias=True,
+        target_image_size = (
+            self.model_config.image_height,
+            self.model_config.image_width,
         )
+        if images.shape[-2:] != target_image_size:
+            images = functional.interpolate(
+                images,
+                size=target_image_size,
+                mode="bilinear",
+                align_corners=False,
+                antialias=True,
+            )
         if self.model_config.imagenet_normalize:
             mean = images.new_tensor((0.485, 0.456, 0.406)).view(1, 3, 1, 1)
             std = images.new_tensor((0.229, 0.224, 0.225)).view(1, 3, 1, 1)

@@ -23,6 +23,9 @@ def test_canonical_act_config_freezes_official_depth_and_width():
     assert config.norm_first is False
     assert config.latent_dim == 32
     assert config.chunk_len == 100
+    assert (config.image_height, config.image_width) == (480, 640)
+    assert config.visual_token_count == 600
+    assert config.policy_memory_token_count == 604
 
 
 def test_compact_smoke_reduces_width_but_preserves_act_depth():
@@ -35,6 +38,7 @@ def test_compact_smoke_reduces_width_but_preserves_act_depth():
     assert config.decoder_layers == 7
     assert config.chunk_len == 100
     assert config.dropout == 0.0
+    assert (config.image_height, config.image_width) == (64, 64)
     assert config.pretrained_backbone is False
     assert config.imagenet_normalize is False
 

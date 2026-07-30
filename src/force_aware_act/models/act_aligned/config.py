@@ -42,8 +42,8 @@ class ACTAlignedConfig:
     force_window_len: int = 20
 
     num_cameras: int = 2
-    image_height: int = 224
-    image_width: int = 224
+    image_height: int = 480
+    image_width: int = 640
     backbone_output_stride: int = 32
     backbone_name: str = "resnet18"
     pretrained_backbone: bool = True
@@ -104,9 +104,10 @@ class ACTAlignedConfig:
     def canonical_act(cls, **overrides: Any) -> "ACTAlignedConfig":
         """Return the canonical ACT-depth configuration.
 
-        The default ``chunk_len=100`` matches the official ALOHA ACT example.
-        Experiments that intentionally use a different prediction horizon must
-        override it explicitly and record the value in checkpoint metadata.
+        The defaults match the official ALOHA ACT example's ``chunk_len=100``
+        and the repository dataset's native ``480 x 640`` camera resolution.
+        Experiments that intentionally use a different prediction horizon or
+        image resolution must override it explicitly; checkpoints record both.
         """
 
         return cls(**overrides)
@@ -128,9 +129,9 @@ class ACTAlignedConfig:
         """Return a cheap preset for shape, forward, and gradient smoke tests.
 
         Encoder and decoder depth intentionally remain ACT-aligned.  The preset
-        reduces width only, so a smoke test cannot accidentally validate a
-        one-layer architecture that differs structurally from the canonical
-        model.
+        reduces model width and spatial input size, so a smoke test cannot
+        accidentally validate a one-layer architecture that differs
+        structurally from the canonical model.
         """
 
         values: dict[str, Any] = {
@@ -138,6 +139,8 @@ class ACTAlignedConfig:
             "nhead": 4,
             "dim_feedforward": 256,
             "dropout": 0.0,
+            "image_height": 64,
+            "image_width": 64,
             "pretrained_backbone": False,
             "imagenet_normalize": False,
         }
