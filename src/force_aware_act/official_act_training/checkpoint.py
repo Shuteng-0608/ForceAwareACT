@@ -6,7 +6,7 @@ import os
 import random
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Optional
 
 import numpy as np
 import torch
@@ -40,6 +40,7 @@ def save_official_act_checkpoint(
     best_metric: float,
     best_epoch: int = -1,
     best_model_state: Any = None,
+    experiment_manifest: Optional[Mapping[str, Any]] = None,
 ) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,6 +54,11 @@ def save_official_act_checkpoint(
         "optimizer_state": optimizer.state_dict(),
         "normalization": normalization.to_dict(),
         "split_manifest": split_manifest.to_dict(),
+        "experiment_manifest": (
+            None
+            if experiment_manifest is None
+            else dict(experiment_manifest)
+        ),
         "progress": {
             "epoch": int(epoch),
             "global_step": int(global_step),

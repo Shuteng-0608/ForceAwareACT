@@ -7,7 +7,7 @@ import os
 import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 import numpy as np
 import torch
@@ -49,6 +49,7 @@ def save_act_aligned_checkpoint(
     normalization: NormalizationStats,
     split_manifest: EpisodeSplitManifest,
     dataloader_generator: Optional[torch.Generator] = None,
+    experiment_manifest: Optional[Mapping[str, Any]] = None,
 ) -> None:
     """Atomically save a complete ACT-aligned, resume-capable checkpoint."""
 
@@ -65,6 +66,11 @@ def save_act_aligned_checkpoint(
         "progress": asdict(progress),
         "normalization": normalization.to_dict(),
         "split_manifest": split_manifest.to_dict(),
+        "experiment_manifest": (
+            None
+            if experiment_manifest is None
+            else dict(experiment_manifest)
+        ),
         "rng_state": _capture_rng_state(),
         "dataloader_generator_state": (
             None

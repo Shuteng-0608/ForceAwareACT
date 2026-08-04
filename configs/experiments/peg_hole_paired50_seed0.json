@@ -1,0 +1,3734 @@
+{
+  "all_episode_count": 100,
+  "data_root_hint": "mujoco_data/peg_hole_100",
+  "dataset_fingerprint": "e6fc49b8521e2e52c59ca0d09892da0c4ae153ebf6a0ad4fde086cd7bc7bb07c",
+  "episode_features": {
+    "20260701_131034_teleop_006": {
+      "action_range_norm": 0.9359271779038086,
+      "action_step_delta_mean": 0.003607048205073693,
+      "contact_fraction_20n": 0.059880239520958084,
+      "contact_fraction_5n": 0.1347305389221557,
+      "contact_onset_fraction_5n": 0.48348348348348347,
+      "duration_sim": 11.131999999974056,
+      "episode_id": "20260701_131034_teleop_006",
+      "force_norm_max": 80.40823028175869,
+      "force_norm_mean": 3.5653636787384153,
+      "force_norm_p95": 25.614569828364257,
+      "num_steps": 334,
+      "torque_norm_p95": 1.1323652408623421
+    },
+    "20260701_131116_teleop_008": {
+      "action_range_norm": 0.9194598215650023,
+      "action_step_delta_mean": 0.0037737935069720244,
+      "contact_fraction_20n": 0.06397306397306397,
+      "contact_fraction_5n": 0.26936026936026936,
+      "contact_onset_fraction_5n": 0.5067567567567568,
+      "duration_sim": 9.880000000047175,
+      "episode_id": "20260701_131116_teleop_008",
+      "force_norm_max": 33.17711882555293,
+      "force_norm_mean": 4.032227951895511,
+      "force_norm_p95": 23.261893479252905,
+      "num_steps": 297,
+      "torque_norm_p95": 1.097910323479843
+    },
+    "20260701_131145_teleop_009": {
+      "action_range_norm": 0.9314796899375215,
+      "action_step_delta_mean": 0.003879926412440617,
+      "contact_fraction_20n": 0.014035087719298246,
+      "contact_fraction_5n": 0.18596491228070175,
+      "contact_onset_fraction_5n": 0.5915492957746479,
+      "duration_sim": 9.487000000045299,
+      "episode_id": "20260701_131145_teleop_009",
+      "force_norm_max": 37.72700380220132,
+      "force_norm_mean": 2.478003067594701,
+      "force_norm_p95": 14.52816857340681,
+      "num_steps": 285,
+      "torque_norm_p95": 0.6658082390763924
+    },
+    "20260701_131419_teleop_002": {
+      "action_range_norm": 0.9254681762749944,
+      "action_step_delta_mean": 0.004008094332372119,
+      "contact_fraction_20n": 0.040625,
+      "contact_fraction_5n": 0.096875,
+      "contact_onset_fraction_5n": 0.5297805642633229,
+      "duration_sim": 10.664000000013033,
+      "episode_id": "20260701_131419_teleop_002",
+      "force_norm_max": 84.55733506560297,
+      "force_norm_mean": 3.2829073117486494,
+      "force_norm_p95": 7.468420197689678,
+      "num_steps": 320,
+      "torque_norm_p95": 0.3375344700449602
+    },
+    "20260701_131447_teleop_003": {
+      "action_range_norm": 0.9413883604028223,
+      "action_step_delta_mean": 0.004116264240051727,
+      "contact_fraction_20n": 0.0807799442896936,
+      "contact_fraction_5n": 0.1615598885793872,
+      "contact_onset_fraction_5n": 0.39664804469273746,
+      "duration_sim": 11.950999999975608,
+      "episode_id": "20260701_131447_teleop_003",
+      "force_norm_max": 85.61342929515618,
+      "force_norm_mean": 5.2766010316751,
+      "force_norm_p95": 47.76073217754904,
+      "num_steps": 359,
+      "torque_norm_p95": 2.159778409460616
+    },
+    "20260701_131522_teleop_004": {
+      "action_range_norm": 0.9250223135372799,
+      "action_step_delta_mean": 0.0031622386076537137,
+      "contact_fraction_20n": 0.043596730245231606,
+      "contact_fraction_5n": 0.1553133514986376,
+      "contact_onset_fraction_5n": 0.5409836065573771,
+      "duration_sim": 12.229999999971497,
+      "episode_id": "20260701_131522_teleop_004",
+      "force_norm_max": 60.73172424200385,
+      "force_norm_mean": 3.188743882496598,
+      "force_norm_p95": 15.067686599185386,
+      "num_steps": 367,
+      "torque_norm_p95": 0.772493186943542
+    },
+    "20260701_131557_teleop_005": {
+      "action_range_norm": 0.9231383680354394,
+      "action_step_delta_mean": 0.003851041822529608,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.09386281588447654,
+      "contact_onset_fraction_5n": 0.6159420289855072,
+      "duration_sim": 9.211000000006514,
+      "episode_id": "20260701_131557_teleop_005",
+      "force_norm_max": 15.700909329942826,
+      "force_norm_mean": 1.4414897548143295,
+      "force_norm_p95": 9.85878282305319,
+      "num_steps": 277,
+      "torque_norm_p95": 0.4369474575045541
+    },
+    "20260701_131626_teleop_006": {
+      "action_range_norm": 0.9211537311579954,
+      "action_step_delta_mean": 0.003404779959288266,
+      "contact_fraction_20n": 0.047058823529411764,
+      "contact_fraction_5n": 0.13529411764705881,
+      "contact_onset_fraction_5n": 0.4306784660766962,
+      "duration_sim": 11.308000000053994,
+      "episode_id": "20260701_131626_teleop_006",
+      "force_norm_max": 85.39454437824698,
+      "force_norm_mean": 4.004319865793865,
+      "force_norm_p95": 18.45865562429553,
+      "num_steps": 340,
+      "torque_norm_p95": 0.8847519217757923
+    },
+    "20260701_131715_teleop_008": {
+      "action_range_norm": 0.9074686027999802,
+      "action_step_delta_mean": 0.0031335184152791475,
+      "contact_fraction_20n": 0.02556818181818182,
+      "contact_fraction_5n": 0.17897727272727273,
+      "contact_onset_fraction_5n": 0.4188034188034188,
+      "duration_sim": 11.732000000056019,
+      "episode_id": "20260701_131715_teleop_008",
+      "force_norm_max": 24.310803287543653,
+      "force_norm_mean": 2.8838386472947657,
+      "force_norm_p95": 16.623497492302715,
+      "num_steps": 352,
+      "torque_norm_p95": 0.8127887404316388
+    },
+    "20260701_131747_teleop_009": {
+      "action_range_norm": 0.9218177548046926,
+      "action_step_delta_mean": 0.0034429750187251924,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.12307692307692308,
+      "contact_onset_fraction_5n": 0.5679012345679012,
+      "duration_sim": 10.806000000051597,
+      "episode_id": "20260701_131747_teleop_009",
+      "force_norm_max": 14.147589345474708,
+      "force_norm_mean": 1.7472158991312747,
+      "force_norm_p95": 10.381325377174122,
+      "num_steps": 325,
+      "torque_norm_p95": 0.5146457080815706
+    },
+    "20260701_131843_teleop_011": {
+      "action_range_norm": 0.9277188669970082,
+      "action_step_delta_mean": 0.003940779952586027,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.1956521739130435,
+      "contact_onset_fraction_5n": 0.7636363636363637,
+      "duration_sim": 9.19000000004388,
+      "episode_id": "20260701_131843_teleop_011",
+      "force_norm_max": 9.096326141762592,
+      "force_norm_mean": 1.655835047334151,
+      "force_norm_p95": 8.422196827066593,
+      "num_steps": 276,
+      "torque_norm_p95": 0.5095279952571171
+    },
+    "20260701_131908_teleop_012": {
+      "action_range_norm": 0.9328140581451326,
+      "action_step_delta_mean": 0.004281773795510053,
+      "contact_fraction_20n": 0.07063197026022305,
+      "contact_fraction_5n": 0.11895910780669144,
+      "contact_onset_fraction_5n": 0.5,
+      "duration_sim": 8.937000000042673,
+      "episode_id": "20260701_131908_teleop_012",
+      "force_norm_max": 34.511659483058665,
+      "force_norm_mean": 3.2268420539338334,
+      "force_norm_p95": 24.67173723014341,
+      "num_steps": 269,
+      "torque_norm_p95": 1.150738816790145
+    },
+    "20260701_131932_teleop_013": {
+      "action_range_norm": 0.944292159534142,
+      "action_step_delta_mean": 0.0035922630238693666,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.2080745341614907,
+      "contact_onset_fraction_5n": 0.5482866043613707,
+      "duration_sim": 10.719000000051182,
+      "episode_id": "20260701_131932_teleop_013",
+      "force_norm_max": 17.977221647527358,
+      "force_norm_mean": 2.5195729379385807,
+      "force_norm_p95": 10.506144775377049,
+      "num_steps": 322,
+      "torque_norm_p95": 0.513328184145911
+    },
+    "20260701_132002_teleop_014": {
+      "action_range_norm": 0.9356315830802118,
+      "action_step_delta_mean": 0.004790525899091491,
+      "contact_fraction_20n": 0.09170305676855896,
+      "contact_fraction_5n": 0.31004366812227074,
+      "contact_onset_fraction_5n": 0.49122807017543857,
+      "duration_sim": 7.627000000036418,
+      "episode_id": "20260701_132002_teleop_014",
+      "force_norm_max": 37.10170541709539,
+      "force_norm_mean": 5.005800276597431,
+      "force_norm_p95": 28.355113458134184,
+      "num_steps": 229,
+      "torque_norm_p95": 1.2947400816778076
+    },
+    "20260701_132024_teleop_015": {
+      "action_range_norm": 0.9064516635450339,
+      "action_step_delta_mean": 0.004341338133001912,
+      "contact_fraction_20n": 0.0546218487394958,
+      "contact_fraction_5n": 0.23109243697478993,
+      "contact_onset_fraction_5n": 0.5443037974683544,
+      "duration_sim": 7.905000000037745,
+      "episode_id": "20260701_132024_teleop_015",
+      "force_norm_max": 44.21428533544696,
+      "force_norm_mean": 3.175224726303831,
+      "force_norm_p95": 21.00679975180705,
+      "num_steps": 238,
+      "torque_norm_p95": 0.9562718901657828
+    },
+    "20260701_132049_teleop_016": {
+      "action_range_norm": 0.9531393516935389,
+      "action_step_delta_mean": 0.0036406031083826393,
+      "contact_fraction_20n": 0.06325301204819277,
+      "contact_fraction_5n": 0.3493975903614458,
+      "contact_onset_fraction_5n": 0.4108761329305136,
+      "duration_sim": 11.040000000052714,
+      "episode_id": "20260701_132049_teleop_016",
+      "force_norm_max": 33.243799194090926,
+      "force_norm_mean": 4.850512907533894,
+      "force_norm_p95": 24.484252587429708,
+      "num_steps": 332,
+      "torque_norm_p95": 1.0506411302379917
+    },
+    "20260701_132122_teleop_017": {
+      "action_range_norm": 0.9209852096598279,
+      "action_step_delta_mean": 0.0035524197495556023,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.0924092409240924,
+      "contact_onset_fraction_5n": 0.5298013245033113,
+      "duration_sim": 10.100000000048226,
+      "episode_id": "20260701_132122_teleop_017",
+      "force_norm_max": 19.24999626914909,
+      "force_norm_mean": 1.5738954259455076,
+      "force_norm_p95": 10.6864700460547,
+      "num_steps": 303,
+      "torque_norm_p95": 0.5343178320131584
+    },
+    "20260701_132207_teleop_019": {
+      "action_range_norm": 0.9011023106157827,
+      "action_step_delta_mean": 0.0037293197405655187,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.04693140794223827,
+      "contact_onset_fraction_5n": 0.5797101449275363,
+      "duration_sim": 9.204000000043948,
+      "episode_id": "20260701_132207_teleop_019",
+      "force_norm_max": 8.892395060381864,
+      "force_norm_mean": 0.8684181495223675,
+      "force_norm_p95": 4.635429017687255,
+      "num_steps": 277,
+      "torque_norm_p95": 0.20027560488299634
+    },
+    "20260701_132232_teleop_020": {
+      "action_range_norm": 0.9390494164060434,
+      "action_step_delta_mean": 0.0035988331587976097,
+      "contact_fraction_20n": 0.10746268656716418,
+      "contact_fraction_5n": 0.191044776119403,
+      "contact_onset_fraction_5n": 0.47904191616766467,
+      "duration_sim": 11.166000000053316,
+      "episode_id": "20260701_132232_teleop_020",
+      "force_norm_max": 78.59709484673785,
+      "force_norm_mean": 5.8411798607931775,
+      "force_norm_p95": 34.454535708156214,
+      "num_steps": 335,
+      "torque_norm_p95": 1.766051479529833
+    },
+    "20260701_132326_teleop_022": {
+      "action_range_norm": 0.9333729472684424,
+      "action_step_delta_mean": 0.003136387396447099,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.2398921832884097,
+      "contact_onset_fraction_5n": 0.5243243243243243,
+      "duration_sim": 12.363000000059031,
+      "episode_id": "20260701_132326_teleop_022",
+      "force_norm_max": 16.150770458858645,
+      "force_norm_mean": 2.531737063333068,
+      "force_norm_p95": 12.633297301240631,
+      "num_steps": 371,
+      "torque_norm_p95": 0.672721904188448
+    },
+    "20260701_132400_teleop_023": {
+      "action_range_norm": 0.9195908793425607,
+      "action_step_delta_mean": 0.003969244073333638,
+      "contact_fraction_20n": 0.06927710843373494,
+      "contact_fraction_5n": 0.2891566265060241,
+      "contact_onset_fraction_5n": 0.4078549848942598,
+      "duration_sim": 11.060999999775277,
+      "episode_id": "20260701_132400_teleop_023",
+      "force_norm_max": 93.4280213206483,
+      "force_norm_mean": 5.950902764540071,
+      "force_norm_p95": 28.92803475548075,
+      "num_steps": 332,
+      "torque_norm_p95": 0.8589887118342702
+    },
+    "20260701_132431_teleop_024": {
+      "action_range_norm": 0.9561606451915221,
+      "action_step_delta_mean": 0.003662550935421123,
+      "contact_fraction_20n": 0.012779552715654952,
+      "contact_fraction_5n": 0.22364217252396165,
+      "contact_onset_fraction_5n": 0.5512820512820513,
+      "duration_sim": 10.413999999753742,
+      "episode_id": "20260701_132431_teleop_024",
+      "force_norm_max": 44.111364253450674,
+      "force_norm_mean": 2.7043625290531246,
+      "force_norm_p95": 11.30238826851366,
+      "num_steps": 313,
+      "torque_norm_p95": 0.4282759320617084
+    },
+    "20260701_132501_teleop_025": {
+      "action_range_norm": 0.9424756797080517,
+      "action_step_delta_mean": 0.003639970092901397,
+      "contact_fraction_20n": 0.037267080745341616,
+      "contact_fraction_5n": 0.12111801242236025,
+      "contact_onset_fraction_5n": 0.49221183800623053,
+      "duration_sim": 10.728999999746293,
+      "episode_id": "20260701_132501_teleop_025",
+      "force_norm_max": 49.4606906965494,
+      "force_norm_mean": 2.0719449172638678,
+      "force_norm_p95": 6.035813540280876,
+      "num_steps": 322,
+      "torque_norm_p95": 0.47135932676025954
+    },
+    "20260701_132627_teleop_030": {
+      "action_range_norm": 0.9114678752926563,
+      "action_step_delta_mean": 0.004217178606165653,
+      "contact_fraction_20n": 0.09063444108761329,
+      "contact_fraction_5n": 0.28700906344410876,
+      "contact_onset_fraction_5n": 0.3575757575757576,
+      "duration_sim": 11.028999999739199,
+      "episode_id": "20260701_132627_teleop_030",
+      "force_norm_max": 89.57603984726327,
+      "force_norm_mean": 8.179708094613131,
+      "force_norm_p95": 57.197123867241906,
+      "num_steps": 331,
+      "torque_norm_p95": 2.2193828962860787
+    },
+    "20260701_132701_teleop_031": {
+      "action_range_norm": 0.940410643531235,
+      "action_step_delta_mean": 0.0033359475098123283,
+      "contact_fraction_20n": 0.03773584905660377,
+      "contact_fraction_5n": 0.16172506738544473,
+      "contact_onset_fraction_5n": 0.5,
+      "duration_sim": 12.361999999707677,
+      "episode_id": "20260701_132701_teleop_031",
+      "force_norm_max": 60.99953331618069,
+      "force_norm_mean": 2.658088152394904,
+      "force_norm_p95": 7.7394844549732,
+      "num_steps": 371,
+      "torque_norm_p95": 0.5518026946865475
+    },
+    "20260701_132737_teleop_032": {
+      "action_range_norm": 0.9232176936970957,
+      "action_step_delta_mean": 0.004226637157070171,
+      "contact_fraction_20n": 0.0859375,
+      "contact_fraction_5n": 0.12890625,
+      "contact_onset_fraction_5n": 0.5686274509803921,
+      "duration_sim": 8.510999999798742,
+      "episode_id": "20260701_132737_teleop_032",
+      "force_norm_max": 55.781348203388255,
+      "force_norm_mean": 4.555832847165055,
+      "force_norm_p95": 37.6226273944056,
+      "num_steps": 256,
+      "torque_norm_p95": 1.6950680359519028
+    },
+    "20260701_132801_teleop_033": {
+      "action_range_norm": 0.9116792929227314,
+      "action_step_delta_mean": 0.003804123360889485,
+      "contact_fraction_20n": 0.06462585034013606,
+      "contact_fraction_5n": 0.17006802721088435,
+      "contact_onset_fraction_5n": 0.4061433447098976,
+      "duration_sim": 9.789999999768497,
+      "episode_id": "20260701_132801_teleop_033",
+      "force_norm_max": 85.1840311710658,
+      "force_norm_mean": 5.000798431268538,
+      "force_norm_p95": 33.45070279397279,
+      "num_steps": 294,
+      "torque_norm_p95": 1.022771337063081
+    },
+    "20260701_132846_teleop_035": {
+      "action_range_norm": 0.911322194002976,
+      "action_step_delta_mean": 0.003503365557846744,
+      "contact_fraction_20n": 0.0032679738562091504,
+      "contact_fraction_5n": 0.08823529411764706,
+      "contact_onset_fraction_5n": 0.6131147540983607,
+      "duration_sim": 10.176999999759346,
+      "episode_id": "20260701_132846_teleop_035",
+      "force_norm_max": 21.894792509948374,
+      "force_norm_mean": 1.168908146790381,
+      "force_norm_p95": 7.331881477358259,
+      "num_steps": 306,
+      "torque_norm_p95": 0.27779922396577095
+    },
+    "20260701_132913_teleop_036": {
+      "action_range_norm": 0.9181354398239,
+      "action_step_delta_mean": 0.0031591981292904752,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.12429378531073447,
+      "contact_onset_fraction_5n": 0.6628895184135978,
+      "duration_sim": 11.782999999721369,
+      "episode_id": "20260701_132913_teleop_036",
+      "force_norm_max": 17.5795812513387,
+      "force_norm_mean": 1.9112597133541454,
+      "force_norm_p95": 14.26909213588719,
+      "num_steps": 354,
+      "torque_norm_p95": 0.7519875861282876
+    },
+    "20260701_132955_teleop_037": {
+      "action_range_norm": 0.9367774316298861,
+      "action_step_delta_mean": 0.004111030017579442,
+      "contact_fraction_20n": 0.0037174721189591076,
+      "contact_fraction_5n": 0.19330855018587362,
+      "contact_onset_fraction_5n": 0.7201492537313433,
+      "duration_sim": 8.965999999787982,
+      "episode_id": "20260701_132955_teleop_037",
+      "force_norm_max": 22.98842172556392,
+      "force_norm_mean": 1.8192637808610066,
+      "force_norm_p95": 9.432607805750939,
+      "num_steps": 269,
+      "torque_norm_p95": 0.5021685022565627
+    },
+    "20260701_133022_teleop_038": {
+      "action_range_norm": 0.9365011241701339,
+      "action_step_delta_mean": 0.0046215224473955775,
+      "contact_fraction_20n": 0.06639004149377593,
+      "contact_fraction_5n": 0.23651452282157676,
+      "contact_onset_fraction_5n": 0.5,
+      "duration_sim": 8.008999999810612,
+      "episode_id": "20260701_133022_teleop_038",
+      "force_norm_max": 43.28889638920089,
+      "force_norm_mean": 4.272077643242264,
+      "force_norm_p95": 24.599950158441036,
+      "num_steps": 241,
+      "torque_norm_p95": 1.1350931566700497
+    },
+    "20260701_133046_teleop_039": {
+      "action_range_norm": 0.9491181246702726,
+      "action_step_delta_mean": 0.004060931032254367,
+      "contact_fraction_20n": 0.021352313167259787,
+      "contact_fraction_5n": 0.2669039145907473,
+      "contact_onset_fraction_5n": 0.6464285714285715,
+      "duration_sim": 9.36399999977857,
+      "episode_id": "20260701_133046_teleop_039",
+      "force_norm_max": 57.7434697696186,
+      "force_norm_mean": 3.757401678029049,
+      "force_norm_p95": 17.71576899715988,
+      "num_steps": 281,
+      "torque_norm_p95": 0.841048856315401
+    },
+    "20260701_133119_teleop_040": {
+      "action_range_norm": 0.9257531307953787,
+      "action_step_delta_mean": 0.0037933007645511727,
+      "contact_fraction_20n": 0.034722222222222224,
+      "contact_fraction_5n": 0.2569444444444444,
+      "contact_onset_fraction_5n": 0.5365853658536586,
+      "duration_sim": 9.596999999773061,
+      "episode_id": "20260701_133119_teleop_040",
+      "force_norm_max": 23.81049342966422,
+      "force_norm_mean": 2.780995843482143,
+      "force_norm_p95": 13.959444307230026,
+      "num_steps": 288,
+      "torque_norm_p95": 0.6802058592633483
+    },
+    "20260701_133206_teleop_042": {
+      "action_range_norm": 0.9116385588953807,
+      "action_step_delta_mean": 0.003599599282241458,
+      "contact_fraction_20n": 0.033112582781456956,
+      "contact_fraction_5n": 0.16225165562913907,
+      "contact_onset_fraction_5n": 0.4950166112956811,
+      "duration_sim": 10.066999999761947,
+      "episode_id": "20260701_133206_teleop_042",
+      "force_norm_max": 35.02740213546352,
+      "force_norm_mean": 2.951928512565826,
+      "force_norm_p95": 17.85750701787194,
+      "num_steps": 302,
+      "torque_norm_p95": 0.6206644833072014
+    },
+    "20260701_133237_teleop_043": {
+      "action_range_norm": 0.9183023855932982,
+      "action_step_delta_mean": 0.004339127225290989,
+      "contact_fraction_20n": 0.06779661016949153,
+      "contact_fraction_5n": 0.28135593220338984,
+      "contact_onset_fraction_5n": 0.42517006802721086,
+      "duration_sim": 9.831999999767504,
+      "episode_id": "20260701_133237_teleop_043",
+      "force_norm_max": 98.32968861110872,
+      "force_norm_mean": 6.402157470817248,
+      "force_norm_p95": 46.19341985239311,
+      "num_steps": 295,
+      "torque_norm_p95": 1.8848721138203663
+    },
+    "20260701_133312_teleop_044": {
+      "action_range_norm": 0.925406592983053,
+      "action_step_delta_mean": 0.0040679598315120245,
+      "contact_fraction_20n": 0.07534246575342465,
+      "contact_fraction_5n": 0.1678082191780822,
+      "contact_onset_fraction_5n": 0.47079037800687284,
+      "duration_sim": 9.709999999770389,
+      "episode_id": "20260701_133312_teleop_044",
+      "force_norm_max": 48.64073438436193,
+      "force_norm_mean": 4.047155326478335,
+      "force_norm_p95": 22.6993587679674,
+      "num_steps": 292,
+      "torque_norm_p95": 1.0405780033780438
+    },
+    "20260701_133401_teleop_046": {
+      "action_range_norm": 0.9436052090266484,
+      "action_step_delta_mean": 0.0035557710694233955,
+      "contact_fraction_20n": 0.04559270516717325,
+      "contact_fraction_5n": 0.18541033434650456,
+      "contact_onset_fraction_5n": 0.49390243902439024,
+      "duration_sim": 10.963999999740736,
+      "episode_id": "20260701_133401_teleop_046",
+      "force_norm_max": 51.064282307821095,
+      "force_norm_mean": 2.971408927355195,
+      "force_norm_p95": 13.769938367228109,
+      "num_steps": 329,
+      "torque_norm_p95": 0.7318002844082596
+    },
+    "20260701_133431_teleop_047": {
+      "action_range_norm": 0.8995484884311304,
+      "action_step_delta_mean": 0.004042766018847843,
+      "contact_fraction_20n": 0.0528169014084507,
+      "contact_fraction_5n": 0.20774647887323944,
+      "contact_onset_fraction_5n": 0.3992932862190813,
+      "duration_sim": 9.436999999776901,
+      "episode_id": "20260701_133431_teleop_047",
+      "force_norm_max": 91.02031204918369,
+      "force_norm_mean": 5.631200850082435,
+      "force_norm_p95": 29.400654331653843,
+      "num_steps": 284,
+      "torque_norm_p95": 1.177051393634684
+    },
+    "20260701_133458_teleop_048": {
+      "action_range_norm": 0.9376615580109519,
+      "action_step_delta_mean": 0.004199765509451766,
+      "contact_fraction_20n": 0.0078125,
+      "contact_fraction_5n": 0.18359375,
+      "contact_onset_fraction_5n": 0.5843137254901961,
+      "duration_sim": 8.517999999798576,
+      "episode_id": "20260701_133458_teleop_048",
+      "force_norm_max": 29.008417915066893,
+      "force_norm_mean": 1.9339193141936228,
+      "force_norm_p95": 11.107226465537021,
+      "num_steps": 256,
+      "torque_norm_p95": 0.5544469527867171
+    },
+    "20260701_133522_teleop_049": {
+      "action_range_norm": 0.9384071281479617,
+      "action_step_delta_mean": 0.0036951121582767085,
+      "contact_fraction_20n": 0.07374631268436578,
+      "contact_fraction_5n": 0.25073746312684364,
+      "contact_onset_fraction_5n": 0.5621301775147929,
+      "duration_sim": 11.2699999997335,
+      "episode_id": "20260701_133522_teleop_049",
+      "force_norm_max": 43.33403275766229,
+      "force_norm_mean": 4.255349199402124,
+      "force_norm_p95": 26.422216023512668,
+      "num_steps": 339,
+      "torque_norm_p95": 1.3931298386677198
+    },
+    "20260701_133623_teleop_051": {
+      "action_range_norm": 0.911372573828761,
+      "action_step_delta_mean": 0.0033211477631890246,
+      "contact_fraction_20n": 0.10584958217270195,
+      "contact_fraction_5n": 0.298050139275766,
+      "contact_onset_fraction_5n": 0.4022346368715084,
+      "duration_sim": 11.943999999717562,
+      "episode_id": "20260701_133623_teleop_051",
+      "force_norm_max": 86.83345527052612,
+      "force_norm_mean": 7.2401092943773016,
+      "force_norm_p95": 47.7839334079433,
+      "num_steps": 359,
+      "torque_norm_p95": 2.035926979317644
+    },
+    "20260701_133656_teleop_052": {
+      "action_range_norm": 0.9122849858972074,
+      "action_step_delta_mean": 0.004783010042366009,
+      "contact_fraction_20n": 0.09090909090909091,
+      "contact_fraction_5n": 0.15019762845849802,
+      "contact_onset_fraction_5n": 0.43253968253968256,
+      "duration_sim": 8.421999999800846,
+      "episode_id": "20260701_133656_teleop_052",
+      "force_norm_max": 100.80913810075482,
+      "force_norm_mean": 7.599820489109539,
+      "force_norm_p95": 69.18975156344757,
+      "num_steps": 253,
+      "torque_norm_p95": 2.397448704198225
+    },
+    "20260701_133741_teleop_054": {
+      "action_range_norm": 0.9238724486552683,
+      "action_step_delta_mean": 0.003912108050344981,
+      "contact_fraction_20n": 0.010830324909747292,
+      "contact_fraction_5n": 0.1444043321299639,
+      "contact_onset_fraction_5n": 0.6630434782608695,
+      "duration_sim": 9.227999999781787,
+      "episode_id": "20260701_133741_teleop_054",
+      "force_norm_max": 39.420091948255816,
+      "force_norm_mean": 1.651789288802282,
+      "force_norm_p95": 6.391346456767166,
+      "num_steps": 277,
+      "torque_norm_p95": 0.2467839254912556
+    },
+    "20260701_133807_teleop_055": {
+      "action_range_norm": 0.9040634119201512,
+      "action_step_delta_mean": 0.0034674447987704344,
+      "contact_fraction_20n": 0.032448377581120944,
+      "contact_fraction_5n": 0.11799410029498525,
+      "contact_onset_fraction_5n": 0.46449704142011833,
+      "duration_sim": 11.28099999973324,
+      "episode_id": "20260701_133807_teleop_055",
+      "force_norm_max": 54.60265574090898,
+      "force_norm_mean": 2.323343664184929,
+      "force_norm_p95": 9.025521845863285,
+      "num_steps": 339,
+      "torque_norm_p95": 0.3908779590041703
+    },
+    "20260701_133841_teleop_056": {
+      "action_range_norm": 0.9178016547315665,
+      "action_step_delta_mean": 0.0036604861953783963,
+      "contact_fraction_20n": 0.02413793103448276,
+      "contact_fraction_5n": 0.19310344827586207,
+      "contact_onset_fraction_5n": 0.5605536332179931,
+      "duration_sim": 9.649999999771808,
+      "episode_id": "20260701_133841_teleop_056",
+      "force_norm_max": 25.268312246455057,
+      "force_norm_mean": 3.1415236182923945,
+      "force_norm_p95": 18.078072485478373,
+      "num_steps": 290,
+      "torque_norm_p95": 0.7835502817247192
+    },
+    "20260701_133911_teleop_057": {
+      "action_range_norm": 0.9339004720300651,
+      "action_step_delta_mean": 0.004590035031148021,
+      "contact_fraction_20n": 0.02074688796680498,
+      "contact_fraction_5n": 0.13278008298755187,
+      "contact_onset_fraction_5n": 0.5791666666666667,
+      "duration_sim": 8.027999999810163,
+      "episode_id": "20260701_133911_teleop_057",
+      "force_norm_max": 44.885151338458684,
+      "force_norm_mean": 2.3376899135664027,
+      "force_norm_p95": 13.449497179467022,
+      "num_steps": 241,
+      "torque_norm_p95": 0.6016813143433587
+    },
+    "20260701_133955_teleop_059": {
+      "action_range_norm": 0.9227387901177446,
+      "action_step_delta_mean": 0.004084546915966239,
+      "contact_fraction_20n": 0.030418250950570342,
+      "contact_fraction_5n": 0.12167300380228137,
+      "contact_onset_fraction_5n": 0.5419847328244275,
+      "duration_sim": 8.761999999792806,
+      "episode_id": "20260701_133955_teleop_059",
+      "force_norm_max": 30.57656468111399,
+      "force_norm_mean": 2.3756984298617483,
+      "force_norm_p95": 14.056808501160969,
+      "num_steps": 263,
+      "torque_norm_p95": 0.6864414005786402
+    },
+    "20260701_134021_teleop_060": {
+      "action_range_norm": 0.9327607872691789,
+      "action_step_delta_mean": 0.0038296248674006615,
+      "contact_fraction_20n": 0.02120141342756184,
+      "contact_fraction_5n": 0.31095406360424027,
+      "contact_onset_fraction_5n": 0.5567375886524822,
+      "duration_sim": 9.402999999777649,
+      "episode_id": "20260701_134021_teleop_060",
+      "force_norm_max": 23.70683611797522,
+      "force_norm_mean": 3.4620881424795757,
+      "force_norm_p95": 15.143813488629936,
+      "num_steps": 283,
+      "torque_norm_p95": 0.754996646888398
+    },
+    "20260701_134120_teleop_062": {
+      "action_range_norm": 0.9090961229135639,
+      "action_step_delta_mean": 0.0030740821120019764,
+      "contact_fraction_20n": 0.031161473087818695,
+      "contact_fraction_5n": 0.1643059490084986,
+      "contact_onset_fraction_5n": 0.5056818181818182,
+      "duration_sim": 11.754999999722031,
+      "episode_id": "20260701_134120_teleop_062",
+      "force_norm_max": 24.643878479257346,
+      "force_norm_mean": 2.761999594946087,
+      "force_norm_p95": 15.224557585913317,
+      "num_steps": 353,
+      "torque_norm_p95": 0.7579169093788334
+    },
+    "20260701_134157_teleop_063": {
+      "action_range_norm": 0.9388053096484607,
+      "action_step_delta_mean": 0.004554488537447199,
+      "contact_fraction_20n": 0.06451612903225806,
+      "contact_fraction_5n": 0.1827956989247312,
+      "contact_onset_fraction_5n": 0.45323741007194246,
+      "duration_sim": 9.287999999780368,
+      "episode_id": "20260701_134157_teleop_063",
+      "force_norm_max": 95.32938447833581,
+      "force_norm_mean": 5.58344175653228,
+      "force_norm_p95": 46.36320371608255,
+      "num_steps": 279,
+      "torque_norm_p95": 1.9446304646014212
+    },
+    "20260701_134222_teleop_064": {
+      "action_range_norm": 0.9329930478231879,
+      "action_step_delta_mean": 0.003772722695417458,
+      "contact_fraction_20n": 0.0035460992907801418,
+      "contact_fraction_5n": 0.19148936170212766,
+      "contact_onset_fraction_5n": 0.708185053380783,
+      "duration_sim": 9.368999999778453,
+      "episode_id": "20260701_134222_teleop_064",
+      "force_norm_max": 20.274455716605846,
+      "force_norm_mean": 1.9269139282216665,
+      "force_norm_p95": 8.415684829809347,
+      "num_steps": 282,
+      "torque_norm_p95": 0.43524152828215285
+    },
+    "20260701_134249_teleop_065": {
+      "action_range_norm": 0.9279114948296766,
+      "action_step_delta_mean": 0.0038412085917560322,
+      "contact_fraction_20n": 0.06159420289855073,
+      "contact_fraction_5n": 0.34782608695652173,
+      "contact_onset_fraction_5n": 0.5672727272727273,
+      "duration_sim": 9.175999999783016,
+      "episode_id": "20260701_134249_teleop_065",
+      "force_norm_max": 29.35859502707656,
+      "force_norm_mean": 4.202427180494527,
+      "force_norm_p95": 22.297499287649142,
+      "num_steps": 276,
+      "torque_norm_p95": 1.029006791316659
+    },
+    "20260701_134330_teleop_067": {
+      "action_range_norm": 0.9191700937897761,
+      "action_step_delta_mean": 0.004506369640566694,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.07758620689655173,
+      "contact_onset_fraction_5n": 0.7012987012987013,
+      "duration_sim": 7.7149999998175645,
+      "episode_id": "20260701_134330_teleop_067",
+      "force_norm_max": 12.706954136711595,
+      "force_norm_mean": 1.2894014724399547,
+      "force_norm_p95": 8.522457591931209,
+      "num_steps": 232,
+      "torque_norm_p95": 0.29624377324865087
+    },
+    "20260701_134359_teleop_068": {
+      "action_range_norm": 0.9086477285800428,
+      "action_step_delta_mean": 0.0034235098450451206,
+      "contact_fraction_20n": 0.037267080745341616,
+      "contact_fraction_5n": 0.17701863354037267,
+      "contact_onset_fraction_5n": 0.49221183800623053,
+      "duration_sim": 10.727999999746316,
+      "episode_id": "20260701_134359_teleop_068",
+      "force_norm_max": 40.4156022114277,
+      "force_norm_mean": 3.065317543035712,
+      "force_norm_p95": 15.31707957113844,
+      "num_steps": 322,
+      "torque_norm_p95": 0.7396085406352345
+    },
+    "20260701_134429_teleop_069": {
+      "action_range_norm": 0.9457059014377417,
+      "action_step_delta_mean": 0.0037732351727595933,
+      "contact_fraction_20n": 0.003484320557491289,
+      "contact_fraction_5n": 0.1672473867595819,
+      "contact_onset_fraction_5n": 0.7307692307692307,
+      "duration_sim": 9.559999999773936,
+      "episode_id": "20260701_134429_teleop_069",
+      "force_norm_max": 23.605753567645607,
+      "force_norm_mean": 1.8184476066805837,
+      "force_norm_p95": 8.235209069461353,
+      "num_steps": 287,
+      "torque_norm_p95": 0.62481717358055
+    },
+    "20260701_134456_teleop_070": {
+      "action_range_norm": 0.9429634494341456,
+      "action_step_delta_mean": 0.0036066917223519816,
+      "contact_fraction_20n": 0.033846153846153845,
+      "contact_fraction_5n": 0.23692307692307693,
+      "contact_onset_fraction_5n": 0.4537037037037037,
+      "duration_sim": 10.80399999974452,
+      "episode_id": "20260701_134456_teleop_070",
+      "force_norm_max": 31.346982196171954,
+      "force_norm_mean": 2.7897701201655427,
+      "force_norm_p95": 9.516536672013308,
+      "num_steps": 325,
+      "torque_norm_p95": 0.4733147374426815
+    },
+    "20260701_134545_teleop_072": {
+      "action_range_norm": 0.9460158294480839,
+      "action_step_delta_mean": 0.003987045449706525,
+      "contact_fraction_20n": 0.0462046204620462,
+      "contact_fraction_5n": 0.1485148514851485,
+      "contact_onset_fraction_5n": 0.45364238410596025,
+      "duration_sim": 10.094999999761285,
+      "episode_id": "20260701_134545_teleop_072",
+      "force_norm_max": 60.63025075280874,
+      "force_norm_mean": 2.928823497263443,
+      "force_norm_p95": 10.980983630648714,
+      "num_steps": 303,
+      "torque_norm_p95": 0.689732480226755
+    },
+    "20260701_134612_teleop_073": {
+      "action_range_norm": 0.9224673966375694,
+      "action_step_delta_mean": 0.004850701850994201,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.014084507042253521,
+      "contact_onset_fraction_5n": 0.8679245283018868,
+      "duration_sim": 7.095999999832202,
+      "episode_id": "20260701_134612_teleop_073",
+      "force_norm_max": 7.963254636466287,
+      "force_norm_mean": 0.6619934228727767,
+      "force_norm_p95": 4.529262791174935,
+      "num_steps": 213,
+      "torque_norm_p95": 0.3321483222892114
+    },
+    "20260701_134633_teleop_074": {
+      "action_range_norm": 0.9223275861830132,
+      "action_step_delta_mean": 0.0036978000271572276,
+      "contact_fraction_20n": 0.05846153846153846,
+      "contact_fraction_5n": 0.24923076923076923,
+      "contact_onset_fraction_5n": 0.4537037037037037,
+      "duration_sim": 10.820999999744117,
+      "episode_id": "20260701_134633_teleop_074",
+      "force_norm_max": 83.63575082404132,
+      "force_norm_mean": 5.463441764451385,
+      "force_norm_p95": 31.494169010805813,
+      "num_steps": 325,
+      "torque_norm_p95": 1.3173406718483502
+    },
+    "20260701_134704_teleop_075": {
+      "action_range_norm": 0.9285423580605413,
+      "action_step_delta_mean": 0.003281079913145735,
+      "contact_fraction_20n": 0.043478260869565216,
+      "contact_fraction_5n": 0.09510869565217392,
+      "contact_onset_fraction_5n": 0.5340599455040872,
+      "duration_sim": 12.246999999710397,
+      "episode_id": "20260701_134704_teleop_075",
+      "force_norm_max": 70.87772688110297,
+      "force_norm_mean": 2.901073116136574,
+      "force_norm_p95": 12.92116458114594,
+      "num_steps": 368,
+      "torque_norm_p95": 0.43872890596984926
+    },
+    "20260701_134737_teleop_076": {
+      "action_range_norm": 0.9312703160944625,
+      "action_step_delta_mean": 0.002836758216118964,
+      "contact_fraction_20n": 0.023980815347721823,
+      "contact_fraction_5n": 0.10071942446043165,
+      "contact_onset_fraction_5n": 0.6105769230769231,
+      "duration_sim": 13.867999999672065,
+      "episode_id": "20260701_134737_teleop_076",
+      "force_norm_max": 59.37753600135839,
+      "force_norm_mean": 2.150697724375249,
+      "force_norm_p95": 9.374556946775728,
+      "num_steps": 417,
+      "torque_norm_p95": 0.32909974749347487
+    },
+    "20260701_134815_teleop_077": {
+      "action_range_norm": 0.9293179386019326,
+      "action_step_delta_mean": 0.0038604325539894255,
+      "contact_fraction_20n": 0.021739130434782608,
+      "contact_fraction_5n": 0.2246376811594203,
+      "contact_onset_fraction_5n": 0.509090909090909,
+      "duration_sim": 9.17499999978304,
+      "episode_id": "20260701_134815_teleop_077",
+      "force_norm_max": 38.3868757455184,
+      "force_norm_mean": 2.962054959784126,
+      "force_norm_p95": 16.419784078527247,
+      "num_steps": 276,
+      "torque_norm_p95": 0.8234191904254237
+    },
+    "20260701_134845_teleop_078": {
+      "action_range_norm": 0.9396710912484397,
+      "action_step_delta_mean": 0.003999296110382318,
+      "contact_fraction_20n": 0.06761565836298933,
+      "contact_fraction_5n": 0.14590747330960854,
+      "contact_onset_fraction_5n": 0.5714285714285714,
+      "duration_sim": 9.351999999778855,
+      "episode_id": "20260701_134845_teleop_078",
+      "force_norm_max": 35.90608423402812,
+      "force_norm_mean": 3.319081841700582,
+      "force_norm_p95": 24.8536970449913,
+      "num_steps": 281,
+      "torque_norm_p95": 1.2017364192916609
+    },
+    "20260701_134911_teleop_079": {
+      "action_range_norm": 0.9244703646573512,
+      "action_step_delta_mean": 0.00345902574957253,
+      "contact_fraction_20n": 0.00980392156862745,
+      "contact_fraction_5n": 0.17973856209150327,
+      "contact_onset_fraction_5n": 0.5573770491803278,
+      "duration_sim": 10.196999999758873,
+      "episode_id": "20260701_134911_teleop_079",
+      "force_norm_max": 35.3876256907162,
+      "force_norm_mean": 1.969890275219707,
+      "force_norm_p95": 10.935986965252418,
+      "num_steps": 306,
+      "torque_norm_p95": 0.5127134928687374
+    },
+    "20260701_135242_teleop_001": {
+      "action_range_norm": 0.920787081779645,
+      "action_step_delta_mean": 0.00370889927021306,
+      "contact_fraction_20n": 0.03691275167785235,
+      "contact_fraction_5n": 0.08053691275167785,
+      "contact_onset_fraction_5n": 0.5050505050505051,
+      "duration_sim": 9.902000000012102,
+      "episode_id": "20260701_135242_teleop_001",
+      "force_norm_max": 41.79273311840001,
+      "force_norm_mean": 2.1215214798554083,
+      "force_norm_p95": 8.916979635737595,
+      "num_steps": 298,
+      "torque_norm_p95": 0.4562073290197227
+    },
+    "20260701_135311_teleop_002": {
+      "action_range_norm": 0.9335848574892536,
+      "action_step_delta_mean": 0.0032479584084203726,
+      "contact_fraction_20n": 0.005714285714285714,
+      "contact_fraction_5n": 0.06857142857142857,
+      "contact_onset_fraction_5n": 0.6217765042979942,
+      "duration_sim": 11.649999999979382,
+      "episode_id": "20260701_135311_teleop_002",
+      "force_norm_max": 22.16236323744668,
+      "force_norm_mean": 1.200529170791898,
+      "force_norm_p95": 8.693409835834462,
+      "num_steps": 350,
+      "torque_norm_p95": 0.41261100136814904
+    },
+    "20260701_135343_teleop_003": {
+      "action_range_norm": 0.944305125601669,
+      "action_step_delta_mean": 0.0031318292031395347,
+      "contact_fraction_20n": 0.04076086956521739,
+      "contact_fraction_5n": 0.2391304347826087,
+      "contact_onset_fraction_5n": 0.5149863760217984,
+      "duration_sim": 12.235999999971483,
+      "episode_id": "20260701_135343_teleop_003",
+      "force_norm_max": 36.326770615183634,
+      "force_norm_mean": 3.1020036673524265,
+      "force_norm_p95": 11.398266718931122,
+      "num_steps": 368,
+      "torque_norm_p95": 0.6366425329123336
+    },
+    "20260701_135418_teleop_004": {
+      "action_range_norm": 0.9311592981231754,
+      "action_step_delta_mean": 0.003493842484812145,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.3277591973244147,
+      "contact_onset_fraction_5n": 0.5838926174496645,
+      "duration_sim": 9.953999999997514,
+      "episode_id": "20260701_135418_teleop_004",
+      "force_norm_max": 18.744302908496937,
+      "force_norm_mean": 3.7429332048803654,
+      "force_norm_p95": 14.922887076384267,
+      "num_steps": 299,
+      "torque_norm_p95": 0.6178353407064691
+    },
+    "20260701_135447_teleop_005": {
+      "action_range_norm": 0.9247898237543649,
+      "action_step_delta_mean": 0.003256730026491308,
+      "contact_fraction_20n": 0.08405797101449275,
+      "contact_fraction_5n": 0.2463768115942029,
+      "contact_onset_fraction_5n": 0.48255813953488375,
+      "duration_sim": 11.48300000005483,
+      "episode_id": "20260701_135447_teleop_005",
+      "force_norm_max": 71.86358657264782,
+      "force_norm_mean": 5.331556660166012,
+      "force_norm_p95": 38.8521455687181,
+      "num_steps": 345,
+      "torque_norm_p95": 1.73254373325582
+    },
+    "20260701_135534_teleop_007": {
+      "action_range_norm": 0.8991987613797944,
+      "action_step_delta_mean": 0.003991572199393192,
+      "contact_fraction_20n": 0.05782312925170068,
+      "contact_fraction_5n": 0.19047619047619047,
+      "contact_onset_fraction_5n": 0.3993174061433447,
+      "duration_sim": 9.784000000046717,
+      "episode_id": "20260701_135534_teleop_007",
+      "force_norm_max": 90.61929215867039,
+      "force_norm_mean": 5.8021981608492545,
+      "force_norm_p95": 33.30211470485338,
+      "num_steps": 294,
+      "torque_norm_p95": 1.4355672424862387
+    },
+    "20260701_135601_teleop_008": {
+      "action_range_norm": 0.9301641386301248,
+      "action_step_delta_mean": 0.003867784328131099,
+      "contact_fraction_20n": 0.034055727554179564,
+      "contact_fraction_5n": 0.1609907120743034,
+      "contact_onset_fraction_5n": 0.484472049689441,
+      "duration_sim": 10.735000000051258,
+      "episode_id": "20260701_135601_teleop_008",
+      "force_norm_max": 56.65707490507834,
+      "force_norm_mean": 2.819652150822018,
+      "force_norm_p95": 14.549086139030537,
+      "num_steps": 323,
+      "torque_norm_p95": 0.45634515666537084
+    },
+    "20260701_135635_teleop_009": {
+      "action_range_norm": 0.936646972800695,
+      "action_step_delta_mean": 0.0035331902571571184,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.09615384615384616,
+      "contact_onset_fraction_5n": 0.7363344051446945,
+      "duration_sim": 10.388000000049601,
+      "episode_id": "20260701_135635_teleop_009",
+      "force_norm_max": 7.886389759637038,
+      "force_norm_mean": 1.034538979230318,
+      "force_norm_p95": 7.111284669042564,
+      "num_steps": 312,
+      "torque_norm_p95": 0.5521102884180127
+    },
+    "20260701_135758_teleop_012": {
+      "action_range_norm": 0.9319649206433022,
+      "action_step_delta_mean": 0.0031841615541255593,
+      "contact_fraction_20n": 0.036619718309859155,
+      "contact_fraction_5n": 0.2056338028169014,
+      "contact_onset_fraction_5n": 0.536723163841808,
+      "duration_sim": 11.810000000056391,
+      "episode_id": "20260701_135758_teleop_012",
+      "force_norm_max": 34.80486137988053,
+      "force_norm_mean": 2.5817706324284058,
+      "force_norm_p95": 16.707098875854964,
+      "num_steps": 355,
+      "torque_norm_p95": 0.4571029014365723
+    },
+    "20260701_135836_teleop_013": {
+      "action_range_norm": 0.93310888222315,
+      "action_step_delta_mean": 0.003907600808670274,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.1827956989247312,
+      "contact_onset_fraction_5n": 0.5323741007194245,
+      "duration_sim": 9.292000000044368,
+      "episode_id": "20260701_135836_teleop_013",
+      "force_norm_max": 18.88107312468359,
+      "force_norm_mean": 1.847997022661493,
+      "force_norm_p95": 12.412485248874695,
+      "num_steps": 279,
+      "torque_norm_p95": 0.5741694646600163
+    },
+    "20260701_135903_teleop_014": {
+      "action_range_norm": 0.9417217995528867,
+      "action_step_delta_mean": 0.004868136714039663,
+      "contact_fraction_20n": 0.013574660633484163,
+      "contact_fraction_5n": 0.22624434389140272,
+      "contact_onset_fraction_5n": 0.5818181818181818,
+      "duration_sim": 7.342000000035057,
+      "episode_id": "20260701_135903_teleop_014",
+      "force_norm_max": 30.420585064463012,
+      "force_norm_mean": 2.57831368527488,
+      "force_norm_p95": 14.685909073187876,
+      "num_steps": 221,
+      "torque_norm_p95": 0.4725863741787598
+    },
+    "20260701_135925_teleop_015": {
+      "action_range_norm": 0.950989864797386,
+      "action_step_delta_mean": 0.003758125660147192,
+      "contact_fraction_20n": 0.04416403785488959,
+      "contact_fraction_5n": 0.19558359621451105,
+      "contact_onset_fraction_5n": 0.5379746835443038,
+      "duration_sim": 10.538000000050317,
+      "episode_id": "20260701_135925_teleop_015",
+      "force_norm_max": 57.39026106422488,
+      "force_norm_mean": 3.21576075901261,
+      "force_norm_p95": 13.94509508340218,
+      "num_steps": 317,
+      "torque_norm_p95": 0.6915476498378901
+    },
+    "20260701_135955_teleop_016": {
+      "action_range_norm": 0.9233219525357418,
+      "action_step_delta_mean": 0.003449008642306385,
+      "contact_fraction_20n": 0.01834862385321101,
+      "contact_fraction_5n": 0.1559633027522936,
+      "contact_onset_fraction_5n": 0.50920245398773,
+      "duration_sim": 10.88000000005195,
+      "episode_id": "20260701_135955_teleop_016",
+      "force_norm_max": 22.660533576742637,
+      "force_norm_mean": 2.6590303215567133,
+      "force_norm_p95": 13.377842327627127,
+      "num_steps": 327,
+      "torque_norm_p95": 0.6912884774288899
+    },
+    "20260701_140026_teleop_017": {
+      "action_range_norm": 0.9515294483133843,
+      "action_step_delta_mean": 0.0033927977932281415,
+      "contact_fraction_20n": 0.011627906976744186,
+      "contact_fraction_5n": 0.1686046511627907,
+      "contact_onset_fraction_5n": 0.7026239067055393,
+      "duration_sim": 11.445000000054648,
+      "episode_id": "20260701_140026_teleop_017",
+      "force_norm_max": 21.01716354875582,
+      "force_norm_mean": 1.940480513371345,
+      "force_norm_p95": 11.946635588383762,
+      "num_steps": 344,
+      "torque_norm_p95": 0.6444175654518859
+    },
+    "20260701_140110_teleop_019": {
+      "action_range_norm": 0.9146543718487065,
+      "action_step_delta_mean": 0.003737019247115501,
+      "contact_fraction_20n": 0.07871720116618076,
+      "contact_fraction_5n": 0.09037900874635568,
+      "contact_onset_fraction_5n": 0.4093567251461988,
+      "duration_sim": 11.424000000054548,
+      "episode_id": "20260701_140110_teleop_019",
+      "force_norm_max": 70.10932963899374,
+      "force_norm_mean": 3.9385665488429864,
+      "force_norm_p95": 39.07386975005967,
+      "num_steps": 343,
+      "torque_norm_p95": 1.6220605686332068
+    },
+    "20260701_140141_teleop_020": {
+      "action_range_norm": 0.9177766887148108,
+      "action_step_delta_mean": 0.0037235561757856476,
+      "contact_fraction_20n": 0.035842293906810034,
+      "contact_fraction_5n": 0.25089605734767023,
+      "contact_onset_fraction_5n": 0.7194244604316546,
+      "duration_sim": 9.281000000044315,
+      "episode_id": "20260701_140141_teleop_020",
+      "force_norm_max": 24.384809801666034,
+      "force_norm_mean": 3.1065552753561145,
+      "force_norm_p95": 18.61572892322716,
+      "num_steps": 279,
+      "torque_norm_p95": 0.5988398320651456
+    },
+    "20260701_140223_teleop_022": {
+      "action_range_norm": 0.9187464740715368,
+      "action_step_delta_mean": 0.003329010408648518,
+      "contact_fraction_20n": 0.012121212121212121,
+      "contact_fraction_5n": 0.09696969696969697,
+      "contact_onset_fraction_5n": 0.6443768996960486,
+      "duration_sim": 10.981999999803378,
+      "episode_id": "20260701_140223_teleop_022",
+      "force_norm_max": 35.65263027447122,
+      "force_norm_mean": 1.883997430255361,
+      "force_norm_p95": 11.612633951937504,
+      "num_steps": 330,
+      "torque_norm_p95": 0.5868833160784057
+    },
+    "20260701_140255_teleop_023": {
+      "action_range_norm": 0.943498136644728,
+      "action_step_delta_mean": 0.003637083718019264,
+      "contact_fraction_20n": 0.029585798816568046,
+      "contact_fraction_5n": 0.20118343195266272,
+      "contact_onset_fraction_5n": 0.5014836795252225,
+      "duration_sim": 11.241999999734162,
+      "episode_id": "20260701_140255_teleop_023",
+      "force_norm_max": 58.71442761112694,
+      "force_norm_mean": 2.9149730549018713,
+      "force_norm_p95": 11.590780542091716,
+      "num_steps": 338,
+      "torque_norm_p95": 0.5741841443557376
+    },
+    "20260701_140325_teleop_024": {
+      "action_range_norm": 0.9336100350950354,
+      "action_step_delta_mean": 0.003059623328456175,
+      "contact_fraction_20n": 0.00872093023255814,
+      "contact_fraction_5n": 0.15988372093023256,
+      "contact_onset_fraction_5n": 0.8163265306122449,
+      "duration_sim": 11.457999999729054,
+      "episode_id": "20260701_140325_teleop_024",
+      "force_norm_max": 41.55689103907857,
+      "force_norm_mean": 1.8095981146479323,
+      "force_norm_p95": 9.758001569804847,
+      "num_steps": 344,
+      "torque_norm_p95": 0.3638668533614037
+    },
+    "20260701_140359_teleop_025": {
+      "action_range_norm": 0.9314160822103055,
+      "action_step_delta_mean": 0.0038128313819358866,
+      "contact_fraction_20n": 0.007194244604316547,
+      "contact_fraction_5n": 0.26258992805755393,
+      "contact_onset_fraction_5n": 0.5379061371841155,
+      "duration_sim": 9.254999999781148,
+      "episode_id": "20260701_140359_teleop_025",
+      "force_norm_max": 20.603734892279146,
+      "force_norm_mean": 2.962297562851398,
+      "force_norm_p95": 14.697794844490314,
+      "num_steps": 278,
+      "torque_norm_p95": 0.700049922875364
+    },
+    "20260701_140425_teleop_026": {
+      "action_range_norm": 0.9173034081756551,
+      "action_step_delta_mean": 0.003973041304786597,
+      "contact_fraction_20n": 0.01509433962264151,
+      "contact_fraction_5n": 0.1660377358490566,
+      "contact_onset_fraction_5n": 0.6174242424242424,
+      "duration_sim": 8.831999999791151,
+      "episode_id": "20260701_140425_teleop_026",
+      "force_norm_max": 22.140563742675052,
+      "force_norm_mean": 2.7167833542458415,
+      "force_norm_p95": 14.478299315439715,
+      "num_steps": 265,
+      "torque_norm_p95": 0.4939660662026382
+    },
+    "20260701_140522_teleop_028": {
+      "action_range_norm": 0.938239118766248,
+      "action_step_delta_mean": 0.0033100882771360395,
+      "contact_fraction_20n": 0.06140350877192982,
+      "contact_fraction_5n": 0.30409356725146197,
+      "contact_onset_fraction_5n": 0.49560117302052786,
+      "duration_sim": 11.394999999730544,
+      "episode_id": "20260701_140522_teleop_028",
+      "force_norm_max": 32.006630297047984,
+      "force_norm_mean": 4.147538244134027,
+      "force_norm_p95": 21.717668086442014,
+      "num_steps": 342,
+      "torque_norm_p95": 1.0000822120690802
+    },
+    "20260701_140614_teleop_030": {
+      "action_range_norm": 0.9173870673513413,
+      "action_step_delta_mean": 0.003434083351794531,
+      "contact_fraction_20n": 0.02280130293159609,
+      "contact_fraction_5n": 0.14332247557003258,
+      "contact_onset_fraction_5n": 0.5392156862745098,
+      "duration_sim": 10.226999999758164,
+      "episode_id": "20260701_140614_teleop_030",
+      "force_norm_max": 22.56443749137664,
+      "force_norm_mean": 2.5020649535306885,
+      "force_norm_p95": 15.405773158968241,
+      "num_steps": 307,
+      "torque_norm_p95": 0.7317684552593042
+    },
+    "20260701_140644_teleop_031": {
+      "action_range_norm": 0.9343131121650976,
+      "action_step_delta_mean": 0.003395660894411607,
+      "contact_fraction_20n": 0.029498525073746312,
+      "contact_fraction_5n": 0.23893805309734514,
+      "contact_onset_fraction_5n": 0.5798816568047337,
+      "duration_sim": 11.281999999733216,
+      "episode_id": "20260701_140644_teleop_031",
+      "force_norm_max": 28.788053904945798,
+      "force_norm_mean": 2.796877655608718,
+      "force_norm_p95": 15.489430168618206,
+      "num_steps": 339,
+      "torque_norm_p95": 0.6843763362751797
+    },
+    "20260701_140716_teleop_032": {
+      "action_range_norm": 0.9203378110642302,
+      "action_step_delta_mean": 0.003496649347102827,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.15202702702702703,
+      "contact_onset_fraction_5n": 0.5084745762711864,
+      "duration_sim": 9.861999999766795,
+      "episode_id": "20260701_140716_teleop_032",
+      "force_norm_max": 10.532361828101942,
+      "force_norm_mean": 1.2806849299232888,
+      "force_norm_p95": 6.975542551227461,
+      "num_steps": 296,
+      "torque_norm_p95": 0.4724452412043345
+    },
+    "20260701_140743_teleop_033": {
+      "action_range_norm": 0.9369065801283056,
+      "action_step_delta_mean": 0.003717915503146135,
+      "contact_fraction_20n": 0.006872852233676976,
+      "contact_fraction_5n": 0.15463917525773196,
+      "contact_onset_fraction_5n": 0.7862068965517242,
+      "duration_sim": 9.674999999771217,
+      "episode_id": "20260701_140743_teleop_033",
+      "force_norm_max": 20.312543249381736,
+      "force_norm_mean": 1.3741600691945117,
+      "force_norm_p95": 7.145914377724205,
+      "num_steps": 291,
+      "torque_norm_p95": 0.5013735209957295
+    },
+    "20260701_140837_teleop_035": {
+      "action_range_norm": 0.942238009309322,
+      "action_step_delta_mean": 0.003317350446587823,
+      "contact_fraction_20n": 0.03374233128834356,
+      "contact_fraction_5n": 0.2852760736196319,
+      "contact_onset_fraction_5n": 0.556923076923077,
+      "duration_sim": 10.842999999743597,
+      "episode_id": "20260701_140837_teleop_035",
+      "force_norm_max": 24.455056723333563,
+      "force_norm_mean": 3.818222042403479,
+      "force_norm_p95": 17.362248243245414,
+      "num_steps": 326,
+      "torque_norm_p95": 0.6926143814252612
+    },
+    "20260701_140926_teleop_037": {
+      "action_range_norm": 0.9275973508022574,
+      "action_step_delta_mean": 0.002864202858907335,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.09113924050632911,
+      "contact_onset_fraction_5n": 0.5583756345177665,
+      "duration_sim": 13.165999999688665,
+      "episode_id": "20260701_140926_teleop_037",
+      "force_norm_max": 9.922004586804023,
+      "force_norm_mean": 1.2261292070296534,
+      "force_norm_p95": 7.124384074243816,
+      "num_steps": 395,
+      "torque_norm_p95": 0.3627436605406394
+    },
+    "20260701_141001_teleop_038": {
+      "action_range_norm": 0.9041200992800825,
+      "action_step_delta_mean": 0.003482464190371488,
+      "contact_fraction_20n": 0.052054794520547946,
+      "contact_fraction_5n": 0.1232876712328767,
+      "contact_onset_fraction_5n": 0.42857142857142855,
+      "duration_sim": 12.146999999712762,
+      "episode_id": "20260701_141001_teleop_038",
+      "force_norm_max": 66.01315835579383,
+      "force_norm_mean": 3.539416737752082,
+      "force_norm_p95": 24.448001052985564,
+      "num_steps": 365,
+      "torque_norm_p95": 0.8676845106019866
+    },
+    "20260701_141036_teleop_039": {
+      "action_range_norm": 0.9150414204904971,
+      "action_step_delta_mean": 0.00395810498277893,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.3038461538461538,
+      "contact_onset_fraction_5n": 0.555984555984556,
+      "duration_sim": 8.63499999979581,
+      "episode_id": "20260701_141036_teleop_039",
+      "force_norm_max": 16.10081570094012,
+      "force_norm_mean": 3.208075156861805,
+      "force_norm_p95": 13.14950236095266,
+      "num_steps": 260,
+      "torque_norm_p95": 0.4760458546181226
+    },
+    "20260701_141120_teleop_041": {
+      "action_range_norm": 0.9271524208125703,
+      "action_step_delta_mean": 0.003075390898814501,
+      "contact_fraction_20n": 0.05803571428571429,
+      "contact_fraction_5n": 0.28794642857142855,
+      "contact_onset_fraction_5n": 0.4272930648769575,
+      "duration_sim": 14.910999999647402,
+      "episode_id": "20260701_141120_teleop_041",
+      "force_norm_max": 79.33850744831221,
+      "force_norm_mean": 4.753155447438198,
+      "force_norm_p95": 24.327987232688677,
+      "num_steps": 448,
+      "torque_norm_p95": 1.2997817306303443
+    },
+    "20260701_141224_teleop_043": {
+      "action_range_norm": 0.9108843944145028,
+      "action_step_delta_mean": 0.003361956689502549,
+      "contact_fraction_20n": 0.02601156069364162,
+      "contact_fraction_5n": 0.1069364161849711,
+      "contact_onset_fraction_5n": 0.4579710144927536,
+      "duration_sim": 11.522999999727517,
+      "episode_id": "20260701_141224_teleop_043",
+      "force_norm_max": 32.496438934912284,
+      "force_norm_mean": 1.774796938055838,
+      "force_norm_p95": 8.676332734797331,
+      "num_steps": 346,
+      "torque_norm_p95": 0.3006017927826746
+    },
+    "20260701_141255_teleop_044": {
+      "action_range_norm": 0.9250515396031846,
+      "action_step_delta_mean": 0.0037077821926167175,
+      "contact_fraction_20n": 0.029411764705882353,
+      "contact_fraction_5n": 0.049019607843137254,
+      "contact_onset_fraction_5n": 0.4459016393442623,
+      "duration_sim": 10.170999999759545,
+      "episode_id": "20260701_141255_teleop_044",
+      "force_norm_max": 35.86684497413432,
+      "force_norm_mean": 1.4790030566907677,
+      "force_norm_p95": 4.773748991402854,
+      "num_steps": 306,
+      "torque_norm_p95": 0.35498282127201075
+    },
+    "20260701_141324_teleop_045": {
+      "action_range_norm": 0.9279293044169921,
+      "action_step_delta_mean": 0.003201312441270743,
+      "contact_fraction_20n": 0.049723756906077346,
+      "contact_fraction_5n": 0.20441988950276244,
+      "contact_onset_fraction_5n": 0.5401662049861495,
+      "duration_sim": 12.060999999714795,
+      "episode_id": "20260701_141324_teleop_045",
+      "force_norm_max": 53.8056453155738,
+      "force_norm_mean": 3.44528801362444,
+      "force_norm_p95": 18.896111604267425,
+      "num_steps": 362,
+      "torque_norm_p95": 0.7934471245663018
+    },
+    "20260701_141357_teleop_046": {
+      "action_range_norm": 0.9244449886305036,
+      "action_step_delta_mean": 0.003350833984567518,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.14743589743589744,
+      "contact_onset_fraction_5n": 0.7202572347266881,
+      "duration_sim": 10.377999999754593,
+      "episode_id": "20260701_141357_teleop_046",
+      "force_norm_max": 15.502345195330529,
+      "force_norm_mean": 1.4534357723148168,
+      "force_norm_p95": 7.234065827746269,
+      "num_steps": 312,
+      "torque_norm_p95": 0.3108146704557213
+    },
+    "20260701_141427_teleop_047": {
+      "action_range_norm": 0.9214490523538807,
+      "action_step_delta_mean": 0.0040151695228925225,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.17692307692307693,
+      "contact_onset_fraction_5n": 0.6795366795366795,
+      "duration_sim": 8.638999999795715,
+      "episode_id": "20260701_141427_teleop_047",
+      "force_norm_max": 17.782959844567653,
+      "force_norm_mean": 1.5614175599725997,
+      "force_norm_p95": 8.556280571232099,
+      "num_steps": 260,
+      "torque_norm_p95": 0.47667113730953814
+    }
+  },
+  "format_version": "paired_episode_subset_v1",
+  "holdout_episode_count": 50,
+  "holdout_episodes": [
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131145_teleop_009",
+      "num_steps": 285,
+      "relative_hdf5_path": "20260701_131145_teleop_009/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131419_teleop_002",
+      "num_steps": 320,
+      "relative_hdf5_path": "20260701_131419_teleop_002/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131447_teleop_003",
+      "num_steps": 359,
+      "relative_hdf5_path": "20260701_131447_teleop_003/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131715_teleop_008",
+      "num_steps": 352,
+      "relative_hdf5_path": "20260701_131715_teleop_008/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131747_teleop_009",
+      "num_steps": 325,
+      "relative_hdf5_path": "20260701_131747_teleop_009/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131932_teleop_013",
+      "num_steps": 322,
+      "relative_hdf5_path": "20260701_131932_teleop_013/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132002_teleop_014",
+      "num_steps": 229,
+      "relative_hdf5_path": "20260701_132002_teleop_014/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132122_teleop_017",
+      "num_steps": 303,
+      "relative_hdf5_path": "20260701_132122_teleop_017/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132207_teleop_019",
+      "num_steps": 277,
+      "relative_hdf5_path": "20260701_132207_teleop_019/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132232_teleop_020",
+      "num_steps": 335,
+      "relative_hdf5_path": "20260701_132232_teleop_020/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132400_teleop_023",
+      "num_steps": 332,
+      "relative_hdf5_path": "20260701_132400_teleop_023/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132431_teleop_024",
+      "num_steps": 313,
+      "relative_hdf5_path": "20260701_132431_teleop_024/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132501_teleop_025",
+      "num_steps": 322,
+      "relative_hdf5_path": "20260701_132501_teleop_025/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132737_teleop_032",
+      "num_steps": 256,
+      "relative_hdf5_path": "20260701_132737_teleop_032/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132913_teleop_036",
+      "num_steps": 354,
+      "relative_hdf5_path": "20260701_132913_teleop_036/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133022_teleop_038",
+      "num_steps": 241,
+      "relative_hdf5_path": "20260701_133022_teleop_038/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133401_teleop_046",
+      "num_steps": 329,
+      "relative_hdf5_path": "20260701_133401_teleop_046/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133431_teleop_047",
+      "num_steps": 284,
+      "relative_hdf5_path": "20260701_133431_teleop_047/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133458_teleop_048",
+      "num_steps": 256,
+      "relative_hdf5_path": "20260701_133458_teleop_048/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133522_teleop_049",
+      "num_steps": 339,
+      "relative_hdf5_path": "20260701_133522_teleop_049/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133656_teleop_052",
+      "num_steps": 253,
+      "relative_hdf5_path": "20260701_133656_teleop_052/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133807_teleop_055",
+      "num_steps": 339,
+      "relative_hdf5_path": "20260701_133807_teleop_055/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133911_teleop_057",
+      "num_steps": 241,
+      "relative_hdf5_path": "20260701_133911_teleop_057/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134021_teleop_060",
+      "num_steps": 283,
+      "relative_hdf5_path": "20260701_134021_teleop_060/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134120_teleop_062",
+      "num_steps": 353,
+      "relative_hdf5_path": "20260701_134120_teleop_062/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134359_teleop_068",
+      "num_steps": 322,
+      "relative_hdf5_path": "20260701_134359_teleop_068/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134429_teleop_069",
+      "num_steps": 287,
+      "relative_hdf5_path": "20260701_134429_teleop_069/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134456_teleop_070",
+      "num_steps": 325,
+      "relative_hdf5_path": "20260701_134456_teleop_070/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134612_teleop_073",
+      "num_steps": 213,
+      "relative_hdf5_path": "20260701_134612_teleop_073/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134633_teleop_074",
+      "num_steps": 325,
+      "relative_hdf5_path": "20260701_134633_teleop_074/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134845_teleop_078",
+      "num_steps": 281,
+      "relative_hdf5_path": "20260701_134845_teleop_078/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134911_teleop_079",
+      "num_steps": 306,
+      "relative_hdf5_path": "20260701_134911_teleop_079/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135311_teleop_002",
+      "num_steps": 350,
+      "relative_hdf5_path": "20260701_135311_teleop_002/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135343_teleop_003",
+      "num_steps": 368,
+      "relative_hdf5_path": "20260701_135343_teleop_003/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135534_teleop_007",
+      "num_steps": 294,
+      "relative_hdf5_path": "20260701_135534_teleop_007/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135601_teleop_008",
+      "num_steps": 323,
+      "relative_hdf5_path": "20260701_135601_teleop_008/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135635_teleop_009",
+      "num_steps": 312,
+      "relative_hdf5_path": "20260701_135635_teleop_009/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135925_teleop_015",
+      "num_steps": 317,
+      "relative_hdf5_path": "20260701_135925_teleop_015/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135955_teleop_016",
+      "num_steps": 327,
+      "relative_hdf5_path": "20260701_135955_teleop_016/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140141_teleop_020",
+      "num_steps": 279,
+      "relative_hdf5_path": "20260701_140141_teleop_020/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140325_teleop_024",
+      "num_steps": 344,
+      "relative_hdf5_path": "20260701_140325_teleop_024/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140359_teleop_025",
+      "num_steps": 278,
+      "relative_hdf5_path": "20260701_140359_teleop_025/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140614_teleop_030",
+      "num_steps": 307,
+      "relative_hdf5_path": "20260701_140614_teleop_030/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140644_teleop_031",
+      "num_steps": 339,
+      "relative_hdf5_path": "20260701_140644_teleop_031/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140716_teleop_032",
+      "num_steps": 296,
+      "relative_hdf5_path": "20260701_140716_teleop_032/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140837_teleop_035",
+      "num_steps": 326,
+      "relative_hdf5_path": "20260701_140837_teleop_035/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140926_teleop_037",
+      "num_steps": 395,
+      "relative_hdf5_path": "20260701_140926_teleop_037/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141001_teleop_038",
+      "num_steps": 365,
+      "relative_hdf5_path": "20260701_141001_teleop_038/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141324_teleop_045",
+      "num_steps": 362,
+      "relative_hdf5_path": "20260701_141324_teleop_045/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141427_teleop_047",
+      "num_steps": 260,
+      "relative_hdf5_path": "20260701_141427_teleop_047/episode.hdf5"
+    }
+  ],
+  "selected_episode_count": 50,
+  "selected_episodes": [
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131034_teleop_006",
+      "num_steps": 334,
+      "relative_hdf5_path": "20260701_131034_teleop_006/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131116_teleop_008",
+      "num_steps": 297,
+      "relative_hdf5_path": "20260701_131116_teleop_008/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131522_teleop_004",
+      "num_steps": 367,
+      "relative_hdf5_path": "20260701_131522_teleop_004/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131557_teleop_005",
+      "num_steps": 277,
+      "relative_hdf5_path": "20260701_131557_teleop_005/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131626_teleop_006",
+      "num_steps": 340,
+      "relative_hdf5_path": "20260701_131626_teleop_006/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131843_teleop_011",
+      "num_steps": 276,
+      "relative_hdf5_path": "20260701_131843_teleop_011/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131908_teleop_012",
+      "num_steps": 269,
+      "relative_hdf5_path": "20260701_131908_teleop_012/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132024_teleop_015",
+      "num_steps": 238,
+      "relative_hdf5_path": "20260701_132024_teleop_015/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132049_teleop_016",
+      "num_steps": 332,
+      "relative_hdf5_path": "20260701_132049_teleop_016/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132326_teleop_022",
+      "num_steps": 371,
+      "relative_hdf5_path": "20260701_132326_teleop_022/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132627_teleop_030",
+      "num_steps": 331,
+      "relative_hdf5_path": "20260701_132627_teleop_030/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132701_teleop_031",
+      "num_steps": 371,
+      "relative_hdf5_path": "20260701_132701_teleop_031/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132801_teleop_033",
+      "num_steps": 294,
+      "relative_hdf5_path": "20260701_132801_teleop_033/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132846_teleop_035",
+      "num_steps": 306,
+      "relative_hdf5_path": "20260701_132846_teleop_035/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132955_teleop_037",
+      "num_steps": 269,
+      "relative_hdf5_path": "20260701_132955_teleop_037/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133046_teleop_039",
+      "num_steps": 281,
+      "relative_hdf5_path": "20260701_133046_teleop_039/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133119_teleop_040",
+      "num_steps": 288,
+      "relative_hdf5_path": "20260701_133119_teleop_040/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133206_teleop_042",
+      "num_steps": 302,
+      "relative_hdf5_path": "20260701_133206_teleop_042/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133237_teleop_043",
+      "num_steps": 295,
+      "relative_hdf5_path": "20260701_133237_teleop_043/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133312_teleop_044",
+      "num_steps": 292,
+      "relative_hdf5_path": "20260701_133312_teleop_044/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133623_teleop_051",
+      "num_steps": 359,
+      "relative_hdf5_path": "20260701_133623_teleop_051/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133741_teleop_054",
+      "num_steps": 277,
+      "relative_hdf5_path": "20260701_133741_teleop_054/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133841_teleop_056",
+      "num_steps": 290,
+      "relative_hdf5_path": "20260701_133841_teleop_056/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133955_teleop_059",
+      "num_steps": 263,
+      "relative_hdf5_path": "20260701_133955_teleop_059/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134157_teleop_063",
+      "num_steps": 279,
+      "relative_hdf5_path": "20260701_134157_teleop_063/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134222_teleop_064",
+      "num_steps": 282,
+      "relative_hdf5_path": "20260701_134222_teleop_064/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134249_teleop_065",
+      "num_steps": 276,
+      "relative_hdf5_path": "20260701_134249_teleop_065/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134330_teleop_067",
+      "num_steps": 232,
+      "relative_hdf5_path": "20260701_134330_teleop_067/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134545_teleop_072",
+      "num_steps": 303,
+      "relative_hdf5_path": "20260701_134545_teleop_072/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134704_teleop_075",
+      "num_steps": 368,
+      "relative_hdf5_path": "20260701_134704_teleop_075/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134737_teleop_076",
+      "num_steps": 417,
+      "relative_hdf5_path": "20260701_134737_teleop_076/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134815_teleop_077",
+      "num_steps": 276,
+      "relative_hdf5_path": "20260701_134815_teleop_077/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135242_teleop_001",
+      "num_steps": 298,
+      "relative_hdf5_path": "20260701_135242_teleop_001/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135418_teleop_004",
+      "num_steps": 299,
+      "relative_hdf5_path": "20260701_135418_teleop_004/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135447_teleop_005",
+      "num_steps": 345,
+      "relative_hdf5_path": "20260701_135447_teleop_005/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135758_teleop_012",
+      "num_steps": 355,
+      "relative_hdf5_path": "20260701_135758_teleop_012/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135836_teleop_013",
+      "num_steps": 279,
+      "relative_hdf5_path": "20260701_135836_teleop_013/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135903_teleop_014",
+      "num_steps": 221,
+      "relative_hdf5_path": "20260701_135903_teleop_014/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140026_teleop_017",
+      "num_steps": 344,
+      "relative_hdf5_path": "20260701_140026_teleop_017/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140110_teleop_019",
+      "num_steps": 343,
+      "relative_hdf5_path": "20260701_140110_teleop_019/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140223_teleop_022",
+      "num_steps": 330,
+      "relative_hdf5_path": "20260701_140223_teleop_022/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140255_teleop_023",
+      "num_steps": 338,
+      "relative_hdf5_path": "20260701_140255_teleop_023/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140425_teleop_026",
+      "num_steps": 265,
+      "relative_hdf5_path": "20260701_140425_teleop_026/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140522_teleop_028",
+      "num_steps": 342,
+      "relative_hdf5_path": "20260701_140522_teleop_028/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140743_teleop_033",
+      "num_steps": 291,
+      "relative_hdf5_path": "20260701_140743_teleop_033/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141036_teleop_039",
+      "num_steps": 260,
+      "relative_hdf5_path": "20260701_141036_teleop_039/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141120_teleop_041",
+      "num_steps": 448,
+      "relative_hdf5_path": "20260701_141120_teleop_041/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141224_teleop_043",
+      "num_steps": 346,
+      "relative_hdf5_path": "20260701_141224_teleop_043/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141255_teleop_044",
+      "num_steps": 306,
+      "relative_hdf5_path": "20260701_141255_teleop_044/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141357_teleop_046",
+      "num_steps": 312,
+      "relative_hdf5_path": "20260701_141357_teleop_046/episode.hdf5"
+    }
+  ],
+  "selection": {
+    "algorithm": "chronological_strata_distribution_match_v1",
+    "audit": {
+      "standardized_mean_rms": {
+        "holdout_vs_all": 0.027552838832724344,
+        "selected_vs_all": 0.027552838832724306,
+        "train_vs_selected": 0.016955116246903136,
+        "validation_vs_selected": 0.06782046498761254
+      },
+      "summaries": {
+        "all": {
+          "episode_count": 100,
+          "features": {
+            "action_range_norm": {
+              "max": 0.9561606451915221,
+              "mean": 0.9273560318704382,
+              "median": 0.9273748858074138,
+              "min": 0.8991987613797944,
+              "q25": 0.9190641888602162,
+              "q75": 0.9366795875079927,
+              "std": 0.012649106113940206
+            },
+            "action_step_delta_mean": {
+              "max": 0.004868136714039663,
+              "mean": 0.0037251464560764985,
+              "median": 0.0037027911098869723,
+              "min": 0.002836758216118964,
+              "q25": 0.0034188273736059068,
+              "q75": 0.003976542341016579,
+              "std": 0.0004362515027257018
+            },
+            "contact_fraction_20n": {
+              "max": 0.10746268656716418,
+              "mean": 0.034308502068864544,
+              "median": 0.03180492533446982,
+              "min": 0.0,
+              "q25": 0.007657936151079137,
+              "q75": 0.057876275510204085,
+              "std": 0.028630121620380963
+            },
+            "contact_fraction_5n": {
+              "max": 0.3493975903614458,
+              "mean": 0.18219544201098084,
+              "median": 0.1769708552317248,
+              "min": 0.014084507042253521,
+              "q25": 0.1318116247406639,
+              "q75": 0.2366166613469518,
+              "std": 0.07143413525397112
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.8679245283018868,
+              "mean": 0.5447390080439237,
+              "median": 0.5366542648477333,
+              "min": 0.3575757575757576,
+              "q25": 0.48325214749633355,
+              "q75": 0.5823367907260525,
+              "std": 0.10094302141846766
+            },
+            "duration_sim": {
+              "max": 14.910999999647402,
+              "mean": 10.310339999858003,
+              "median": 10.211999999758518,
+              "min": 7.095999999832202,
+              "q25": 9.290999999978368,
+              "q75": 11.281249999733234,
+              "std": 1.4007317674530058
+            },
+            "force_norm_max": {
+              "max": 100.80913810075482,
+              "mean": 42.289015936610234,
+              "median": 35.520127982593706,
+              "min": 7.886389759637038,
+              "q25": 22.46391892789415,
+              "q75": 57.98620922999569,
+              "std": 25.14335090135017
+            },
+            "force_norm_mean": {
+              "max": 8.179708094613131,
+              "mean": 3.117725558622555,
+              "median": 2.89245588171567,
+              "min": 0.6619934228727767,
+              "q25": 1.9321679677006338,
+              "q75": 3.8483081690133556,
+              "std": 1.5146393339327835
+            },
+            "force_norm_p95": {
+              "max": 69.18975156344757,
+              "mean": 17.96366868439765,
+              "median": 14.503233944423261,
+              "min": 4.529262791174935,
+              "q25": 9.697635345356963,
+              "q75": 22.839992445788777,
+              "std": 11.96270000760864
+            },
+            "num_steps": {
+              "max": 448.0,
+              "mean": 309.77,
+              "median": 306.5,
+              "min": 213.0,
+              "q25": 279.0,
+              "q75": 339.0,
+              "std": 42.01520082065537
+            },
+            "torque_norm_p95": {
+              "max": 2.397448704198225,
+              "mean": 0.8024179937764703,
+              "median": 0.6764638817258981,
+              "min": 0.20027560488299634,
+              "q25": 0.4753630753242623,
+              "q75": 1.0057544933175804,
+              "std": 0.47340256168931755
+            }
+          },
+          "total_timesteps": 30977
+        },
+        "holdout": {
+          "episode_count": 50,
+          "features": {
+            "action_range_norm": {
+              "max": 0.9561606451915221,
+              "mean": 0.9275746538654494,
+              "median": 0.9290467215235585,
+              "min": 0.8991987613797944,
+              "q25": 0.919777612272978,
+              "q75": 0.9382207356137092,
+              "std": 0.013911724764550264
+            },
+            "action_step_delta_mean": {
+              "max": 0.004850701850994201,
+              "mean": 0.003719070151006441,
+              "median": 0.00365126051416126,
+              "min": 0.002864202858907335,
+              "q25": 0.0034444834246204906,
+              "q75": 0.003985990167878303,
+              "std": 0.0004556443581492373
+            },
+            "contact_fraction_20n": {
+              "max": 0.10746268656716418,
+              "mean": 0.033183688591668266,
+              "median": 0.03180492533446982,
+              "min": 0.0,
+              "q25": 0.00734880845323741,
+              "q75": 0.0514720351169303,
+              "std": 0.028929901715495858
+            },
+            "contact_fraction_5n": {
+              "max": 0.31095406360424027,
+              "mean": 0.1757606395591137,
+              "median": 0.1769708552317248,
+              "min": 0.014084507042253521,
+              "q25": 0.12987470824688796,
+              "q75": 0.2197502629333439,
+              "std": 0.06495870473050874
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.8679245283018868,
+              "mean": 0.5457972692711923,
+              "median": 0.5385951849094068,
+              "min": 0.39664804469273746,
+              "q25": 0.4914740121331366,
+              "q75": 0.5772321428571429,
+              "std": 0.10026831124159431
+            },
+            "duration_sim": {
+              "max": 13.165999999688665,
+              "mean": 10.32061999985844,
+              "median": 10.691500000032107,
+              "min": 7.095999999832202,
+              "q25": 9.411499999777462,
+              "q75": 11.243999999813454,
+              "std": 1.3090994444908701
+            },
+            "force_norm_max": {
+              "max": 100.80913810075482,
+              "mean": 40.945440668390745,
+              "median": 36.116427424605874,
+              "min": 7.886389759637038,
+              "q25": 22.58846151271814,
+              "q75": 54.403403134575186,
+              "std": 25.25279201908924
+            },
+            "force_norm_mean": {
+              "max": 7.599820489109539,
+              "mean": 3.063816819092438,
+              "median": 2.8082649032153677,
+              "min": 0.6619934228727767,
+              "q25": 1.942912054450144,
+              "q75": 3.5200845889339556,
+              "std": 1.5034102790286585
+            },
+            "force_norm_p95": {
+              "max": 69.18975156344757,
+              "mean": 17.509585145873263,
+              "median": 14.398630354647,
+              "min": 4.529262791174935,
+              "q25": 9.913832521647166,
+              "q75": 23.06002869080603,
+              "std": 11.923246725479697
+            },
+            "num_steps": {
+              "max": 395.0,
+              "mean": 310.06,
+              "median": 321.0,
+              "min": 213.0,
+              "q25": 283.25,
+              "q75": 338.0,
+              "std": 39.26138560978204
+            },
+            "torque_norm_p95": {
+              "max": 2.397448704198225,
+              "mean": 0.79443381329239,
+              "median": 0.6878324068520347,
+              "min": 0.20027560488299634,
+              "q25": 0.4856817261993379,
+              "q75": 0.8474387189836123,
+              "std": 0.46197981314318204
+            }
+          },
+          "total_timesteps": 15503
+        },
+        "selected": {
+          "episode_count": 50,
+          "features": {
+            "action_range_norm": {
+              "max": 0.9531393516935389,
+              "mean": 0.927137409875427,
+              "median": 0.9255798618892158,
+              "min": 0.9064516635450339,
+              "q25": 0.9188523790010966,
+              "q75": 0.9333069310071194,
+              "std": 0.01124135640772201
+            },
+            "action_step_delta_mean": {
+              "max": 0.004868136714039663,
+              "mean": 0.003731222761146556,
+              "median": 0.003727467375130818,
+              "min": 0.002836758216118964,
+              "q25": 0.003369666965433947,
+              "q75": 0.00396930722428468,
+              "std": 0.0004158667132399835
+            },
+            "contact_fraction_20n": {
+              "max": 0.10584958217270195,
+              "mean": 0.035433315546060815,
+              "median": 0.03176541686601365,
+              "min": 0.0,
+              "q25": 0.011029720426496515,
+              "q75": 0.06102269145918689,
+              "std": 0.028282469906470258
+            },
+            "contact_fraction_5n": {
+              "max": 0.3493975903614458,
+              "mean": 0.1886302444628479,
+              "median": 0.17643186306780778,
+              "min": 0.049019607843137254,
+              "q25": 0.13487143360338147,
+              "q75": 0.2447556545177546,
+              "std": 0.07683244544794049
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.7862068965517242,
+              "mean": 0.5436807468166551,
+              "median": 0.5332170231117559,
+              "min": 0.3575757575757576,
+              "q25": 0.4737323183888756,
+              "q75": 0.6124802963430013,
+              "std": 0.10160222966690707
+            },
+            "duration_sim": {
+              "max": 14.910999999647402,
+              "mean": 10.300059999857567,
+              "median": 9.928000000004808,
+              "min": 7.342000000035057,
+              "q25": 9.242999999781432,
+              "q75": 11.373249999811406,
+              "std": 1.4866560652476821
+            },
+            "force_norm_max": {
+              "max": 98.32968861110872,
+              "mean": 43.63259120482971,
+              "median": 34.91613175767202,
+              "min": 9.096326141762592,
+              "q25": 22.35252823839727,
+              "q75": 60.70635586970507,
+              "std": 24.961215822446107
+            },
+            "force_norm_mean": {
+              "max": 8.179708094613131,
+              "mean": 3.1716342981526706,
+              "median": 2.921898276082657,
+              "min": 1.168908146790381,
+              "q25": 1.9303055745090862,
+              "q75": 3.987881536556145,
+              "std": 1.5238798680697276
+            },
+            "force_norm_p95": {
+              "max": 57.197123867241906,
+              "mean": 18.417752222922033,
+              "median": 14.582104194313796,
+              "min": 4.773748991402854,
+              "q25": 9.539151560076501,
+              "q75": 22.598893897887834,
+              "std": 11.984831527706161
+            },
+            "num_steps": {
+              "max": 448.0,
+              "mean": 309.48,
+              "median": 298.5,
+              "min": 221.0,
+              "q25": 277.5,
+              "q75": 341.5,
+              "std": 44.59741696555979
+            },
+            "torque_norm_p95": {
+              "max": 2.2193828962860787,
+              "mean": 0.8104021742605505,
+              "median": 0.6585697348201669,
+              "min": 0.2467839254912556,
+              "q25": 0.4734512442886005,
+              "q75": 1.0274479277532644,
+              "std": 0.48442453364812366
+            }
+          },
+          "total_timesteps": 15474
+        },
+        "train": {
+          "episode_count": 40,
+          "features": {
+            "action_range_norm": {
+              "max": 0.9531393516935389,
+              "mean": 0.927531688318847,
+              "median": 0.9274356439047893,
+              "min": 0.9108843944145028,
+              "q25": 0.9188279840252237,
+              "q75": 0.934011504927284,
+              "std": 0.01127521989766233
+            },
+            "action_step_delta_mean": {
+              "max": 0.004868136714039663,
+              "mean": 0.003725690073845535,
+              "median": 0.0037134073866795974,
+              "min": 0.002836758216118964,
+              "q25": 0.003401784417773235,
+              "q75": 0.003961839063280847,
+              "std": 0.0004208711391897005
+            },
+            "contact_fraction_20n": {
+              "max": 0.10584958217270195,
+              "mean": 0.03485810692142218,
+              "median": 0.030002024883569192,
+              "min": 0.0,
+              "q25": 0.010439143290977382,
+              "q75": 0.06026105683370102,
+              "std": 0.02810964688130725
+            },
+            "contact_fraction_5n": {
+              "max": 0.3493975903614458,
+              "mean": 0.1880370307169715,
+              "median": 0.17643186306780778,
+              "min": 0.049019607843137254,
+              "q25": 0.12099452980338389,
+              "q75": 0.24415524857741838,
+              "std": 0.08069577543681866
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.7862068965517242,
+              "mean": 0.5427888620384138,
+              "median": 0.5353226556788728,
+              "min": 0.3575757575757576,
+              "q25": 0.46758553712834305,
+              "q75": 0.6112113808322825,
+              "std": 0.10383461903318883
+            },
+            "duration_sim": {
+              "max": 14.910999999647402,
+              "mean": 10.33914999985295,
+              "median": 9.928000000004808,
+              "min": 7.342000000035057,
+              "q25": 9.205750000015856,
+              "q75": 11.402249999811545,
+              "std": 1.5490702138561583
+            },
+            "force_norm_max": {
+              "max": 95.32938447833581,
+              "mean": 42.57397390712496,
+              "median": 33.877729338574795,
+              "min": 9.096326141762592,
+              "q25": 22.079120934493382,
+              "q75": 59.716083061519754,
+              "std": 25.066893847204174
+            },
+            "force_norm_mean": {
+              "max": 8.179708094613131,
+              "mean": 3.180410423368966,
+              "median": 2.9334507837338486,
+              "min": 1.168908146790381,
+              "q25": 2.0762612382343923,
+              "q75": 3.955004878080706,
+              "std": 1.510549459611016
+            },
+            "force_norm_p95": {
+              "max": 57.197123867241906,
+              "mean": 18.380058823074574,
+              "median": 14.804398074786072,
+              "min": 4.773748991402854,
+              "q25": 9.752239068727627,
+              "q75": 22.39796415772871,
+              "std": 11.66310252207691
+            },
+            "num_steps": {
+              "max": 448.0,
+              "mean": 310.675,
+              "median": 298.5,
+              "min": 221.0,
+              "q25": 276.75,
+              "q75": 342.25,
+              "std": 46.47977382690238
+            },
+            "torque_norm_p95": {
+              "max": 2.2193828962860787,
+              "mean": 0.7972081025176753,
+              "median": 0.6585697348201669,
+              "min": 0.27779922396577095,
+              "q25": 0.46871550599321293,
+              "q75": 1.0243302006264756,
+              "std": 0.47072202093879306
+            }
+          },
+          "total_timesteps": 12427
+        },
+        "validation": {
+          "episode_count": 10,
+          "features": {
+            "action_range_norm": {
+              "max": 0.9460158294480839,
+              "mean": 0.9255602961017477,
+              "median": 0.9241587186428859,
+              "min": 0.9064516635450339,
+              "q25": 0.9189248109449031,
+              "q75": 0.9310291176059537,
+              "std": 0.010963987625206872
+            },
+            "action_step_delta_mean": {
+              "max": 0.004341338133001912,
+              "mean": 0.0037533535103506377,
+              "median": 0.003840697157821149,
+              "min": 0.003256730026491308,
+              "q25": 0.0033396691285011255,
+              "q75": 0.003968311099866139,
+              "std": 0.00039444054066281137
+            },
+            "contact_fraction_20n": {
+              "max": 0.08405797101449275,
+              "mean": 0.03773415004461535,
+              "median": 0.04197023475932499,
+              "min": 0.0,
+              "q25": 0.0111530467126135,
+              "q75": 0.061635260164671926,
+              "std": 0.02884899009753477
+            },
+            "contact_fraction_5n": {
+              "max": 0.28135593220338984,
+              "mean": 0.19100309944635346,
+              "median": 0.17226038315508796,
+              "min": 0.09696969696969697,
+              "q25": 0.1477056359482102,
+              "q75": 0.24255571793934966,
+              "std": 0.05883751034153263
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.7202572347266881,
+              "mean": 0.5472482859296196,
+              "median": 0.5195654287380906,
+              "min": 0.42517006802721086,
+              "q25": 0.4869186046511628,
+              "q75": 0.6193586241391251,
+              "std": 0.09204696495926222
+            },
+            "duration_sim": {
+              "max": 12.361999999707677,
+              "mean": 10.143699999876034,
+              "median": 9.98749999990423,
+              "min": 7.905000000037745,
+              "q25": 9.426999999975152,
+              "q75": 10.830999999791182,
+              "std": 1.1923491979576983
+            },
+            "force_norm_max": {
+              "max": 98.32968861110872,
+              "mean": 47.8670603956487,
+              "median": 41.81718864185139,
+              "min": 15.502345195330529,
+              "q25": 33.795996687782505,
+              "q75": 60.9072126753377,
+              "std": 24.072835238618346
+            },
+            "force_norm_mean": {
+              "max": 6.402157470817248,
+              "mean": 3.13652979728749,
+              "median": 2.7934558248291737,
+              "min": 1.4534357723148168,
+              "q25": 1.85699712455996,
+              "q75": 3.817977145497591,
+              "std": 1.5755856607434204
+            },
+            "force_norm_p95": {
+              "max": 46.19341985239311,
+              "mean": 18.568525822311873,
+              "median": 12.0125596004061,
+              "min": 6.391346456767166,
+              "q25": 8.549859248892078,
+              "q75": 22.69812004739144,
+              "std": 13.192447692818405
+            },
+            "num_steps": {
+              "max": 371.0,
+              "mean": 304.7,
+              "median": 300.0,
+              "min": 238.0,
+              "q25": 283.0,
+              "q75": 325.5,
+              "std": 35.70168063270972
+            },
+            "torque_norm_p95": {
+              "max": 1.8848721138203663,
+              "mean": 0.8631784612320514,
+              "median": 0.6383078981525804,
+              "min": 0.2467839254912556,
+              "q25": 0.5573943871799147,
+              "q75": 1.062500715151328,
+              "std": 0.5324820085515394
+            }
+          },
+          "total_timesteps": 3047
+        }
+      }
+    },
+    "feature_names": [
+      "num_steps",
+      "duration_sim",
+      "action_step_delta_mean",
+      "action_range_norm",
+      "force_norm_mean",
+      "force_norm_p95",
+      "force_norm_max",
+      "torque_norm_p95",
+      "contact_onset_fraction_5n",
+      "contact_fraction_5n",
+      "contact_fraction_20n"
+    ],
+    "robust_center": [
+      306.5,
+      10.211999999758518,
+      0.0037027911098869723,
+      0.9273748858074138,
+      2.89245588171567,
+      14.503233944423261,
+      35.520127982593706,
+      0.6764638817258981,
+      0.5366542648477333,
+      0.1769708552317248,
+      0.03180492533446982
+    ],
+    "robust_scale": [
+      60.0,
+      1.990249999754866,
+      0.0005577149674106724,
+      0.017615398647776503,
+      1.9161402013127218,
+      13.142357100431814,
+      35.52229030210154,
+      0.530391417993318,
+      0.09908464322971894,
+      0.1048050366062879,
+      0.050218339359124946
+    ],
+    "seed": 0,
+    "selected_per_stratum": 5,
+    "strata": [
+      {
+        "all_episode_ids": [
+          "20260701_131034_teleop_006",
+          "20260701_131116_teleop_008",
+          "20260701_131145_teleop_009",
+          "20260701_131419_teleop_002",
+          "20260701_131447_teleop_003",
+          "20260701_131522_teleop_004",
+          "20260701_131557_teleop_005",
+          "20260701_131626_teleop_006",
+          "20260701_131715_teleop_008",
+          "20260701_131747_teleop_009"
+        ],
+        "holdout_episode_ids": [
+          "20260701_131145_teleop_009",
+          "20260701_131419_teleop_002",
+          "20260701_131447_teleop_003",
+          "20260701_131715_teleop_008",
+          "20260701_131747_teleop_009"
+        ],
+        "selected_episode_ids": [
+          "20260701_131034_teleop_006",
+          "20260701_131116_teleop_008",
+          "20260701_131522_teleop_004",
+          "20260701_131557_teleop_005",
+          "20260701_131626_teleop_006"
+        ],
+        "stratum_index": 0,
+        "train_episode_ids": [
+          "20260701_131034_teleop_006",
+          "20260701_131522_teleop_004",
+          "20260701_131557_teleop_005",
+          "20260701_131626_teleop_006"
+        ],
+        "validation_episode_ids": [
+          "20260701_131116_teleop_008"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_131843_teleop_011",
+          "20260701_131908_teleop_012",
+          "20260701_131932_teleop_013",
+          "20260701_132002_teleop_014",
+          "20260701_132024_teleop_015",
+          "20260701_132049_teleop_016",
+          "20260701_132122_teleop_017",
+          "20260701_132207_teleop_019",
+          "20260701_132232_teleop_020",
+          "20260701_132326_teleop_022"
+        ],
+        "holdout_episode_ids": [
+          "20260701_131932_teleop_013",
+          "20260701_132002_teleop_014",
+          "20260701_132122_teleop_017",
+          "20260701_132207_teleop_019",
+          "20260701_132232_teleop_020"
+        ],
+        "selected_episode_ids": [
+          "20260701_131843_teleop_011",
+          "20260701_131908_teleop_012",
+          "20260701_132024_teleop_015",
+          "20260701_132049_teleop_016",
+          "20260701_132326_teleop_022"
+        ],
+        "stratum_index": 1,
+        "train_episode_ids": [
+          "20260701_131843_teleop_011",
+          "20260701_131908_teleop_012",
+          "20260701_132049_teleop_016",
+          "20260701_132326_teleop_022"
+        ],
+        "validation_episode_ids": [
+          "20260701_132024_teleop_015"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_132400_teleop_023",
+          "20260701_132431_teleop_024",
+          "20260701_132501_teleop_025",
+          "20260701_132627_teleop_030",
+          "20260701_132701_teleop_031",
+          "20260701_132737_teleop_032",
+          "20260701_132801_teleop_033",
+          "20260701_132846_teleop_035",
+          "20260701_132913_teleop_036",
+          "20260701_132955_teleop_037"
+        ],
+        "holdout_episode_ids": [
+          "20260701_132400_teleop_023",
+          "20260701_132431_teleop_024",
+          "20260701_132501_teleop_025",
+          "20260701_132737_teleop_032",
+          "20260701_132913_teleop_036"
+        ],
+        "selected_episode_ids": [
+          "20260701_132627_teleop_030",
+          "20260701_132701_teleop_031",
+          "20260701_132801_teleop_033",
+          "20260701_132846_teleop_035",
+          "20260701_132955_teleop_037"
+        ],
+        "stratum_index": 2,
+        "train_episode_ids": [
+          "20260701_132627_teleop_030",
+          "20260701_132801_teleop_033",
+          "20260701_132846_teleop_035",
+          "20260701_132955_teleop_037"
+        ],
+        "validation_episode_ids": [
+          "20260701_132701_teleop_031"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_133022_teleop_038",
+          "20260701_133046_teleop_039",
+          "20260701_133119_teleop_040",
+          "20260701_133206_teleop_042",
+          "20260701_133237_teleop_043",
+          "20260701_133312_teleop_044",
+          "20260701_133401_teleop_046",
+          "20260701_133431_teleop_047",
+          "20260701_133458_teleop_048",
+          "20260701_133522_teleop_049"
+        ],
+        "holdout_episode_ids": [
+          "20260701_133022_teleop_038",
+          "20260701_133401_teleop_046",
+          "20260701_133431_teleop_047",
+          "20260701_133458_teleop_048",
+          "20260701_133522_teleop_049"
+        ],
+        "selected_episode_ids": [
+          "20260701_133046_teleop_039",
+          "20260701_133119_teleop_040",
+          "20260701_133206_teleop_042",
+          "20260701_133237_teleop_043",
+          "20260701_133312_teleop_044"
+        ],
+        "stratum_index": 3,
+        "train_episode_ids": [
+          "20260701_133046_teleop_039",
+          "20260701_133119_teleop_040",
+          "20260701_133206_teleop_042",
+          "20260701_133312_teleop_044"
+        ],
+        "validation_episode_ids": [
+          "20260701_133237_teleop_043"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_133623_teleop_051",
+          "20260701_133656_teleop_052",
+          "20260701_133741_teleop_054",
+          "20260701_133807_teleop_055",
+          "20260701_133841_teleop_056",
+          "20260701_133911_teleop_057",
+          "20260701_133955_teleop_059",
+          "20260701_134021_teleop_060",
+          "20260701_134120_teleop_062",
+          "20260701_134157_teleop_063"
+        ],
+        "holdout_episode_ids": [
+          "20260701_133656_teleop_052",
+          "20260701_133807_teleop_055",
+          "20260701_133911_teleop_057",
+          "20260701_134021_teleop_060",
+          "20260701_134120_teleop_062"
+        ],
+        "selected_episode_ids": [
+          "20260701_133623_teleop_051",
+          "20260701_133741_teleop_054",
+          "20260701_133841_teleop_056",
+          "20260701_133955_teleop_059",
+          "20260701_134157_teleop_063"
+        ],
+        "stratum_index": 4,
+        "train_episode_ids": [
+          "20260701_133623_teleop_051",
+          "20260701_133841_teleop_056",
+          "20260701_133955_teleop_059",
+          "20260701_134157_teleop_063"
+        ],
+        "validation_episode_ids": [
+          "20260701_133741_teleop_054"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_134222_teleop_064",
+          "20260701_134249_teleop_065",
+          "20260701_134330_teleop_067",
+          "20260701_134359_teleop_068",
+          "20260701_134429_teleop_069",
+          "20260701_134456_teleop_070",
+          "20260701_134545_teleop_072",
+          "20260701_134612_teleop_073",
+          "20260701_134633_teleop_074",
+          "20260701_134704_teleop_075"
+        ],
+        "holdout_episode_ids": [
+          "20260701_134359_teleop_068",
+          "20260701_134429_teleop_069",
+          "20260701_134456_teleop_070",
+          "20260701_134612_teleop_073",
+          "20260701_134633_teleop_074"
+        ],
+        "selected_episode_ids": [
+          "20260701_134222_teleop_064",
+          "20260701_134249_teleop_065",
+          "20260701_134330_teleop_067",
+          "20260701_134545_teleop_072",
+          "20260701_134704_teleop_075"
+        ],
+        "stratum_index": 5,
+        "train_episode_ids": [
+          "20260701_134222_teleop_064",
+          "20260701_134249_teleop_065",
+          "20260701_134330_teleop_067",
+          "20260701_134704_teleop_075"
+        ],
+        "validation_episode_ids": [
+          "20260701_134545_teleop_072"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_134737_teleop_076",
+          "20260701_134815_teleop_077",
+          "20260701_134845_teleop_078",
+          "20260701_134911_teleop_079",
+          "20260701_135242_teleop_001",
+          "20260701_135311_teleop_002",
+          "20260701_135343_teleop_003",
+          "20260701_135418_teleop_004",
+          "20260701_135447_teleop_005",
+          "20260701_135534_teleop_007"
+        ],
+        "holdout_episode_ids": [
+          "20260701_134845_teleop_078",
+          "20260701_134911_teleop_079",
+          "20260701_135311_teleop_002",
+          "20260701_135343_teleop_003",
+          "20260701_135534_teleop_007"
+        ],
+        "selected_episode_ids": [
+          "20260701_134737_teleop_076",
+          "20260701_134815_teleop_077",
+          "20260701_135242_teleop_001",
+          "20260701_135418_teleop_004",
+          "20260701_135447_teleop_005"
+        ],
+        "stratum_index": 6,
+        "train_episode_ids": [
+          "20260701_134737_teleop_076",
+          "20260701_134815_teleop_077",
+          "20260701_135242_teleop_001",
+          "20260701_135418_teleop_004"
+        ],
+        "validation_episode_ids": [
+          "20260701_135447_teleop_005"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_135601_teleop_008",
+          "20260701_135635_teleop_009",
+          "20260701_135758_teleop_012",
+          "20260701_135836_teleop_013",
+          "20260701_135903_teleop_014",
+          "20260701_135925_teleop_015",
+          "20260701_135955_teleop_016",
+          "20260701_140026_teleop_017",
+          "20260701_140110_teleop_019",
+          "20260701_140141_teleop_020"
+        ],
+        "holdout_episode_ids": [
+          "20260701_135601_teleop_008",
+          "20260701_135635_teleop_009",
+          "20260701_135925_teleop_015",
+          "20260701_135955_teleop_016",
+          "20260701_140141_teleop_020"
+        ],
+        "selected_episode_ids": [
+          "20260701_135758_teleop_012",
+          "20260701_135836_teleop_013",
+          "20260701_135903_teleop_014",
+          "20260701_140026_teleop_017",
+          "20260701_140110_teleop_019"
+        ],
+        "stratum_index": 7,
+        "train_episode_ids": [
+          "20260701_135758_teleop_012",
+          "20260701_135903_teleop_014",
+          "20260701_140026_teleop_017",
+          "20260701_140110_teleop_019"
+        ],
+        "validation_episode_ids": [
+          "20260701_135836_teleop_013"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_140223_teleop_022",
+          "20260701_140255_teleop_023",
+          "20260701_140325_teleop_024",
+          "20260701_140359_teleop_025",
+          "20260701_140425_teleop_026",
+          "20260701_140522_teleop_028",
+          "20260701_140614_teleop_030",
+          "20260701_140644_teleop_031",
+          "20260701_140716_teleop_032",
+          "20260701_140743_teleop_033"
+        ],
+        "holdout_episode_ids": [
+          "20260701_140325_teleop_024",
+          "20260701_140359_teleop_025",
+          "20260701_140614_teleop_030",
+          "20260701_140644_teleop_031",
+          "20260701_140716_teleop_032"
+        ],
+        "selected_episode_ids": [
+          "20260701_140223_teleop_022",
+          "20260701_140255_teleop_023",
+          "20260701_140425_teleop_026",
+          "20260701_140522_teleop_028",
+          "20260701_140743_teleop_033"
+        ],
+        "stratum_index": 8,
+        "train_episode_ids": [
+          "20260701_140255_teleop_023",
+          "20260701_140425_teleop_026",
+          "20260701_140522_teleop_028",
+          "20260701_140743_teleop_033"
+        ],
+        "validation_episode_ids": [
+          "20260701_140223_teleop_022"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260701_140837_teleop_035",
+          "20260701_140926_teleop_037",
+          "20260701_141001_teleop_038",
+          "20260701_141036_teleop_039",
+          "20260701_141120_teleop_041",
+          "20260701_141224_teleop_043",
+          "20260701_141255_teleop_044",
+          "20260701_141324_teleop_045",
+          "20260701_141357_teleop_046",
+          "20260701_141427_teleop_047"
+        ],
+        "holdout_episode_ids": [
+          "20260701_140837_teleop_035",
+          "20260701_140926_teleop_037",
+          "20260701_141001_teleop_038",
+          "20260701_141324_teleop_045",
+          "20260701_141427_teleop_047"
+        ],
+        "selected_episode_ids": [
+          "20260701_141036_teleop_039",
+          "20260701_141120_teleop_041",
+          "20260701_141224_teleop_043",
+          "20260701_141255_teleop_044",
+          "20260701_141357_teleop_046"
+        ],
+        "stratum_index": 9,
+        "train_episode_ids": [
+          "20260701_141036_teleop_039",
+          "20260701_141120_teleop_041",
+          "20260701_141224_teleop_043",
+          "20260701_141255_teleop_044"
+        ],
+        "validation_episode_ids": [
+          "20260701_141357_teleop_046"
+        ]
+      }
+    ],
+    "stratum_size": 10,
+    "temporal_strata": 10,
+    "validation_per_stratum": 1
+  },
+  "train_episode_count": 40,
+  "train_episodes": [
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131034_teleop_006",
+      "num_steps": 334,
+      "relative_hdf5_path": "20260701_131034_teleop_006/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131522_teleop_004",
+      "num_steps": 367,
+      "relative_hdf5_path": "20260701_131522_teleop_004/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131557_teleop_005",
+      "num_steps": 277,
+      "relative_hdf5_path": "20260701_131557_teleop_005/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131626_teleop_006",
+      "num_steps": 340,
+      "relative_hdf5_path": "20260701_131626_teleop_006/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131843_teleop_011",
+      "num_steps": 276,
+      "relative_hdf5_path": "20260701_131843_teleop_011/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131908_teleop_012",
+      "num_steps": 269,
+      "relative_hdf5_path": "20260701_131908_teleop_012/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132049_teleop_016",
+      "num_steps": 332,
+      "relative_hdf5_path": "20260701_132049_teleop_016/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132326_teleop_022",
+      "num_steps": 371,
+      "relative_hdf5_path": "20260701_132326_teleop_022/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132627_teleop_030",
+      "num_steps": 331,
+      "relative_hdf5_path": "20260701_132627_teleop_030/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132801_teleop_033",
+      "num_steps": 294,
+      "relative_hdf5_path": "20260701_132801_teleop_033/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132846_teleop_035",
+      "num_steps": 306,
+      "relative_hdf5_path": "20260701_132846_teleop_035/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132955_teleop_037",
+      "num_steps": 269,
+      "relative_hdf5_path": "20260701_132955_teleop_037/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133046_teleop_039",
+      "num_steps": 281,
+      "relative_hdf5_path": "20260701_133046_teleop_039/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133119_teleop_040",
+      "num_steps": 288,
+      "relative_hdf5_path": "20260701_133119_teleop_040/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133206_teleop_042",
+      "num_steps": 302,
+      "relative_hdf5_path": "20260701_133206_teleop_042/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133312_teleop_044",
+      "num_steps": 292,
+      "relative_hdf5_path": "20260701_133312_teleop_044/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133623_teleop_051",
+      "num_steps": 359,
+      "relative_hdf5_path": "20260701_133623_teleop_051/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133841_teleop_056",
+      "num_steps": 290,
+      "relative_hdf5_path": "20260701_133841_teleop_056/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133955_teleop_059",
+      "num_steps": 263,
+      "relative_hdf5_path": "20260701_133955_teleop_059/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134157_teleop_063",
+      "num_steps": 279,
+      "relative_hdf5_path": "20260701_134157_teleop_063/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134222_teleop_064",
+      "num_steps": 282,
+      "relative_hdf5_path": "20260701_134222_teleop_064/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134249_teleop_065",
+      "num_steps": 276,
+      "relative_hdf5_path": "20260701_134249_teleop_065/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134330_teleop_067",
+      "num_steps": 232,
+      "relative_hdf5_path": "20260701_134330_teleop_067/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134704_teleop_075",
+      "num_steps": 368,
+      "relative_hdf5_path": "20260701_134704_teleop_075/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134737_teleop_076",
+      "num_steps": 417,
+      "relative_hdf5_path": "20260701_134737_teleop_076/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134815_teleop_077",
+      "num_steps": 276,
+      "relative_hdf5_path": "20260701_134815_teleop_077/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135242_teleop_001",
+      "num_steps": 298,
+      "relative_hdf5_path": "20260701_135242_teleop_001/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135418_teleop_004",
+      "num_steps": 299,
+      "relative_hdf5_path": "20260701_135418_teleop_004/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135758_teleop_012",
+      "num_steps": 355,
+      "relative_hdf5_path": "20260701_135758_teleop_012/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135903_teleop_014",
+      "num_steps": 221,
+      "relative_hdf5_path": "20260701_135903_teleop_014/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140026_teleop_017",
+      "num_steps": 344,
+      "relative_hdf5_path": "20260701_140026_teleop_017/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140110_teleop_019",
+      "num_steps": 343,
+      "relative_hdf5_path": "20260701_140110_teleop_019/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140255_teleop_023",
+      "num_steps": 338,
+      "relative_hdf5_path": "20260701_140255_teleop_023/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140425_teleop_026",
+      "num_steps": 265,
+      "relative_hdf5_path": "20260701_140425_teleop_026/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140522_teleop_028",
+      "num_steps": 342,
+      "relative_hdf5_path": "20260701_140522_teleop_028/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140743_teleop_033",
+      "num_steps": 291,
+      "relative_hdf5_path": "20260701_140743_teleop_033/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141036_teleop_039",
+      "num_steps": 260,
+      "relative_hdf5_path": "20260701_141036_teleop_039/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141120_teleop_041",
+      "num_steps": 448,
+      "relative_hdf5_path": "20260701_141120_teleop_041/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141224_teleop_043",
+      "num_steps": 346,
+      "relative_hdf5_path": "20260701_141224_teleop_043/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141255_teleop_044",
+      "num_steps": 306,
+      "relative_hdf5_path": "20260701_141255_teleop_044/episode.hdf5"
+    }
+  ],
+  "validation_episode_count": 10,
+  "validation_episodes": [
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_131116_teleop_008",
+      "num_steps": 297,
+      "relative_hdf5_path": "20260701_131116_teleop_008/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132024_teleop_015",
+      "num_steps": 238,
+      "relative_hdf5_path": "20260701_132024_teleop_015/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_132701_teleop_031",
+      "num_steps": 371,
+      "relative_hdf5_path": "20260701_132701_teleop_031/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133237_teleop_043",
+      "num_steps": 295,
+      "relative_hdf5_path": "20260701_133237_teleop_043/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_133741_teleop_054",
+      "num_steps": 277,
+      "relative_hdf5_path": "20260701_133741_teleop_054/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_134545_teleop_072",
+      "num_steps": 303,
+      "relative_hdf5_path": "20260701_134545_teleop_072/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135447_teleop_005",
+      "num_steps": 345,
+      "relative_hdf5_path": "20260701_135447_teleop_005/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_135836_teleop_013",
+      "num_steps": 279,
+      "relative_hdf5_path": "20260701_135836_teleop_013/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_140223_teleop_022",
+      "num_steps": 330,
+      "relative_hdf5_path": "20260701_140223_teleop_022/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260701_141357_teleop_046",
+      "num_steps": 312,
+      "relative_hdf5_path": "20260701_141357_teleop_046/episode.hdf5"
+    }
+  ]
+}

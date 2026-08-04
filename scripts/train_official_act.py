@@ -23,6 +23,10 @@ if str(SRC_ROOT) not in sys.path:
 from force_aware_act.act_aligned_training.split import (  # noqa: E402
     discover_episodes,
 )
+from force_aware_act.experiments import (  # noqa: E402
+    load_paired_episode_subset_manifest,
+    validate_checkpoint_experiment_provenance,
+)
 from force_aware_act.models.official_act import (  # noqa: E402
     OfficialACTConfig,
     OfficialACTPolicy,
@@ -43,6 +47,9 @@ from force_aware_act.official_act_training import (  # noqa: E402
     run_official_act_validation_epoch,
     save_official_act_checkpoint,
 )
+from force_aware_act.official_act_training.data import (  # noqa: E402
+    OFFICIAL_ACT_SPLIT_VERSION,
+)
 
 
 def main() -> None:
@@ -57,6 +64,14 @@ def main() -> None:
         )
     device = torch.device(args.device)
     _seed_everything(args.seed)
+    experiment_subset = (
+        None
+        if args.experiment_manifest is None
+        else load_paired_episode_subset_manifest(
+            args.experiment_manifest,
+            data_root=args.data_root,
+        )
+    )
 
     if args.resume is None:
         model_config = (
@@ -68,30 +83,58 @@ def main() -> None:
             batch_size=2 if args.smoke else args.batch_size,
             num_epochs=1 if args.smoke else args.num_epochs,
             seed=args.seed,
+            split_seed=(
+                experiment_subset.seed
+                if experiment_subset is not None
+                else 1
+            ),
             checkpoint_interval_epochs=(
                 1 if args.smoke else args.checkpoint_interval_epochs
             ),
         )
-        full_manifest = create_official_act_split(
-            args.data_root,
-            validation_fraction=training_config.validation_fraction,
-            split_seed=training_config.split_seed,
-        )
-        if args.smoke:
-            manifest = OfficialACTSplitManifest(
-                format_version=full_manifest.format_version,
-                data_root=full_manifest.data_root,
-                split_seed=full_manifest.split_seed,
-                validation_fraction=full_manifest.validation_fraction,
-                train_episodes=full_manifest.train_episodes[:4],
-                validation_episodes=full_manifest.validation_episodes[:2],
+        if experiment_subset is None:
+            full_manifest = create_official_act_split(
+                args.data_root,
+                validation_fraction=training_config.validation_fraction,
+                split_seed=training_config.split_seed,
             )
+            if args.smoke:
+                manifest = OfficialACTSplitManifest(
+                    format_version=full_manifest.format_version,
+                    data_root=full_manifest.data_root,
+                    split_seed=full_manifest.split_seed,
+                    validation_fraction=full_manifest.validation_fraction,
+                    train_episodes=full_manifest.train_episodes[:4],
+                    validation_episodes=full_manifest.validation_episodes[:2],
+                )
+            else:
+                manifest = full_manifest
+            normalization_episodes = discover_episodes(args.data_root)
+            normalization_scope = "all_episodes_official_behavior"
+            experiment_provenance = None
         else:
-            manifest = full_manifest
-        all_episodes = discover_episodes(args.data_root)
+            manifest = OfficialACTSplitManifest(
+                format_version=OFFICIAL_ACT_SPLIT_VERSION,
+                data_root=str(args.data_root.resolve()),
+                split_seed=experiment_subset.seed,
+                validation_fraction=(
+                    len(experiment_subset.validation_episodes)
+                    / (
+                        len(experiment_subset.train_episodes)
+                        + len(experiment_subset.validation_episodes)
+                    )
+                ),
+                train_episodes=experiment_subset.train_episodes,
+                validation_episodes=experiment_subset.validation_episodes,
+            )
+            normalization_episodes = manifest.train_episodes
+            normalization_scope = "paired_manifest_train_episodes_only"
+            experiment_provenance = (
+                experiment_subset.checkpoint_provenance()
+            )
         normalization = compute_official_act_stats(
             args.data_root,
-            all_episodes,
+            normalization_episodes,
         )
         start_epoch = 0
         global_step = 0
@@ -118,6 +161,17 @@ def main() -> None:
         best_metric = float(payload["progress"]["best_metric"])
         best_epoch = int(payload["progress"].get("best_epoch", -1))
         best_model_state = payload.get("best_model_state")
+        experiment_provenance = payload.get("experiment_manifest")
+        normalization_scope = (
+            "paired_manifest_train_episodes_only"
+            if experiment_provenance is not None
+            else "all_episodes_official_behavior"
+        )
+        if experiment_subset is not None:
+            validate_checkpoint_experiment_provenance(
+                experiment_provenance,
+                experiment_subset,
+            )
 
     model = OfficialACTPolicy(model_config).to(device)
     criterion = OfficialACTCriterion(training_config)
@@ -151,13 +205,17 @@ def main() -> None:
         len(train_dataset) + training_config.batch_size - 1
     ) // training_config.batch_size
     expected_total_steps = steps_per_epoch * training_config.num_epochs
+    training_metadata = training_config.checkpoint_metadata()
+    training_metadata["normalization_scope"] = normalization_scope
     run_metadata = {
         "model": model_config.checkpoint_metadata(),
-        "training": training_config.checkpoint_metadata(),
+        "training": training_metadata,
         "train_episodes": len(train_dataset),
         "validation_episodes": len(validation_dataset),
         "steps_per_epoch": steps_per_epoch,
         "expected_total_steps": expected_total_steps,
+        "normalization_scope": normalization_scope,
+        "experiment_manifest": experiment_provenance,
         "formal_native_image_resolution": (
             not args.smoke
             and (
@@ -276,6 +334,7 @@ def main() -> None:
                 best_metric=best_metric,
                 best_epoch=best_epoch,
                 best_model_state=best_model_state,
+                experiment_manifest=experiment_provenance,
             )
 
     validation_dataset.set_epoch(training_config.num_epochs)
@@ -306,6 +365,7 @@ def main() -> None:
         best_metric=best_metric,
         best_epoch=best_epoch,
         best_model_state=best_model_state,
+        experiment_manifest=experiment_provenance,
     )
     if best_model_state is None:
         raise RuntimeError("official ACT training did not select a best model")
@@ -318,6 +378,9 @@ def main() -> None:
             "best_epoch": best_epoch,
             "best_metric": best_metric,
             "model_state": best_model_state,
+            "normalization": normalization.to_dict(),
+            "split_manifest": manifest.to_dict(),
+            "experiment_manifest": experiment_provenance,
         },
     )
     reloaded = load_official_act_checkpoint(
@@ -334,6 +397,8 @@ def main() -> None:
         "epochs": training_config.num_epochs,
         "global_step": global_step,
         "expected_total_steps": expected_total_steps,
+        "normalization_scope": normalization_scope,
+        "experiment_manifest": experiment_provenance,
         "best_metric": best_metric,
         "best_epoch": best_epoch,
         "final_validation": final_validation,
@@ -440,6 +505,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-interval-epochs", type=int, default=100)
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--resume", type=Path)
+    parser.add_argument("--experiment-manifest", type=Path)
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
     if (
@@ -450,6 +516,8 @@ def _parse_args() -> argparse.Namespace:
         or args.log_interval <= 0
     ):
         parser.error("numeric training arguments are invalid")
+    if args.smoke and args.experiment_manifest is not None:
+        parser.error("--smoke cannot be combined with --experiment-manifest")
     return args
 
 

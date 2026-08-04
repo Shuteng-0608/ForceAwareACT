@@ -39,6 +39,13 @@ from force_aware_act.act_aligned_training import (  # noqa: E402
     run_validation_epoch,
     save_act_aligned_checkpoint,
 )
+from force_aware_act.act_aligned_training.split import (  # noqa: E402
+    SPLIT_FORMAT_VERSION,
+)
+from force_aware_act.experiments import (  # noqa: E402
+    load_paired_episode_subset_manifest,
+    validate_checkpoint_experiment_provenance,
+)
 from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
@@ -95,6 +102,14 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
     device = torch.device(args.device)
     _seed_everything(args.seed)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    experiment_subset = (
+        None
+        if args.experiment_manifest is None
+        else load_paired_episode_subset_manifest(
+            args.experiment_manifest,
+            data_root=args.data_root,
+        )
+    )
 
     if args.resume is None:
         model_config = (
@@ -102,11 +117,31 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
             if args.smoke
             else stack.formal_model_config()
         )
-        manifest = create_episode_split(
-            args.data_root,
-            validation_fraction=args.validation_fraction,
-            seed=args.seed,
-        )
+        if experiment_subset is None:
+            manifest = create_episode_split(
+                args.data_root,
+                validation_fraction=args.validation_fraction,
+                seed=args.seed,
+            )
+            experiment_provenance = None
+        else:
+            manifest = EpisodeSplitManifest(
+                format_version=SPLIT_FORMAT_VERSION,
+                data_root=str(args.data_root.resolve()),
+                seed=experiment_subset.seed,
+                validation_fraction=(
+                    len(experiment_subset.validation_episodes)
+                    / (
+                        len(experiment_subset.train_episodes)
+                        + len(experiment_subset.validation_episodes)
+                    )
+                ),
+                train_episodes=experiment_subset.train_episodes,
+                validation_episodes=experiment_subset.validation_episodes,
+            )
+            experiment_provenance = (
+                experiment_subset.checkpoint_provenance()
+            )
         training_config = stack.training_config_type(
             batch_size=2 if args.smoke else args.batch_size,
             seed=args.seed,
@@ -140,6 +175,12 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         )
         global_step = int(payload["progress"]["global_step"])
         best_metric = float(payload["progress"]["best_metric"])
+        experiment_provenance = payload.get("experiment_manifest")
+        if experiment_subset is not None:
+            validate_checkpoint_experiment_provenance(
+                experiment_provenance,
+                experiment_subset,
+            )
 
     model = stack.policy_type(model_config).to(device)
     criterion = stack.criterion_type(training_config)
@@ -216,6 +257,20 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         raise ValueError(
             "checkpoint step_in_epoch must be smaller than epoch length"
         )
+    run_metadata = {
+        "training_stack": stack.name,
+        "model": model_config.checkpoint_metadata(),
+        "training": training_config.checkpoint_metadata(),
+        "experiment_manifest": experiment_provenance,
+        "train_episodes": len(manifest.train_episodes),
+        "validation_episodes": len(manifest.validation_episodes),
+        "train_windows": len(train_dataset),
+        "validation_windows": len(validation_dataset),
+        "steps_per_data_epoch": len(train_loader),
+        "optimizer_step_limit": step_limit,
+    }
+    _atomic_write_json(args.output_dir / "run_metadata.json", run_metadata)
+    print(json.dumps(run_metadata, sort_keys=True), flush=True)
     run_start_global_step = global_step
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
@@ -297,6 +352,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         normalization,
                         manifest,
                         periodic_generator,
+                        experiment_provenance,
                     )
 
             train_metrics = stack.run_training_epoch(
@@ -364,6 +420,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         normalization,
                         manifest,
                         checkpoint_generator,
+                        experiment_provenance,
                     )
             validation_memory = _cuda_memory_snapshot(device)
             record = {
@@ -386,6 +443,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                 normalization,
                 manifest,
                 checkpoint_generator,
+                experiment_provenance,
             )
             if stopped_at_limit:
                 final_name = (
@@ -403,6 +461,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     normalization,
                     manifest,
                     checkpoint_generator,
+                    experiment_provenance,
                 )
                 expected_rng_state = _capture_runtime_rng_state()
                 reload_audit = _audit_checkpoint_reload(
@@ -428,6 +487,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     "reference_train_episodes": (
                         training_config.reference_train_episodes
                     ),
+                    "experiment_manifest": experiment_provenance,
                     "run_start_global_step": run_start_global_step,
                     "global_step": global_step,
                     "progress": {
@@ -503,6 +563,7 @@ def _save(
     normalization,
     manifest,
     generator,
+    experiment_manifest,
 ) -> None:
     save_act_aligned_checkpoint(
         path,
@@ -513,6 +574,7 @@ def _save(
         normalization=normalization,
         split_manifest=manifest,
         dataloader_generator=generator,
+        experiment_manifest=experiment_manifest,
     )
 
 
@@ -552,6 +614,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--validation-fraction", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", type=Path)
+    parser.add_argument("--experiment-manifest", type=Path)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument(
         "--run-mode",
@@ -592,6 +655,8 @@ def _parse_args() -> argparse.Namespace:
             parser.error("burn_in requires positive --max-train-steps")
     elif args.max_train_steps is not None:
         parser.error("--max-train-steps is valid only for burn_in")
+    if args.smoke and args.experiment_manifest is not None:
+        parser.error("--smoke cannot be combined with --experiment-manifest")
     return args
 
 

@@ -21,6 +21,12 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
+from force_aware_act.inference import (  # noqa: E402
+    ACT_ALIGNED_ROLLOUT_KIND,
+    OFFICIAL_ACT_ROLLOUT_KIND,
+    RolloutPolicyAdapter,
+    checkpoint_uses_rollout_adapter,
+)
 from force_aware_act.models import (  # noqa: E402
     ACTPolicyBaseline,
     ForceAwareACTContactCVAEPolicy,
@@ -209,6 +215,11 @@ def _model_kwargs(checkpoint: dict, force_window_len: int, chunk_len: int) -> di
 
 
 def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
+    architecture = checkpoint.get("architecture_version")
+    if architecture == "official_act_single_arm_v1":
+        return OFFICIAL_ACT_ROLLOUT_KIND
+    if architecture == "act_aligned_contact_cvae_v1":
+        return ACT_ALIGNED_ROLLOUT_KIND
     config = checkpoint.get("config", {})
     if not isinstance(config, dict):
         return "force_aware_act"
@@ -223,7 +234,11 @@ def _act_baseline_version_from_checkpoint(checkpoint: dict) -> str:
 
 
 def _policy_has_contact_prior(policy_variant: str) -> bool:
-    return policy_variant in {"force_aware_act", "force_aware_contact_cvae"}
+    return policy_variant in {
+        "force_aware_act",
+        "force_aware_contact_cvae",
+        ACT_ALIGNED_ROLLOUT_KIND,
+    }
 
 
 def _build_policy_from_checkpoint(checkpoint: dict, force_window_len: int, chunk_len: int):
@@ -476,7 +491,7 @@ def _render_images(
     renderer,
     data,
     camera_ids: np.ndarray,
-    image_size: int,
+    image_size: Optional[int],
     device: torch.device,
 ) -> tuple[torch.Tensor, np.ndarray]:
     frames = []
@@ -486,13 +501,17 @@ def _render_images(
         frames.append(rgb)
     images = np.stack(frames, axis=0).astype(np.float32) / 255.0
     tensor = torch.from_numpy(images).permute(0, 3, 1, 2).to(device)
-    resized = functional.interpolate(
-        tensor,
-        size=(image_size, image_size),
-        mode="bilinear",
-        align_corners=False,
-    )
-    return resized, np.asarray(frames, dtype=np.uint8)
+    if image_size is not None and tuple(tensor.shape[-2:]) != (
+        image_size,
+        image_size,
+    ):
+        tensor = functional.interpolate(
+            tensor,
+            size=(image_size, image_size),
+            mode="bilinear",
+            align_corners=False,
+        )
+    return tensor, np.asarray(frames, dtype=np.uint8)
 
 
 def _position_or_nan(positions: np.ndarray, object_id: int) -> np.ndarray:
@@ -943,6 +962,92 @@ def _validate_summary_schema(summary: dict[str, Any]) -> None:
         raise KeyError(f"summary is missing required keys: {', '.join(missing)}")
 
 
+def _resolve_checkpoint_contract(
+    args: argparse.Namespace,
+    checkpoint: dict[str, Any],
+    inference_device: torch.device,
+) -> tuple[
+    Optional[RolloutPolicyAdapter],
+    Optional[Dict[str, Any]],
+    str,
+]:
+    """Resolve CLI defaults without overriding a checkpoint data contract."""
+
+    if checkpoint_uses_rollout_adapter(checkpoint):
+        adapter = RolloutPolicyAdapter.from_checkpoint(
+            checkpoint,
+            device=inference_device,
+        )
+        if args.chunk_len is not None and args.chunk_len != adapter.chunk_len:
+            raise ValueError(
+                f"--chunk-len={args.chunk_len} does not match checkpoint "
+                f"chunk_len={adapter.chunk_len}"
+            )
+        args.chunk_len = adapter.chunk_len
+        args.image_height = adapter.image_height
+        args.image_width = adapter.image_width
+
+        if adapter.uses_force_history:
+            expected_force_len = int(adapter.force_window_len)
+            if (
+                args.force_window_len is not None
+                and args.force_window_len != expected_force_len
+            ):
+                raise ValueError(
+                    f"--force-window-len={args.force_window_len} does not "
+                    f"match checkpoint force_window_len={expected_force_len}"
+                )
+            args.force_window_len = expected_force_len
+            expected_duration = (expected_force_len - 1) / args.policy_rate_hz
+            if (
+                args.force_window_duration is not None
+                and not np.isclose(
+                    args.force_window_duration,
+                    expected_duration,
+                    rtol=0.0,
+                    atol=1.0e-9,
+                )
+            ):
+                raise ValueError(
+                    "ACT-aligned force history is one state-rate sample per "
+                    "policy step; its duration must be "
+                    f"(L-1)/policy_rate_hz={expected_duration:.9g}, got "
+                    f"{args.force_window_duration:.9g}"
+                )
+            args.force_window_duration = expected_duration
+        else:
+            if args.contact_latent_mode != "zero":
+                raise ValueError("official ACT requires --contact-latent-mode=zero")
+            args.force_window_len = 0
+            args.force_window_duration = 0.0
+        if args.action_mode in DELTA_ACTION_MODES:
+            raise ValueError(
+                "new ACT checkpoints predict normalized absolute actions; "
+                f"action_mode={args.action_mode!r} is incompatible"
+            )
+        return adapter, None, f"embedded:{args.checkpoint}"
+
+    if args.normalization_stats is None:
+        raise ValueError(
+            "legacy checkpoints require --normalization-stats; new official "
+            "ACT and ACT-aligned checkpoints embed their own statistics"
+        )
+    args.chunk_len = 10 if args.chunk_len is None else args.chunk_len
+    args.force_window_len = (
+        20 if args.force_window_len is None else args.force_window_len
+    )
+    args.force_window_duration = (
+        0.25
+        if args.force_window_duration is None
+        else args.force_window_duration
+    )
+    stats = _load_stats(args.normalization_stats)
+    _validate_stats_action_mode(stats, args.action_mode)
+    return None, _stats_to_device(stats, inference_device), str(
+        args.normalization_stats
+    )
+
+
 def run_rollout(args: argparse.Namespace) -> int:
     inference_device = _resolve_inference_device(args.device)
     cuda_available = torch.cuda.is_available()
@@ -954,17 +1059,31 @@ def run_rollout(args: argparse.Namespace) -> int:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     mujoco = _load_mujoco()
-    stats = _load_stats(args.normalization_stats)
-    _validate_stats_action_mode(stats, args.action_mode)
-    stats = _stats_to_device(stats, inference_device)
-    checkpoint = torch.load(args.checkpoint, map_location="cpu")
+    checkpoint = torch.load(
+        args.checkpoint,
+        map_location="cpu",
+        weights_only=False,
+    )
     if not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must contain a dict")
+    adapter, stats, normalization_reference = _resolve_checkpoint_contract(
+        args,
+        checkpoint,
+        inference_device,
+    )
+    _selected_action_index(args.chunk_len, args.action_select_mode)
     policy_variant = _policy_variant_from_checkpoint(checkpoint)
-    model = _build_policy_from_checkpoint(checkpoint, args.force_window_len, args.chunk_len)
-    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
-    model.to(inference_device)
-    model.eval()
+    if adapter is None:
+        model = _build_policy_from_checkpoint(
+            checkpoint,
+            args.force_window_len,
+            args.chunk_len,
+        )
+        model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+        model.to(inference_device)
+        model.eval()
+    else:
+        model = adapter.model
     model_parameter_device = next(model.parameters()).device
     if model_parameter_device.type != inference_device.type:
         raise RuntimeError(
@@ -1033,6 +1152,13 @@ def run_rollout(args: argparse.Namespace) -> int:
     force_history: deque[tuple[float, np.ndarray]] = deque(
         [(float(data.time), current_wrench.copy())],
     )
+    state_rate_force_history: deque[np.ndarray] = deque(
+        maxlen=(
+            args.force_window_len
+            if adapter is not None and adapter.uses_force_history
+            else None
+        )
+    )
     predicted_action_chunks: deque[tuple[int, np.ndarray]] = deque()
     previous_command = internal_initial.copy()
     renderer = mujoco.Renderer(
@@ -1087,16 +1213,30 @@ def run_rollout(args: argparse.Namespace) -> int:
             wrench = _read_wrench(data, force_slice, torque_slice).astype(np.float32)
             force_norm = float(np.linalg.norm(wrench[:3]))
             force_norm_history.append(force_norm)
-            force_window_np = _resample_force_window(
-                force_history,
-                float(data.time),
-                args.force_window_duration,
-                args.force_window_len,
-            ).astype(np.float32)
+            if adapter is not None and adapter.uses_force_history:
+                state_rate_force_history.append(wrench.copy())
+                force_window_np = np.stack(state_rate_force_history)
+            elif adapter is None:
+                force_window_np = _resample_force_window(
+                    force_history,
+                    float(data.time),
+                    args.force_window_duration,
+                    args.force_window_len,
+                ).astype(np.float32)
+            else:
+                force_window_np = np.empty((0, 6), dtype=np.float32)
             images_chw, raw_frames = _render_images(
-                renderer, data, camera_ids, args.image_size, inference_device
+                renderer,
+                data,
+                camera_ids,
+                None if adapter is not None else args.image_size,
+                inference_device,
             )
-            images = images_chw.unsqueeze(0)
+            images = (
+                adapter.prepare_images(images_chw)
+                if adapter is not None
+                else images_chw.unsqueeze(0)
+            )
             if args.save_camera_snapshots and step % args.snapshot_every == 0:
                 _save_snapshots(snapshot_dir, step, raw_frames)
                 snapshots_saved = True
@@ -1126,25 +1266,83 @@ def run_rollout(args: argparse.Namespace) -> int:
                 success = True
                 success_step = step
                 success_time = float(data.time)
-            qpos_tensor = normalize_tensor(
-                torch.from_numpy(qpos).to(inference_device).unsqueeze(0),
-                stats["qpos_mean"],
-                stats["qpos_std"],
-            )
-            force_window_tensor = normalize_tensor(
-                torch.from_numpy(force_window_np).to(inference_device).unsqueeze(0),
-                stats["force_mean"],
-                stats["force_std"],
-            )
-
-            selected_output = _run_mode(
-                model, images, qpos_tensor, force_window_tensor, args.contact_latent_mode
-            )
-            selected_action, selected_force = _denormalize_predictions(selected_output, stats)
+            if adapter is None:
+                qpos_tensor = normalize_tensor(
+                    torch.from_numpy(qpos).to(inference_device).unsqueeze(0),
+                    stats["qpos_mean"],
+                    stats["qpos_std"],
+                )
+                force_window_tensor = normalize_tensor(
+                    torch.from_numpy(force_window_np)
+                    .to(inference_device)
+                    .unsqueeze(0),
+                    stats["force_mean"],
+                    stats["force_std"],
+                )
+                force_padding_mask = None
+                selected_output = _run_mode(
+                    model,
+                    images,
+                    qpos_tensor,
+                    force_window_tensor,
+                    args.contact_latent_mode,
+                )
+                selected_action, selected_force = _denormalize_predictions(
+                    selected_output,
+                    stats,
+                )
+            else:
+                qpos_tensor = adapter.prepare_qpos(qpos)
+                if adapter.uses_force_history:
+                    force_window_tensor, force_padding_mask = (
+                        adapter.prepare_force_history(force_window_np)
+                    )
+                else:
+                    force_window_tensor = torch.empty(
+                        (1, 0, 6),
+                        dtype=qpos_tensor.dtype,
+                        device=inference_device,
+                    )
+                    force_padding_mask = None
+                selected_output = adapter.forward(
+                    images,
+                    qpos_tensor,
+                    force_history=(
+                        force_window_tensor
+                        if adapter.uses_force_history
+                        else None
+                    ),
+                    force_padding_mask=force_padding_mask,
+                    contact_latent_mode=args.contact_latent_mode,
+                )
+                selected_action, selected_force = (
+                    adapter.denormalize_predictions(selected_output)
+                )
             zero_action = zero_force = None
             if args.contact_latent_mode == "prior" and _policy_has_contact_prior(policy_variant):
-                zero_output = _run_mode(model, images, qpos_tensor, force_window_tensor, "zero")
-                zero_action, zero_force = _denormalize_predictions(zero_output, stats)
+                if adapter is None:
+                    zero_output = _run_mode(
+                        model,
+                        images,
+                        qpos_tensor,
+                        force_window_tensor,
+                        "zero",
+                    )
+                    zero_action, zero_force = _denormalize_predictions(
+                        zero_output,
+                        stats,
+                    )
+                else:
+                    zero_output = adapter.forward(
+                        images,
+                        qpos_tensor,
+                        force_history=force_window_tensor,
+                        force_padding_mask=force_padding_mask,
+                        contact_latent_mode="zero",
+                    )
+                    zero_action, zero_force = (
+                        adapter.denormalize_predictions(zero_output)
+                    )
 
             has_predicted_force = "pred_force" in selected_output
             predicted_force_norms = np.linalg.norm(selected_force[:, :3], axis=1)
@@ -1492,8 +1690,27 @@ def run_rollout(args: argparse.Namespace) -> int:
     summary = {
         "output_dir": args.output_dir,
         "checkpoint": args.checkpoint,
+        "checkpoint_format": checkpoint.get("format_version", "model_only"),
+        "architecture_version": checkpoint.get("architecture_version", "legacy"),
         "policy_variant": policy_variant,
-        "normalization_stats": args.normalization_stats,
+        "normalization_stats": normalization_reference,
+        "normalization_source": (
+            "checkpoint_embedded" if adapter is not None else "external_file"
+        ),
+        "image_input_contract": (
+            "checkpoint_native_resolution"
+            if adapter is not None
+            else "legacy_square_resize"
+        ),
+        "force_history_contract": (
+            "state_rate_causal_left_padded"
+            if adapter is not None and adapter.uses_force_history
+            else (
+                "not_used"
+                if adapter is not None
+                else "legacy_uniform_time_resample"
+            )
+        ),
         "model_xml": args.model_xml,
         "inference_device": str(inference_device),
         "rollout_mode": "execute" if args.execute_actions else "dry_run",
@@ -1703,27 +1920,34 @@ def run_rollout(args: argparse.Namespace) -> int:
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run ForceAwareACT in a local MuJoCo environment.")
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--normalization-stats", type=Path, required=True)
+    parser.add_argument(
+        "--normalization-stats",
+        type=Path,
+        help=(
+            "Required only for legacy checkpoints. New official ACT and "
+            "ACT-aligned checkpoints use their embedded training statistics."
+        ),
+    )
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument(
         "--model-xml",
         type=Path,
         default=Path("../arm_teleop/model/pangu_all_right.xml"),
     )
-    parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="prior")
+    parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="zero")
     parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
     parser.add_argument(
         "--action-select-mode",
-        default="first",
+        default="temporal",
         help=(
             "Select first/mid/last, temporal aggregation, or a 1-based "
             "action-chunk index such as 1 or 10."
         ),
     )
     parser.add_argument("--temporal-agg-decay", type=float, default=0.3)
-    parser.add_argument("--chunk-len", type=int, default=10)
-    parser.add_argument("--force-window-len", type=int, default=20)
-    parser.add_argument("--force-window-duration", type=float, default=0.25)
+    parser.add_argument("--chunk-len", type=int)
+    parser.add_argument("--force-window-len", type=int)
+    parser.add_argument("--force-window-duration", type=float)
     parser.add_argument("--policy-rate-hz", type=float, default=30.0)
     parser.add_argument("--max-rollout-steps", type=int, default=100)
     parser.add_argument("--image-width", type=int, default=640)
@@ -1766,17 +1990,33 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    for key in ("checkpoint", "normalization_stats", "model_xml"):
+    for key in ("checkpoint", "model_xml"):
         path = getattr(args, key).expanduser().resolve()
         setattr(args, key, path)
         if not path.is_file():
             print(f"error: {key.replace('_', ' ')} does not exist: {path}", file=sys.stderr)
             return 2
+    if args.normalization_stats is not None:
+        args.normalization_stats = args.normalization_stats.expanduser().resolve()
+        if not args.normalization_stats.is_file():
+            print(
+                "error: normalization stats does not exist: "
+                f"{args.normalization_stats}",
+                file=sys.stderr,
+            )
+            return 2
     args.output_dir = args.output_dir.expanduser()
-    if args.chunk_len <= 0 or args.force_window_len <= 0 or args.max_rollout_steps <= 0:
+    if (
+        (args.chunk_len is not None and args.chunk_len <= 0)
+        or (args.force_window_len is not None and args.force_window_len <= 0)
+        or args.max_rollout_steps <= 0
+    ):
         print("error: chunk/window/rollout lengths must be positive", file=sys.stderr)
         return 2
-    if args.force_window_duration < 0 or args.policy_rate_hz <= 0:
+    if (
+        args.force_window_duration is not None
+        and args.force_window_duration < 0
+    ) or args.policy_rate_hz <= 0:
         print("error: force window duration must be non-negative and policy rate positive", file=sys.stderr)
         return 2
     if args.image_width <= 0 or args.image_height <= 0 or args.image_size <= 0:
@@ -1826,11 +2066,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args.hole_axis_world = args.hole_axis_world / hole_axis_norm
     if args.temporal_agg_decay < 0:
         print("error: --temporal-agg-decay must be non-negative", file=sys.stderr)
-        return 2
-    try:
-        _selected_action_index(args.chunk_len, args.action_select_mode)
-    except ValueError as error:
-        print(f"error: {error}", file=sys.stderr)
         return 2
     if args.snapshot_every <= 0:
         print("error: --snapshot-every must be positive", file=sys.stderr)

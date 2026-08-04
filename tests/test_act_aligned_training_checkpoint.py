@@ -68,6 +68,10 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
     model = ACTAlignedContactCVAEPolicy(model_config)
     optimizer = build_act_aligned_optimizer(model, training_config)
     generator = torch.Generator().manual_seed(9)
+    experiment_manifest = {
+        "format_version": "paired_episode_subset_v1",
+        "dataset_fingerprint": "fingerprint",
+    }
     path = tmp_path / "checkpoint.pt"
     torch.manual_seed(7)
     random.seed(7)
@@ -82,6 +86,7 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
         normalization=_stats(),
         split_manifest=_manifest(),
         dataloader_generator=generator,
+        experiment_manifest=experiment_manifest,
     )
     expected_random = torch.rand(4)
     with torch.no_grad():
@@ -99,6 +104,8 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
     assert loaded.progress == TrainingProgress(3, 17, 0.25, step_in_epoch=5)
     assert loaded.normalization == _stats()
     assert loaded.split_manifest == _manifest()
+    payload = torch.load(path, weights_only=False)
+    assert payload["experiment_manifest"] == experiment_manifest
     torch.testing.assert_close(
         loaded.dataloader_generator_state,
         generator.get_state(),

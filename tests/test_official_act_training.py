@@ -210,6 +210,10 @@ def test_official_checkpoint_round_trip_is_strict(tmp_path):
     )
     path = tmp_path / "checkpoint.pt"
     expected = model.action_head.weight.detach().clone()
+    experiment_manifest = {
+        "format_version": "paired_episode_subset_v1",
+        "dataset_fingerprint": "fingerprint",
+    }
 
     save_official_act_checkpoint(
         path,
@@ -221,6 +225,7 @@ def test_official_checkpoint_round_trip_is_strict(tmp_path):
         epoch=1,
         global_step=2,
         best_metric=0.5,
+        experiment_manifest=experiment_manifest,
     )
     with torch.no_grad():
         model.action_head.weight.add_(10)
@@ -239,6 +244,7 @@ def test_official_checkpoint_round_trip_is_strict(tmp_path):
         "best_metric": 0.5,
         "best_epoch": -1,
     }
+    assert payload["experiment_manifest"] == experiment_manifest
 
 
 def test_rng_restore_moves_loaded_cpu_and_cuda_states_back_to_cpu():
