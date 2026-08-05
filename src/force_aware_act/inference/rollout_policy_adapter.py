@@ -16,10 +16,18 @@ from force_aware_act.force_history import (
     CAUSAL_STATE_RATE_FORCE_HISTORY_V1,
     prepare_causal_state_rate_force_history,
 )
+from force_aware_act.high_rate_force import (
+    HIGH_RATE_FORCE_CONTRACT_VERSION,
+    HighRateForceContract,
+    build_online_force_intervals,
+)
 from force_aware_act.models.act_aligned import (
     ACT_ALIGNED_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
+    ACTAlignedHighRateConfig,
+    ACTAlignedHighRateContactCVAEPolicy,
 )
 from force_aware_act.models.official_act import (
     OFFICIAL_ACT_ARCHITECTURE_VERSION,
@@ -33,6 +41,7 @@ from force_aware_act.official_act_training.checkpoint import (
 
 OFFICIAL_ACT_ROLLOUT_KIND = "official_act"
 ACT_ALIGNED_ROLLOUT_KIND = "act_aligned_contact_cvae"
+ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND = "act_aligned_high_rate_contact_cvae"
 NO_FORCE_HISTORY_CONTRACT = "not_used"
 
 
@@ -46,6 +55,7 @@ def checkpoint_uses_rollout_adapter(checkpoint: Mapping[str, Any]) -> bool:
         in {
             OFFICIAL_ACT_ARCHITECTURE_VERSION,
             ACT_ALIGNED_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
         }
     )
 
@@ -90,6 +100,11 @@ class RolloutPolicyAdapter:
                 ACTAlignedConfig(**dict(model_config))
             )
             kind = ACT_ALIGNED_ROLLOUT_KIND
+        elif architecture == ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION:
+            model = ACTAlignedHighRateContactCVAEPolicy(
+                ACTAlignedHighRateConfig(**dict(model_config))
+            )
+            kind = ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
         else:
             raise ValueError(
                 f"unsupported rollout architecture: {architecture!r}"
@@ -107,7 +122,7 @@ class RolloutPolicyAdapter:
         return adapter
 
     @property
-    def config(self) -> OfficialACTConfig | ACTAlignedConfig:
+    def config(self) -> OfficialACTConfig | ACTAlignedConfig | ACTAlignedHighRateConfig:
         return self.model.config
 
     @property
@@ -124,12 +139,24 @@ class RolloutPolicyAdapter:
 
     @property
     def uses_force_history(self) -> bool:
+        return self.uses_state_rate_force_history or self.uses_high_rate_force_history
+
+    @property
+    def uses_state_rate_force_history(self) -> bool:
         return self.kind == ACT_ALIGNED_ROLLOUT_KIND
+
+    @property
+    def uses_high_rate_force_history(self) -> bool:
+        return self.kind == ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
 
     @property
     def force_window_len(self) -> Optional[int]:
         return (
-            int(self.config.force_window_len)
+            int(
+                self.config.online_force_window_len
+                if self.uses_high_rate_force_history
+                else self.config.force_window_len
+            )
             if self.uses_force_history
             else None
         )
@@ -137,14 +164,21 @@ class RolloutPolicyAdapter:
     @property
     def force_history_contract(self) -> str:
         return (
-            CAUSAL_STATE_RATE_FORCE_HISTORY_V1
+            (
+                HIGH_RATE_FORCE_CONTRACT_VERSION
+                if self.uses_high_rate_force_history
+                else CAUSAL_STATE_RATE_FORCE_HISTORY_V1
+            )
             if self.uses_force_history
             else NO_FORCE_HISTORY_CONTRACT
         )
 
     @property
     def has_contact_prior(self) -> bool:
-        return self.kind == ACT_ALIGNED_ROLLOUT_KIND
+        return self.kind in {
+            ACT_ALIGNED_ROLLOUT_KIND,
+            ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
+        }
 
     def prepare_images(self, images: torch.Tensor) -> torch.Tensor:
         """Prepare native `[K,3,H,W]` float images for one online batch."""
@@ -163,7 +197,10 @@ class RolloutPolicyAdapter:
                 antialias=True,
             )
         if (
-            self.kind == ACT_ALIGNED_ROLLOUT_KIND
+            self.kind in {
+                ACT_ALIGNED_ROLLOUT_KIND,
+                ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
+            }
             and self.config.imagenet_normalize
         ):
             mean = images.new_tensor((0.485, 0.456, 0.406)).view(1, 3, 1, 1)
@@ -188,8 +225,8 @@ class RolloutPolicyAdapter:
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Left-pad and normalize the last L causal state-rate wrenches."""
 
-        if not self.uses_force_history:
-            raise ValueError("official ACT does not accept force history")
+        if not self.uses_state_rate_force_history:
+            raise ValueError("this adapter does not accept state-rate force history")
         values = torch.as_tensor(
             state_rate_history,
             dtype=next(self.model.parameters()).dtype,
@@ -210,6 +247,44 @@ class RolloutPolicyAdapter:
         )
         return history.unsqueeze(0), padding_mask.unsqueeze(0)
 
+    def prepare_high_rate_force_history(
+        self,
+        force_timestamps: np.ndarray,
+        force_values: np.ndarray,
+        state_timestamps: np.ndarray,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Use the exact training packer and normalization for online v2 force."""
+
+        if not self.uses_high_rate_force_history:
+            raise ValueError("this adapter does not accept native-rate force history")
+        contract = HighRateForceContract(
+            sample_rate_hz=self.config.force_sample_rate_hz,
+            online_window_len=self.config.online_force_window_len,
+            max_samples_per_interval=self.config.max_force_samples_per_interval,
+            max_online_intervals=self.config.max_online_force_intervals,
+        )
+        _window, packed = build_online_force_intervals(
+            force_timestamps,
+            force_values,
+            state_timestamps,
+            state_index=len(state_timestamps) - 1,
+            contract=contract,
+        )
+        device = next(self.model.parameters()).device
+        dtype = next(self.model.parameters()).dtype
+        values = torch.as_tensor(packed.values, dtype=dtype, device=device)
+        values = self._normalize(values, "force")
+        sample_mask = torch.as_tensor(
+            packed.sample_padding_mask, dtype=torch.bool, device=device
+        )
+        values = values.masked_fill(sample_mask.unsqueeze(-1), 0.0)
+        return (
+            values.unsqueeze(0),
+            torch.as_tensor(packed.relative_times, dtype=dtype, device=device).unsqueeze(0),
+            sample_mask.unsqueeze(0),
+            torch.as_tensor(packed.interval_padding_mask, dtype=torch.bool, device=device).unsqueeze(0),
+        )
+
     def forward(
         self,
         images: torch.Tensor,
@@ -217,6 +292,10 @@ class RolloutPolicyAdapter:
         *,
         force_history: Optional[torch.Tensor] = None,
         force_padding_mask: Optional[torch.Tensor] = None,
+        online_force_intervals: Optional[torch.Tensor] = None,
+        online_force_relative_time: Optional[torch.Tensor] = None,
+        online_force_sample_padding_mask: Optional[torch.Tensor] = None,
+        online_force_interval_padding_mask: Optional[torch.Tensor] = None,
         contact_latent_mode: str = "zero",
     ) -> dict[str, Any]:
         with torch.inference_mode():
@@ -227,6 +306,30 @@ class RolloutPolicyAdapter:
                 self.deployment_diagnostics(
                     output,
                     force_padding_mask=None,
+                    requested_latent_mode=contact_latent_mode,
+                )
+                return output
+            if self.uses_high_rate_force_history:
+                high_rate_inputs = (
+                    online_force_intervals,
+                    online_force_relative_time,
+                    online_force_sample_padding_mask,
+                    online_force_interval_padding_mask,
+                )
+                if any(value is None for value in high_rate_inputs):
+                    raise ValueError("high-rate Contact-CVAE requires all online interval tensors")
+                output = self.model(
+                    images, qpos,
+                    online_force_intervals,
+                    online_force_relative_time,
+                    online_force_sample_padding_mask,
+                    online_force_interval_padding_mask,
+                    contact_latent_mode=contact_latent_mode,
+                    deterministic_prior=True,
+                )
+                self.deployment_diagnostics(
+                    output,
+                    force_padding_mask=online_force_sample_padding_mask.flatten(1),
                     requested_latent_mode=contact_latent_mode,
                 )
                 return output
@@ -273,7 +376,7 @@ class RolloutPolicyAdapter:
             if force_padding_mask is None:
                 raise RuntimeError("force padding mask is required for diagnostics")
             if force_padding_mask.ndim != 2 or force_padding_mask.shape[0] != 1:
-                raise RuntimeError("force padding mask must have shape [1, L]")
+                raise RuntimeError("force padding mask must have flattened shape [1, N]")
             valid_force_samples = int((~force_padding_mask[0]).sum().item())
             padding_samples = int(force_padding_mask[0].sum().item())
 

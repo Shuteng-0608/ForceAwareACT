@@ -1,6 +1,6 @@
 # High-rate force contract
 
-Version: `causal_raw_500hz_interval_force_v1`
+Version: `causal_raw_500hz_last_100_grouped_state_intervals_v2`
 
 The high-rate contact model consumes the native 500 Hz wrench stream. It must
 not first align that stream to the approximately 30 Hz state timestamps.

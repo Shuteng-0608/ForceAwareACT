@@ -100,6 +100,37 @@ def test_online_grouping_preserves_every_selected_raw_sample_once():
     assert intervals.sample_counts.max() <= 17
 
 
+def test_online_training_full_episode_matches_rollout_visible_state_prefix():
+    force_timestamps = np.arange(0.0, 0.4, 0.002, dtype=np.float64)
+    force_values = np.repeat(
+        np.arange(force_timestamps.size, dtype=np.float32)[:, None], 6, axis=1
+    )
+    state_timestamps = np.asarray(
+        [0.0, 0.033, 0.067, 0.100, 0.134, 0.167, 0.200, 0.234],
+        dtype=np.float64,
+    )
+
+    for state_index in range(len(state_timestamps)):
+        full_window, full = build_online_force_intervals(
+            force_timestamps,
+            force_values,
+            state_timestamps,
+            state_index=state_index,
+        )
+        prefix_window, prefix = build_online_force_intervals(
+            force_timestamps,
+            force_values,
+            state_timestamps[: state_index + 1],
+            state_index=state_index,
+        )
+        np.testing.assert_array_equal(full_window.values, prefix_window.values)
+        np.testing.assert_array_equal(full.values, prefix.values)
+        np.testing.assert_array_equal(full.relative_times, prefix.relative_times)
+        np.testing.assert_array_equal(
+            full.sample_padding_mask, prefix.sample_padding_mask
+        )
+
+
 def test_future_force_uses_all_samples_in_each_action_response_interval():
     force_timestamps, force_values, state_timestamps = _series()
 

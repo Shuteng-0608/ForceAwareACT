@@ -22,7 +22,9 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
+from force_aware_act.high_rate_force import HighRateForceContract  # noqa: E402
 from force_aware_act.inference import (  # noqa: E402
+    ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     ACT_ALIGNED_ROLLOUT_KIND,
     CONTROL_POSTPROCESS_VERSION,
     DEFAULT_EMA_ALPHA,
@@ -42,6 +44,7 @@ from force_aware_act.inference import (  # noqa: E402
     ROLLOUT_PROTOCOL_VERSION,
     TASK_SUCCESS_VERSION,
     CumulativePolicyStepScheduler,
+    HighRateForceRingBuffer,
     JointPositionPostprocessor,
     OfficialTemporalActionChunkExecutor,
     RolloutPolicyAdapter,
@@ -289,6 +292,8 @@ def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
         return OFFICIAL_ACT_ROLLOUT_KIND
     if architecture == "act_aligned_contact_cvae_v1":
         return ACT_ALIGNED_ROLLOUT_KIND
+    if architecture == "act_aligned_contact_cvae_highrate_force_v2":
+        return ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
     config = checkpoint.get("config", {})
     if not isinstance(config, dict):
         return "force_aware_act"
@@ -307,6 +312,7 @@ def _policy_has_contact_prior(policy_variant: str) -> bool:
         "force_aware_act",
         "force_aware_contact_cvae",
         ACT_ALIGNED_ROLLOUT_KIND,
+        ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     }
 
 
@@ -851,6 +857,11 @@ def _fieldnames() -> list[str]:
         "physics_interval_completed",
         "force_history_valid_samples",
         "force_history_padding_samples",
+        "high_rate_window_span",
+        "high_rate_latest_force_age",
+        "high_rate_valid_interval_count",
+        "high_rate_interval_sample_counts",
+        "high_rate_model_input_max_abs",
         "deployment_latent_source",
         "deployment_latent_max_abs",
     ]
@@ -1076,7 +1087,12 @@ def _resolve_checkpoint_contract(
                     f"match checkpoint force_window_len={expected_force_len}"
                 )
             args.force_window_len = expected_force_len
-            expected_duration = (expected_force_len - 1) / args.policy_rate_hz
+            force_rate_hz = (
+                float(adapter.config.force_sample_rate_hz)
+                if adapter.uses_high_rate_force_history
+                else args.policy_rate_hz
+            )
+            expected_duration = (expected_force_len - 1) / force_rate_hz
             if (
                 args.force_window_duration is not None
                 and not np.isclose(
@@ -1087,12 +1103,22 @@ def _resolve_checkpoint_contract(
                 )
             ):
                 raise ValueError(
-                    "ACT-aligned force history is one state-rate sample per "
-                    "policy step; its duration must be "
-                    f"(L-1)/policy_rate_hz={expected_duration:.9g}, got "
+                    "ACT-aligned force history duration must match its "
+                    f"sampling rate: (L-1)/rate={expected_duration:.9g}, got "
                     f"{args.force_window_duration:.9g}"
                 )
             args.force_window_duration = expected_duration
+            if adapter.uses_high_rate_force_history and not np.isclose(
+                args.policy_rate_hz,
+                adapter.config.policy_sample_rate_hz,
+                rtol=0.0,
+                atol=1.0e-9,
+            ):
+                raise ValueError(
+                    f"--policy-rate-hz={args.policy_rate_hz:.9g} does not "
+                    "match high-rate checkpoint policy_sample_rate_hz="
+                    f"{adapter.config.policy_sample_rate_hz:.9g}"
+                )
         else:
             if args.contact_latent_mode != "zero":
                 raise ValueError("official ACT requires --contact-latent-mode=zero")
@@ -1223,6 +1249,16 @@ def run_rollout(args: argparse.Namespace) -> int:
     hole_offset_metadata.update(hole_structure_metadata)
 
     control_ranges = np.asarray(mj_model.actuator_ctrlrange[actuator_ids], dtype=np.float64)
+    if (
+        adapter is not None
+        and adapter.uses_high_rate_force_history
+        and float(mj_model.opt.timestep)
+        > 1.0 / float(adapter.config.force_sample_rate_hz) + 1.0e-12
+    ):
+        raise ValueError(
+            "MuJoCo physics rate must be at least the checkpoint force "
+            f"sample rate ({adapter.config.force_sample_rate_hz:.9g} Hz)"
+        )
     policy_step_scheduler = CumulativePolicyStepScheduler(
         policy_rate_hz=args.policy_rate_hz,
         physics_timestep=float(mj_model.opt.timestep),
@@ -1244,9 +1280,25 @@ def run_rollout(args: argparse.Namespace) -> int:
     state_rate_force_history: deque[np.ndarray] = deque(
         maxlen=(
             args.force_window_len
-            if adapter is not None and adapter.uses_force_history
+            if adapter is not None and adapter.uses_state_rate_force_history
             else None
         )
+    )
+    high_rate_force_buffer = (
+        HighRateForceRingBuffer(
+            float(data.time),
+            current_wrench.astype(np.float32),
+            contract=HighRateForceContract(
+                sample_rate_hz=adapter.config.force_sample_rate_hz,
+                online_window_len=adapter.config.online_force_window_len,
+                max_samples_per_interval=(
+                    adapter.config.max_force_samples_per_interval
+                ),
+                max_online_intervals=adapter.config.max_online_force_intervals,
+            ),
+        )
+        if adapter is not None and adapter.uses_high_rate_force_history
+        else None
     )
     temporal_executor = (
         OfficialTemporalActionChunkExecutor(decay=args.temporal_agg_decay)
@@ -1277,6 +1329,10 @@ def run_rollout(args: argparse.Namespace) -> int:
     final_deployment_diagnostics: Optional[dict[str, Any]] = None
     deployment_latent_max_abs_values: list[float] = []
     force_history_valid_samples_values: list[int] = []
+    high_rate_window_span_values: list[float] = []
+    high_rate_latest_age_values: list[float] = []
+    high_rate_input_peak_values: list[float] = []
+    high_rate_interval_count_values: list[int] = []
     first_temporal_num_predictions: Optional[int] = None
     final_temporal_num_predictions: Optional[int] = None
     first_temporal_mean_age: Optional[float] = None
@@ -1319,7 +1375,30 @@ def run_rollout(args: argparse.Namespace) -> int:
             force_norm = float(np.linalg.norm(wrench[:3]))
             if not force_norm_history:
                 force_norm_history.append(force_norm)
-            if adapter is not None and adapter.uses_force_history:
+            high_rate_tensors = None
+            high_rate_window_span = float("nan")
+            high_rate_latest_force_age = float("nan")
+            high_rate_interval_sample_counts: list[int] = []
+            high_rate_input_max_abs = float("nan")
+            if adapter is not None and adapter.uses_high_rate_force_history:
+                if high_rate_force_buffer is None:
+                    raise RuntimeError("high-rate force buffer was not initialized")
+                high_rate_force_buffer.record_policy_state(float(data.time))
+                snapshot = high_rate_force_buffer.snapshot()
+                high_rate_window_span = float(
+                    snapshot.force_timestamps[-1]
+                    - snapshot.force_timestamps[0]
+                )
+                high_rate_latest_force_age = float(
+                    data.time - snapshot.force_timestamps[-1]
+                )
+                high_rate_tensors = adapter.prepare_high_rate_force_history(
+                    snapshot.force_timestamps,
+                    snapshot.force_values,
+                    snapshot.state_timestamps,
+                )
+                force_window_np = snapshot.force_values
+            elif adapter is not None and adapter.uses_state_rate_force_history:
                 state_rate_force_history.append(wrench.copy())
                 force_window_np = np.stack(state_rate_force_history)
             elif adapter is None:
@@ -1393,9 +1472,34 @@ def run_rollout(args: argparse.Namespace) -> int:
                 )
             else:
                 qpos_tensor = adapter.prepare_qpos(qpos)
-                if adapter.uses_force_history:
+                if adapter.uses_state_rate_force_history:
                     force_window_tensor, force_padding_mask = (
                         adapter.prepare_force_history(force_window_np)
+                    )
+                elif adapter.uses_high_rate_force_history:
+                    if high_rate_tensors is None:
+                        raise RuntimeError("high-rate force tensors were not prepared")
+                    (
+                        force_window_tensor,
+                        high_rate_relative_time,
+                        high_rate_sample_padding_mask,
+                        high_rate_interval_padding_mask,
+                    ) = high_rate_tensors
+                    force_padding_mask = high_rate_sample_padding_mask.flatten(1)
+                    high_rate_interval_sample_counts = (
+                        (~high_rate_sample_padding_mask[0])
+                        .sum(dim=-1)
+                        .cpu()
+                        .tolist()
+                    )
+                    high_rate_input_max_abs = float(
+                        force_window_tensor.detach().abs().max().cpu().item()
+                    )
+                    high_rate_window_span_values.append(high_rate_window_span)
+                    high_rate_latest_age_values.append(high_rate_latest_force_age)
+                    high_rate_input_peak_values.append(high_rate_input_max_abs)
+                    high_rate_interval_count_values.append(
+                        int((~high_rate_interval_padding_mask[0]).sum().item())
                     )
                 else:
                     force_window_tensor = torch.empty(
@@ -1409,10 +1513,30 @@ def run_rollout(args: argparse.Namespace) -> int:
                     qpos_tensor,
                     force_history=(
                         force_window_tensor
-                        if adapter.uses_force_history
+                        if adapter.uses_state_rate_force_history
                         else None
                     ),
                     force_padding_mask=force_padding_mask,
+                    online_force_intervals=(
+                        force_window_tensor
+                        if adapter.uses_high_rate_force_history
+                        else None
+                    ),
+                    online_force_relative_time=(
+                        high_rate_relative_time
+                        if adapter.uses_high_rate_force_history
+                        else None
+                    ),
+                    online_force_sample_padding_mask=(
+                        high_rate_sample_padding_mask
+                        if adapter.uses_high_rate_force_history
+                        else None
+                    ),
+                    online_force_interval_padding_mask=(
+                        high_rate_interval_padding_mask
+                        if adapter.uses_high_rate_force_history
+                        else None
+                    ),
                     contact_latent_mode=args.contact_latent_mode,
                 )
                 selected_action, selected_force = (
@@ -1461,8 +1585,36 @@ def run_rollout(args: argparse.Namespace) -> int:
                     zero_output = adapter.forward(
                         images,
                         qpos_tensor,
-                        force_history=force_window_tensor,
-                        force_padding_mask=force_padding_mask,
+                        force_history=(
+                            force_window_tensor
+                            if adapter.uses_state_rate_force_history
+                            else None
+                        ),
+                        force_padding_mask=(
+                            force_padding_mask
+                            if adapter.uses_state_rate_force_history
+                            else None
+                        ),
+                        online_force_intervals=(
+                            force_window_tensor
+                            if adapter.uses_high_rate_force_history
+                            else None
+                        ),
+                        online_force_relative_time=(
+                            high_rate_relative_time
+                            if adapter.uses_high_rate_force_history
+                            else None
+                        ),
+                        online_force_sample_padding_mask=(
+                            high_rate_sample_padding_mask
+                            if adapter.uses_high_rate_force_history
+                            else None
+                        ),
+                        online_force_interval_padding_mask=(
+                            high_rate_interval_padding_mask
+                            if adapter.uses_high_rate_force_history
+                            else None
+                        ),
                         contact_latent_mode="zero",
                     )
                     zero_action, zero_force = (
@@ -1652,6 +1804,15 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "force_history_padding_samples": deployment_diagnostics[
                     "force_history_padding_samples"
                 ],
+                "high_rate_window_span": high_rate_window_span,
+                "high_rate_latest_force_age": high_rate_latest_force_age,
+                "high_rate_valid_interval_count": sum(
+                    count > 0 for count in high_rate_interval_sample_counts
+                ),
+                "high_rate_interval_sample_counts": json.dumps(
+                    high_rate_interval_sample_counts
+                ),
+                "high_rate_model_input_max_abs": high_rate_input_max_abs,
                 "deployment_latent_source": deployment_diagnostics[
                     "latent_source"
                 ],
@@ -1862,6 +2023,10 @@ def run_rollout(args: argparse.Namespace) -> int:
                 executed_physics_steps += 1
                 sampled_wrench = _read_wrench(data, force_slice, torque_slice)
                 force_history.append((float(data.time), sampled_wrench.copy()))
+                if high_rate_force_buffer is not None:
+                    high_rate_force_buffer.observe_physics_step(
+                        float(data.time), sampled_wrench.astype(np.float32)
+                    )
                 sampled_force_norm = float(np.linalg.norm(sampled_wrench[:3]))
                 force_norm_history.append(sampled_force_norm)
                 interval_peak_force_norm = max(
@@ -2025,6 +2190,35 @@ def run_rollout(args: argparse.Namespace) -> int:
         "chunk_len": args.chunk_len,
         "force_window_len": args.force_window_len,
         "force_window_duration": args.force_window_duration,
+        "force_sampling_rate_hz": (
+            float(adapter.config.force_sample_rate_hz)
+            if adapter is not None and adapter.uses_high_rate_force_history
+            else args.policy_rate_hz
+        ),
+        "force_samples_observed": (
+            high_rate_force_buffer.total_samples
+            if high_rate_force_buffer is not None
+            else None
+        ),
+        "high_rate_window_span_max": _finite_max(high_rate_window_span_values),
+        "high_rate_latest_force_age_max": _finite_max(high_rate_latest_age_values),
+        "high_rate_valid_intervals_max": (
+            max(high_rate_interval_count_values)
+            if high_rate_interval_count_values
+            else None
+        ),
+        "high_rate_model_input_max_abs": _finite_max(high_rate_input_peak_values),
+        "high_rate_skipped_sample_count": (
+            high_rate_force_buffer.skipped_sample_count
+            if high_rate_force_buffer is not None
+            else None
+        ),
+        "high_rate_duplicate_sample_count": (
+            high_rate_force_buffer.duplicate_sample_count
+            if high_rate_force_buffer is not None
+            else None
+        ),
+        "physics_safety_peak_force_norm": max(force_norm_history),
         "force_history_valid_samples_first": first_deployment_diagnostics[
             "force_history_valid_samples"
         ],

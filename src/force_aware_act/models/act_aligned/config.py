@@ -6,6 +6,8 @@ import math
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from force_aware_act.high_rate_force import HIGH_RATE_FORCE_CONTRACT_VERSION
+
 
 ACT_ALIGNED_ARCHITECTURE_VERSION = "act_aligned_contact_cvae_v1"
 ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION = (
@@ -257,6 +259,7 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
 
     architecture_version: str = ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION
     force_sample_rate_hz: float = 500.0
+    policy_sample_rate_hz: float = 30.0
     online_force_window_len: int = 100
     max_force_samples_per_interval: int = 20
     max_online_force_intervals: int = 7
@@ -267,8 +270,10 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
         super().__post_init__()
         if self.architecture_version != ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION:
             raise ValueError("high-rate config requires the v2 architecture version")
-        if not math.isfinite(self.force_sample_rate_hz) or self.force_sample_rate_hz <= 0:
-            raise ValueError("force_sample_rate_hz must be finite and positive")
+        for field_name in ("force_sample_rate_hz", "policy_sample_rate_hz"):
+            value = getattr(self, field_name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{field_name} must be finite and positive")
         for field_name in (
             "online_force_window_len",
             "max_force_samples_per_interval",
@@ -295,9 +300,10 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
         metadata.update(
             {
                 "force_input_contract": (
-                    "causal_raw_500hz_last_100_grouped_state_intervals_v2"
+                    HIGH_RATE_FORCE_CONTRACT_VERSION
                 ),
                 "force_sample_rate_hz": self.force_sample_rate_hz,
+                "policy_sample_rate_hz": self.policy_sample_rate_hz,
                 "online_force_window_len": self.online_force_window_len,
                 "max_force_samples_per_interval": (
                     self.max_force_samples_per_interval

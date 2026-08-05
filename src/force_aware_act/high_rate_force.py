@@ -7,7 +7,9 @@ from dataclasses import dataclass
 import numpy as np
 
 
-HIGH_RATE_FORCE_CONTRACT_VERSION = "causal_raw_500hz_interval_force_v1"
+HIGH_RATE_FORCE_CONTRACT_VERSION = (
+    "causal_raw_500hz_last_100_grouped_state_intervals_v2"
+)
 
 
 @dataclass(frozen=True)
@@ -274,12 +276,13 @@ def _online_interval_boundaries(
     state_index: int,
     interval_count: int,
 ) -> np.ndarray:
-    if state_timestamps.shape[0] >= 2:
-        nominal_period = float(np.median(np.diff(state_timestamps)))
+    causal_states = state_timestamps[: state_index + 1]
+    if causal_states.shape[0] >= 2:
+        nominal_period = float(np.median(np.diff(causal_states)))
     else:
         nominal_period = 1.0 / 30.0
     available_start = max(0, state_index - interval_count)
-    available = state_timestamps[available_start : state_index + 1]
+    available = causal_states[available_start : state_index + 1]
     missing = interval_count + 1 - available.shape[0]
     if missing:
         prefix = available[0] - nominal_period * np.arange(

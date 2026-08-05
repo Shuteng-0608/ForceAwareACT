@@ -10,7 +10,9 @@ from force_aware_act.act_aligned_training.checkpoint import (
     CHECKPOINT_FORMAT_VERSION,
 )
 from force_aware_act.inference import (
+    ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     ACT_ALIGNED_ROLLOUT_KIND,
+    HighRateForceRingBuffer,
     NO_FORCE_HISTORY_CONTRACT,
     OFFICIAL_ACT_ROLLOUT_KIND,
     RolloutPolicyAdapter,
@@ -19,6 +21,8 @@ from force_aware_act.inference import (
 from force_aware_act.models.act_aligned import (
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
+    ACTAlignedHighRateConfig,
+    ACTAlignedHighRateContactCVAEPolicy,
 )
 from force_aware_act.models.official_act import (
     OfficialACTConfig,
@@ -82,6 +86,28 @@ def _contact_checkpoint() -> dict:
         "architecture_version": config.architecture_version,
         "model_config": asdict(config),
         "model_state": ACTAlignedContactCVAEPolicy(config).state_dict(),
+        "normalization": _normalization(include_force=True),
+    }
+
+
+def _high_rate_checkpoint() -> dict:
+    config = ACTAlignedHighRateConfig(
+        d_model=32,
+        nhead=4,
+        dim_feedforward=64,
+        local_force_dim=16,
+        dropout=0.0,
+        chunk_len=3,
+        image_height=32,
+        image_width=48,
+        pretrained_backbone=False,
+        imagenet_normalize=False,
+    )
+    return {
+        "format_version": CHECKPOINT_FORMAT_VERSION,
+        "architecture_version": config.architecture_version,
+        "model_config": asdict(config),
+        "model_state": ACTAlignedHighRateContactCVAEPolicy(config).state_dict(),
         "normalization": _normalization(include_force=True),
     }
 
@@ -178,6 +204,64 @@ def test_contact_adapter_reproduces_causal_left_padded_force_contract():
     assert force.shape == (3, 6)
 
 
+def test_high_rate_adapter_uses_continuous_500hz_ring_and_training_packer():
+    adapter = RolloutPolicyAdapter.from_checkpoint(
+        _high_rate_checkpoint(), device=torch.device("cpu")
+    )
+    assert adapter.kind == ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
+    assert adapter.uses_high_rate_force_history
+    assert not adapter.uses_state_rate_force_history
+    assert adapter.force_window_len == 100
+    assert adapter.force_history_contract == (
+        "causal_raw_500hz_last_100_grouped_state_intervals_v2"
+    )
+
+    buffer = HighRateForceRingBuffer(0.0, np.zeros(6, dtype=np.float32))
+    policy_times_ms = {33, 67, 100, 133, 167, 200}
+    buffer.record_policy_state(0.0)
+    for millisecond in range(1, 201):
+        wrench = np.full(6, millisecond, dtype=np.float32)
+        buffer.observe_physics_step(millisecond / 1000.0, wrench)
+        if millisecond in policy_times_ms:
+            buffer.record_policy_state(millisecond / 1000.0)
+    snapshot = buffer.snapshot()
+    intervals, relative_time, sample_mask, interval_mask = (
+        adapter.prepare_high_rate_force_history(
+            snapshot.force_timestamps,
+            snapshot.force_values,
+            snapshot.state_timestamps,
+        )
+    )
+
+    assert buffer.total_samples == 101
+    assert snapshot.force_values.shape == (100, 6)
+    assert intervals.shape == (1, 7, 20, 6)
+    assert relative_time.shape == (1, 7, 20)
+    assert int((~sample_mask).sum()) == 100
+    assert int((~interval_mask).sum()) == 6
+    images = adapter.prepare_images(torch.rand(2, 3, 32, 48))
+    qpos = adapter.prepare_qpos(np.arange(7, dtype=np.float32))
+    output = adapter.forward(
+        images,
+        qpos,
+        online_force_intervals=intervals,
+        online_force_relative_time=relative_time,
+        online_force_sample_padding_mask=sample_mask,
+        online_force_interval_padding_mask=interval_mask,
+        contact_latent_mode="zero",
+    )
+    assert output["contact_latent_source"] == "zero"
+    assert torch.equal(output["z_contact"], torch.zeros_like(output["z_contact"]))
+    assert output["pred_action"].shape == (1, 3, 7)
+
+
+def test_high_rate_ring_rejects_a_missed_500hz_sampling_deadline():
+    buffer = HighRateForceRingBuffer(0.0, np.zeros(6, dtype=np.float32))
+
+    with pytest.raises(RuntimeError, match="skipped"):
+        buffer.observe_physics_step(0.004, np.ones(6, dtype=np.float32))
+
+
 def test_adapter_rejects_nonzero_deployment_latent_marked_as_zero():
     adapter = RolloutPolicyAdapter.from_checkpoint(
         _contact_checkpoint(),
@@ -250,6 +334,27 @@ def test_contact_checkpoint_contract_is_inferred_without_external_stats():
     assert args.force_window_len == 4
     assert args.force_window_duration == pytest.approx(3.0 / 30.0)
     assert (args.image_height, args.image_width) == (32, 48)
+
+
+def test_high_rate_checkpoint_contract_uses_500hz_window_duration():
+    args = _rollout_args()
+    adapter, stats, _ = _resolve_checkpoint_contract(
+        args, _high_rate_checkpoint(), torch.device("cpu")
+    )
+
+    assert adapter.kind == ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
+    assert stats is None
+    assert args.force_window_len == 100
+    assert args.force_window_duration == pytest.approx(99.0 / 500.0)
+
+
+def test_high_rate_checkpoint_rejects_policy_rate_different_from_training():
+    args = _rollout_args(policy_rate_hz=25.0)
+
+    with pytest.raises(ValueError, match="policy_sample_rate_hz"):
+        _resolve_checkpoint_contract(
+            args, _high_rate_checkpoint(), torch.device("cpu")
+        )
 
 
 def test_checkpoint_contract_rejects_silent_chunk_override():
