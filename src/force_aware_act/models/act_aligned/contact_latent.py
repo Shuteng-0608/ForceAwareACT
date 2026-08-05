@@ -7,7 +7,10 @@ from typing import Optional
 import torch
 from torch import nn
 
-from force_aware_act.models.act_aligned.config import ACTAlignedConfig
+from force_aware_act.models.act_aligned.config import (
+    ACTAlignedConfig,
+    ACTAlignedHighRateConfig,
+)
 from force_aware_act.models.act_aligned.contracts import require_padding_mask
 from force_aware_act.models.act_aligned.position_encoding import (
     SinusoidalSequencePositionEncoding,
@@ -155,6 +158,126 @@ class ACTAlignedContactPosterior(nn.Module):
                 batch_size=batch_size,
                 sequence_length=self.config.chunk_len,
             )
+
+
+class ACTAlignedHighRateContactPosterior(nn.Module):
+    """Encode actions fused with pre-encoded native-force interval tokens."""
+
+    def __init__(self, config: ACTAlignedHighRateConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.qpos_adapter = QposTokenAdapter(config.q_dim, config.d_model)
+        self.action_adapter = ActionTokenAdapter(config.action_dim, config.d_model)
+        self.contact_step_norm = nn.LayerNorm(config.d_model)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, config.d_model))
+        self.sequence_position = SinusoidalSequencePositionEncoding(
+            config.contact_posterior_token_count,
+            config.d_model,
+        )
+        self.token_type = TokenTypeEmbedding(3, config.d_model)
+        self.encoder = ACTTransformerEncoder(config)
+        self.mean_head = nn.Linear(config.d_model, config.latent_dim)
+        self.log_variance_head = nn.Linear(config.d_model, config.latent_dim)
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+
+    def forward(
+        self,
+        qpos: torch.Tensor,
+        action_chunk: torch.Tensor,
+        future_force_tokens: torch.Tensor,
+        *,
+        action_padding_mask: Optional[torch.Tensor] = None,
+        future_force_interval_padding_mask: Optional[torch.Tensor] = None,
+        sample: bool = True,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if not isinstance(sample, bool):
+            raise ValueError("sample must be a bool")
+        self._validate_high_rate_inputs(
+            qpos,
+            action_chunk,
+            future_force_tokens,
+            action_padding_mask,
+            future_force_interval_padding_mask,
+        )
+        batch_size = qpos.shape[0]
+        action_tokens = self.action_adapter(action_chunk)
+        if future_force_interval_padding_mask is not None:
+            future_force_tokens = future_force_tokens.masked_fill(
+                future_force_interval_padding_mask.unsqueeze(-1),
+                0.0,
+            )
+        contact_steps = self.contact_step_norm(action_tokens + future_force_tokens)
+        cls_token = self.cls_token.expand(batch_size, -1, -1)
+        qpos_token = self.qpos_adapter(qpos)
+        tokens = torch.cat((cls_token, qpos_token, contact_steps), dim=1)
+
+        type_ids = torch.full(
+            (self.config.contact_posterior_token_count,),
+            CONTACT_STEP_TYPE,
+            dtype=torch.long,
+            device=tokens.device,
+        )
+        type_ids[0] = CONTACT_CLS_TYPE
+        type_ids[1] = CONTACT_QPOS_TYPE
+        position = self.sequence_position(tokens) + self.token_type(type_ids).unsqueeze(0)
+        encoder_padding_mask = _prefix_unmasked_tokens(
+            action_padding_mask,
+            prefix_length=2,
+        )
+        encoded = self.encoder(
+            tokens,
+            position=position,
+            padding_mask=encoder_padding_mask,
+        )
+        cls_output = encoded[:, 0]
+        mean = self.mean_head(cls_output)
+        log_variance = self.log_variance_head(cls_output)
+        latent = reparameterize_gaussian(mean, log_variance) if sample else mean
+        return mean, log_variance, latent
+
+    def _validate_high_rate_inputs(
+        self,
+        qpos: torch.Tensor,
+        action_chunk: torch.Tensor,
+        future_force_tokens: torch.Tensor,
+        action_padding_mask: Optional[torch.Tensor],
+        future_force_interval_padding_mask: Optional[torch.Tensor],
+    ) -> None:
+        batch_size = _require_floating_shape(
+            qpos,
+            "qpos",
+            (None, self.config.q_dim),
+        )
+        _require_floating_shape(
+            action_chunk,
+            "action_chunk",
+            (batch_size, self.config.chunk_len, self.config.action_dim),
+        )
+        _require_floating_shape(
+            future_force_tokens,
+            "future_force_tokens",
+            (batch_size, self.config.chunk_len, self.config.d_model),
+        )
+        _require_same_context(
+            qpos,
+            action_chunk,
+            future_force_tokens,
+            names=("qpos", "action_chunk", "future_force_tokens"),
+        )
+        for name, mask in (
+            ("action_padding_mask", action_padding_mask),
+            (
+                "future_force_interval_padding_mask",
+                future_force_interval_padding_mask,
+            ),
+        ):
+            if mask is not None:
+                require_padding_mask(
+                    mask,
+                    name=name,
+                    batch_size=batch_size,
+                    sequence_length=self.config.chunk_len,
+                )
 
 
 class ACTAlignedContactPrior(nn.Module):

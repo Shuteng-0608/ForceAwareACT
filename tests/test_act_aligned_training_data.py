@@ -8,6 +8,8 @@ import torch
 
 from force_aware_act.act_aligned_training import (
     ACTAlignedHDF5Dataset,
+    ACTAlignedHighRateHDF5Dataset,
+    collate_high_rate_samples,
     collate_act_aligned_samples,
     compute_normalization_stats,
     create_episode_split,
@@ -21,6 +23,7 @@ from force_aware_act.inference import RolloutPolicyAdapter
 from force_aware_act.models.act_aligned import (
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
+    ACTAlignedHighRateConfig,
 )
 
 
@@ -96,6 +99,23 @@ def _config(**overrides):
     return ACTAlignedConfig(
         **values,
     )
+
+
+def _high_rate_config(**overrides):
+    values = {
+        "d_model": 32,
+        "nhead": 4,
+        "dim_feedforward": 64,
+        "dropout": 0.0,
+        "chunk_len": 3,
+        "local_force_dim": 16,
+        "image_height": 8,
+        "image_width": 8,
+        "pretrained_backbone": False,
+        "imagenet_normalize": False,
+    }
+    values.update(overrides)
+    return ACTAlignedHighRateConfig(**values)
 
 
 def test_split_stats_and_dataset_are_deterministic_causal_and_time_aligned(tmp_path):
@@ -247,4 +267,34 @@ def test_training_and_rollout_share_identical_causal_force_windows(tmp_path):
             training_sample.force_padding_mask,
         )
 
+    dataset.close()
+
+
+def test_high_rate_dataset_is_independent_and_preserves_action_force_masks(tmp_path):
+    _write_episode(tmp_path, "episode_a", 0.0)
+    _write_episode(tmp_path, "episode_b", 10.0)
+    manifest = create_episode_split(tmp_path, validation_fraction=0.5, seed=0)
+    record = manifest.train_episodes[0]
+    stats = compute_normalization_stats(tmp_path, (record,))
+    config = _high_rate_config()
+    dataset = ACTAlignedHighRateHDF5Dataset(
+        tmp_path,
+        (record,),
+        stats,
+        config,
+    )
+
+    first = dataset[0]
+    last = dataset[record.num_steps - 1]
+    batch = collate_high_rate_samples((first, last))
+    batch.validate(config)
+
+    assert first.online_raw_valid_count == 1
+    assert first.online_force_intervals.shape == (7, 20, 6)
+    assert first.future_force_intervals.shape == (3, 20, 6)
+    assert not first.action_padding_mask[0]
+    assert not first.future_force_interval_padding_mask[0]
+    assert not last.action_padding_mask[0]
+    assert last.future_force_interval_padding_mask.all()
+    assert last.action_padding_mask[1:].all()
     dataset.close()

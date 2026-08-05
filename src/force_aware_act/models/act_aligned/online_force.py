@@ -7,7 +7,10 @@ from typing import Optional
 import torch
 from torch import nn
 
-from force_aware_act.models.act_aligned.config import ACTAlignedConfig
+from force_aware_act.models.act_aligned.config import (
+    ACTAlignedConfig,
+    ACTAlignedHighRateConfig,
+)
 from force_aware_act.models.act_aligned.contracts import require_padding_mask
 from force_aware_act.models.act_aligned.position_encoding import (
     SinusoidalSequencePositionEncoding,
@@ -104,3 +107,74 @@ class ACTAlignedOnlineForceEncoder(nn.Module):
                 batch_size=force_history.shape[0],
                 sequence_length=self.config.force_window_len,
             )
+
+
+class ACTAlignedOnlineForceIntervalEncoder(nn.Module):
+    """Aggregate encoded high-rate intervals into one online force feature."""
+
+    def __init__(self, config: ACTAlignedHighRateConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, config.d_model))
+        self.sequence_position = SinusoidalSequencePositionEncoding(
+            config.force_encoder_token_count,
+            config.d_model,
+        )
+        self.token_type = TokenTypeEmbedding(2, config.d_model)
+        self.encoder = ACTTransformerEncoder(config)
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+
+    def forward(
+        self,
+        interval_tokens: torch.Tensor,
+        *,
+        interval_padding_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        if not isinstance(interval_tokens, torch.Tensor):
+            raise TypeError("interval_tokens must be a torch.Tensor")
+        expected_suffix = (
+            self.config.max_online_force_intervals,
+            self.config.d_model,
+        )
+        if interval_tokens.ndim != 3 or tuple(interval_tokens.shape[1:]) != expected_suffix:
+            raise ValueError(
+                "interval_tokens must have shape "
+                f"[B, {expected_suffix[0]}, {expected_suffix[1]}]"
+            )
+        if not interval_tokens.is_floating_point():
+            raise ValueError("interval_tokens must be floating point")
+        require_padding_mask(
+            interval_padding_mask,
+            name="interval_padding_mask",
+            batch_size=interval_tokens.shape[0],
+            sequence_length=self.config.max_online_force_intervals,
+        )
+        if interval_padding_mask.device != interval_tokens.device:
+            raise ValueError("interval mask and tokens must share one device")
+        if interval_padding_mask.all(dim=1).any():
+            raise ValueError("each online history must contain a valid force interval")
+
+        batch_size = interval_tokens.shape[0]
+        cls_token = self.cls_token.expand(batch_size, -1, -1)
+        tokens = torch.cat((cls_token, interval_tokens), dim=1)
+        type_ids = torch.full(
+            (self.config.force_encoder_token_count,),
+            FORCE_SAMPLE_TYPE,
+            dtype=torch.long,
+            device=tokens.device,
+        )
+        type_ids[0] = FORCE_CLS_TYPE
+        position = self.sequence_position(tokens) + self.token_type(type_ids).unsqueeze(0)
+        cls_mask = torch.zeros(
+            batch_size,
+            1,
+            dtype=torch.bool,
+            device=tokens.device,
+        )
+        padding_mask = torch.cat((cls_mask, interval_padding_mask), dim=1)
+        encoded = self.encoder(
+            tokens,
+            position=position,
+            padding_mask=padding_mask,
+        )
+        return encoded[:, 0]

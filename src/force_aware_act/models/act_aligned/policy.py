@@ -51,12 +51,14 @@ class ACTAlignedContactCVAEPolicy(nn.Module):
         super().__init__()
         self.config = config or ACTAlignedConfig.canonical_act()
         config = self.config
+        self._initialize_common_modules(config)
+        self.online_force_encoder = ACTAlignedOnlineForceEncoder(config)
+        self.contact_posterior = ACTAlignedContactPosterior(config)
 
+    def _initialize_common_modules(self, config: ACTAlignedConfig) -> None:
         self.vision_backbone = ACTAlignedResNet18Backbone(config)
         self.qpos_adapter = QposTokenAdapter(config.q_dim, config.d_model)
-        self.online_force_encoder = ACTAlignedOnlineForceEncoder(config)
         self.force_vision_fusion = ACTAlignedForceVisionFusion(config)
-        self.contact_posterior = ACTAlignedContactPosterior(config)
         self.contact_prior = ACTAlignedContactPrior(config)
         self.contact_latent_adapter = LatentTokenAdapter(
             config.latent_dim,

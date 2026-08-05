@@ -40,6 +40,14 @@ from force_aware_act.act_aligned_training.data import (
     ACTAlignedSample,
     collate_act_aligned_samples,
 )
+from force_aware_act.act_aligned_training.high_rate_batch import (
+    ACTAlignedHighRateBatch,
+)
+from force_aware_act.act_aligned_training.high_rate_data import (
+    ACTAlignedHighRateHDF5Dataset,
+    ACTAlignedHighRateSample,
+    collate_high_rate_samples,
+)
 from force_aware_act.act_aligned_training.diagnostics import (
     run_training_preflight,
 )
@@ -74,6 +82,9 @@ __all__ = [
     "ACTAlignedBatch",
     "ACTAlignedCriterion",
     "ACTAlignedHDF5Dataset",
+    "ACTAlignedHighRateBatch",
+    "ACTAlignedHighRateHDF5Dataset",
+    "ACTAlignedHighRateSample",
     "ACTAlignedMotionCriterion",
     "ACTAlignedMotionTrainingConfig",
     "ACTAlignedSample",
@@ -87,6 +98,7 @@ __all__ = [
     "build_act_aligned_optimizer",
     "build_act_aligned_motion_optimizer",
     "collate_act_aligned_samples",
+    "collate_high_rate_samples",
     "compute_normalization_stats",
     "create_episode_split",
     "detached_posterior_prior_kl",

@@ -11,6 +11,9 @@ ACT_ALIGNED_ARCHITECTURE_VERSION = "act_aligned_contact_cvae_v1"
 ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION = (
     "act_aligned_motion_cvae_control_v1"
 )
+ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION = (
+    "act_aligned_contact_cvae_highrate_force_v2"
+)
 
 
 @dataclass(frozen=True)
@@ -86,6 +89,7 @@ class ACTAlignedConfig:
         supported_versions = {
             ACT_ALIGNED_ARCHITECTURE_VERSION,
             ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
         }
         if self.architecture_version not in supported_versions:
             raise ValueError(
@@ -242,6 +246,71 @@ class ACTAlignedConfig:
                     "offline_override",
                 ),
                 "contact_posterior_token_count": self.contact_posterior_token_count,
+            }
+        )
+        return metadata
+
+
+@dataclass(frozen=True)
+class ACTAlignedHighRateConfig(ACTAlignedConfig):
+    """ACT-aligned contact policy with native 500 Hz force intervals."""
+
+    architecture_version: str = ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION
+    force_sample_rate_hz: float = 500.0
+    online_force_window_len: int = 100
+    max_force_samples_per_interval: int = 20
+    max_online_force_intervals: int = 7
+    local_force_dim: int = 128
+    local_force_encoder_layers: int = 4
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.architecture_version != ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION:
+            raise ValueError("high-rate config requires the v2 architecture version")
+        if not math.isfinite(self.force_sample_rate_hz) or self.force_sample_rate_hz <= 0:
+            raise ValueError("force_sample_rate_hz must be finite and positive")
+        for field_name in (
+            "online_force_window_len",
+            "max_force_samples_per_interval",
+            "max_online_force_intervals",
+            "local_force_dim",
+            "local_force_encoder_layers",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise ValueError(f"{field_name} must be a positive integer")
+        if self.local_force_encoder_layers != self.encoder_layers:
+            raise ValueError(
+                "local_force_encoder_layers must match ACT encoder_layers"
+            )
+        if self.local_force_dim % 2 != 0:
+            raise ValueError("local_force_dim must be even for time encoding")
+
+    @property
+    def force_encoder_token_count(self) -> int:
+        return self.max_online_force_intervals + 1
+
+    def checkpoint_metadata(self) -> dict[str, Any]:
+        metadata = super().checkpoint_metadata()
+        metadata.update(
+            {
+                "force_input_contract": (
+                    "causal_raw_500hz_last_100_grouped_state_intervals_v2"
+                ),
+                "force_sample_rate_hz": self.force_sample_rate_hz,
+                "online_force_window_len": self.online_force_window_len,
+                "max_force_samples_per_interval": (
+                    self.max_force_samples_per_interval
+                ),
+                "max_online_force_intervals": self.max_online_force_intervals,
+                "local_force_dim": self.local_force_dim,
+                "local_force_encoder_layers": self.local_force_encoder_layers,
+                "shared_local_force_encoder": True,
+                "contact_posterior_layout": (
+                    "time_aligned_action_plus_encoded_500hz_interval_force"
+                ),
+                "future_force_interval_boundary": "(t_j,t_j+1]",
+                "legacy_force_window_len_role": "unused_by_v2",
             }
         )
         return metadata

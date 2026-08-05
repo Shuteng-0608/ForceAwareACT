@@ -6,12 +6,15 @@ from force_aware_act.models.act_aligned.backbone import (
 )
 from force_aware_act.models.act_aligned.config import (
     ACT_ALIGNED_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
     ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
     ACTAlignedConfig,
+    ACTAlignedHighRateConfig,
 )
 from force_aware_act.models.act_aligned.contact_latent import (
     ACTAlignedContactPosterior,
     ACTAlignedContactPrior,
+    ACTAlignedHighRateContactPosterior,
     reparameterize_gaussian,
 )
 from force_aware_act.models.act_aligned.contracts import (
@@ -32,6 +35,13 @@ from force_aware_act.models.act_aligned.motion_policy import (
 from force_aware_act.models.act_aligned.fusion import ACTAlignedForceVisionFusion
 from force_aware_act.models.act_aligned.online_force import (
     ACTAlignedOnlineForceEncoder,
+    ACTAlignedOnlineForceIntervalEncoder,
+)
+from force_aware_act.models.act_aligned.high_rate_force import (
+    ACTAlignedHighRateForceEncoder,
+)
+from force_aware_act.models.act_aligned.high_rate_policy import (
+    ACTAlignedHighRateContactCVAEPolicy,
 )
 from force_aware_act.models.act_aligned.policy import (
     ACTAlignedContactCVAEPolicy,
@@ -61,16 +71,22 @@ from force_aware_act.models.act_aligned.transformer import (
 
 __all__ = [
     "ACT_ALIGNED_ARCHITECTURE_VERSION",
+    "ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION",
     "ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION",
     "ACTAlignedResNet18Backbone",
     "ACTAlignedContactPosterior",
     "ACTAlignedContactPrior",
     "ACTAlignedContactCVAEPolicy",
     "ACTAlignedConfig",
+    "ACTAlignedHighRateConfig",
+    "ACTAlignedHighRateContactCVAEPolicy",
+    "ACTAlignedHighRateContactPosterior",
+    "ACTAlignedHighRateForceEncoder",
     "ACTAlignedMotionCVAEControlPolicy",
     "ACTAlignedMotionPosterior",
     "ACTAlignedForceVisionFusion",
     "ACTAlignedOnlineForceEncoder",
+    "ACTAlignedOnlineForceIntervalEncoder",
     "ACTAlignedShapeContract",
     "ACTDecoderLayer",
     "ACTEncoderLayer",
