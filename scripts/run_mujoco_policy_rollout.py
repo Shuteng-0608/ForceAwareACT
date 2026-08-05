@@ -23,7 +23,12 @@ if str(SRC_ROOT) not in sys.path:
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
 from force_aware_act.inference import (  # noqa: E402
     ACT_ALIGNED_ROLLOUT_KIND,
+    OFFICIAL_TEMPORAL_AGGREGATION_DECAY,
+    OFFICIAL_TEMPORAL_AGGREGATION_VERSION,
+    OFFICIAL_TEMPORAL_CANDIDATE_ORDER,
+    OFFICIAL_TEMPORAL_WEIGHT_FORMULA,
     OFFICIAL_ACT_ROLLOUT_KIND,
+    OfficialTemporalActionChunkExecutor,
     RolloutPolicyAdapter,
     checkpoint_uses_rollout_adapter,
 )
@@ -74,6 +79,18 @@ SUMMARY_REQUIRED_KEYS = (
     "action_mode",
     "action_select_mode",
     "selected_action_index",
+    "temporal_aggregation_version",
+    "temporal_candidate_order",
+    "temporal_weight_formula",
+    "temporal_agg_decay",
+    "temporal_first_num_predictions",
+    "temporal_final_num_predictions",
+    "temporal_first_mean_age",
+    "temporal_final_mean_age",
+    "temporal_first_oldest_weight",
+    "temporal_first_newest_weight",
+    "temporal_final_oldest_weight",
+    "temporal_final_newest_weight",
     "contact_latent_mode",
     "deployment_latent_name",
     "deployment_latent_source",
@@ -758,26 +775,6 @@ def _selected_action_index(action_chunk_len: int, mode: str) -> int:
     )
 
 
-def _temporal_aggregate_action(
-    predicted_chunks: deque[tuple[int, np.ndarray]],
-    current_step: int,
-    decay: float,
-) -> tuple[np.ndarray, int, float]:
-    valid_actions = []
-    ages = []
-    for prediction_step, action_chunk in predicted_chunks:
-        age = current_step - prediction_step
-        if 0 <= age < action_chunk.shape[0]:
-            valid_actions.append(action_chunk[age])
-            ages.append(age)
-    if not valid_actions:
-        raise ValueError(f"no valid temporally aligned actions at rollout step {current_step}")
-    weights = np.exp(-decay * np.asarray(ages, dtype=np.float64))
-    selected_action = np.average(np.asarray(valid_actions, dtype=np.float64), axis=0, weights=weights)
-    mean_age = float(np.average(np.asarray(ages, dtype=np.float64), weights=weights))
-    return selected_action, len(valid_actions), mean_age
-
-
 def _axial_push_joint_bias(
     mujoco,
     model,
@@ -884,6 +881,10 @@ def _fieldnames() -> list[str]:
             "selected_action_delta_norm_after_ema",
             "temporal_num_predictions",
             "temporal_mean_age",
+            "temporal_oldest_weight",
+            "temporal_newest_weight",
+            "temporal_oldest_prediction_step",
+            "temporal_newest_prediction_step",
             *ACTION_CHUNK_DIAGNOSTIC_NAMES,
             "pred_action_min",
             "pred_action_max",
@@ -1170,7 +1171,11 @@ def run_rollout(args: argparse.Namespace) -> int:
             else None
         )
     )
-    predicted_action_chunks: deque[tuple[int, np.ndarray]] = deque()
+    temporal_executor = (
+        OfficialTemporalActionChunkExecutor(decay=args.temporal_agg_decay)
+        if args.action_select_mode == "temporal"
+        else None
+    )
     previous_command = internal_initial.copy()
     renderer = mujoco.Renderer(
         mj_model,
@@ -1200,6 +1205,10 @@ def run_rollout(args: argparse.Namespace) -> int:
     final_temporal_num_predictions: Optional[int] = None
     first_temporal_mean_age: Optional[float] = None
     final_temporal_mean_age: Optional[float] = None
+    first_temporal_oldest_weight: Optional[float] = None
+    final_temporal_oldest_weight: Optional[float] = None
+    first_temporal_newest_weight: Optional[float] = None
+    final_temporal_newest_weight: Optional[float] = None
     axial_push_active_steps = 0
     axial_push_dq_norms: list[float] = []
     raw_delta_norms: list[float] = []
@@ -1419,29 +1428,33 @@ def run_rollout(args: argparse.Namespace) -> int:
             )
             temporal_num_predictions: int | str = ""
             temporal_mean_age: float | str = ""
+            temporal_oldest_weight: float | str = ""
+            temporal_newest_weight: float | str = ""
+            temporal_oldest_prediction_step: int | str = ""
+            temporal_newest_prediction_step: int | str = ""
             if args.action_select_mode == "temporal":
-                predicted_action_chunks.append(
-                    (step, selected_action.astype(np.float64, copy=True))
-                )
-                while (
-                    predicted_action_chunks
-                    and step - predicted_action_chunks[0][0] >= selected_action.shape[0]
-                ):
-                    predicted_action_chunks.popleft()
-                (
-                    selected_raw_action,
-                    temporal_num_predictions,
-                    temporal_mean_age,
-                ) = _temporal_aggregate_action(
-                    predicted_action_chunks,
+                if temporal_executor is None:
+                    raise RuntimeError("temporal executor was not initialized")
+                temporal_result = temporal_executor.update(
                     step,
-                    args.temporal_agg_decay,
+                    selected_action,
                 )
+                selected_raw_action = temporal_result.action
+                temporal_num_predictions = temporal_result.num_predictions
+                temporal_mean_age = temporal_result.weighted_mean_age
+                temporal_oldest_weight = temporal_result.oldest_weight
+                temporal_newest_weight = temporal_result.newest_weight
+                temporal_oldest_prediction_step = temporal_result.prediction_steps[0]
+                temporal_newest_prediction_step = temporal_result.prediction_steps[-1]
                 if first_temporal_num_predictions is None:
                     first_temporal_num_predictions = temporal_num_predictions
                     first_temporal_mean_age = temporal_mean_age
+                    first_temporal_oldest_weight = temporal_oldest_weight
+                    first_temporal_newest_weight = temporal_newest_weight
                 final_temporal_num_predictions = temporal_num_predictions
                 final_temporal_mean_age = temporal_mean_age
+                final_temporal_oldest_weight = temporal_oldest_weight
+                final_temporal_newest_weight = temporal_newest_weight
             else:
                 selected_raw_action = selected_action[selected_action_index].astype(
                     np.float64, copy=True
@@ -1557,6 +1570,10 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "selected_action_delta_norm_after_ema": ema_delta_norm,
                 "temporal_num_predictions": temporal_num_predictions,
                 "temporal_mean_age": temporal_mean_age,
+                "temporal_oldest_weight": temporal_oldest_weight,
+                "temporal_newest_weight": temporal_newest_weight,
+                "temporal_oldest_prediction_step": temporal_oldest_prediction_step,
+                "temporal_newest_prediction_step": temporal_newest_prediction_step,
                 "axial_push_enabled": args.enable_axial_push,
                 "axial_push_active": axial_push_active,
                 "axial_push_speed": args.axial_push_speed,
@@ -1769,6 +1786,30 @@ def run_rollout(args: argparse.Namespace) -> int:
         "action_mode": args.action_mode,
         "action_select_mode": args.action_select_mode,
         "selected_action_index": _selected_action_index(args.chunk_len, args.action_select_mode),
+        "temporal_aggregation_version": (
+            OFFICIAL_TEMPORAL_AGGREGATION_VERSION
+            if temporal_executor is not None
+            else "not_used"
+        ),
+        "temporal_candidate_order": (
+            OFFICIAL_TEMPORAL_CANDIDATE_ORDER
+            if temporal_executor is not None
+            else "not_used"
+        ),
+        "temporal_weight_formula": (
+            OFFICIAL_TEMPORAL_WEIGHT_FORMULA
+            if temporal_executor is not None
+            else "not_used"
+        ),
+        "temporal_agg_decay": args.temporal_agg_decay,
+        "temporal_first_num_predictions": first_temporal_num_predictions,
+        "temporal_final_num_predictions": final_temporal_num_predictions,
+        "temporal_first_mean_age": first_temporal_mean_age,
+        "temporal_final_mean_age": final_temporal_mean_age,
+        "temporal_first_oldest_weight": first_temporal_oldest_weight,
+        "temporal_first_newest_weight": first_temporal_newest_weight,
+        "temporal_final_oldest_weight": final_temporal_oldest_weight,
+        "temporal_final_newest_weight": final_temporal_newest_weight,
         "contact_latent_mode": args.contact_latent_mode,
         "deployment_latent_name": first_deployment_diagnostics["latent_name"],
         "deployment_latent_source": first_deployment_diagnostics["latent_source"],
@@ -1897,11 +1938,18 @@ def run_rollout(args: argparse.Namespace) -> int:
         f"{np.array2string(hole_offset_metadata['actual_hole_offset'], precision=6, separator=',')}"
     )
     if args.action_select_mode == "temporal":
+        print(f"temporal_aggregation_version={OFFICIAL_TEMPORAL_AGGREGATION_VERSION}")
+        print(f"temporal_candidate_order={OFFICIAL_TEMPORAL_CANDIDATE_ORDER}")
+        print(f"temporal_weight_formula={OFFICIAL_TEMPORAL_WEIGHT_FORMULA}")
         print(f"temporal_agg_decay={args.temporal_agg_decay:.9g}")
         print(f"first_temporal_num_predictions={first_temporal_num_predictions}")
         print(f"final_temporal_num_predictions={final_temporal_num_predictions}")
         print(f"first_temporal_mean_age={first_temporal_mean_age:.9g}")
         print(f"final_temporal_mean_age={final_temporal_mean_age:.9g}")
+        print(f"first_temporal_oldest_weight={first_temporal_oldest_weight:.9g}")
+        print(f"first_temporal_newest_weight={first_temporal_newest_weight:.9g}")
+        print(f"final_temporal_oldest_weight={final_temporal_oldest_weight:.9g}")
+        print(f"final_temporal_newest_weight={final_temporal_newest_weight:.9g}")
     print(
         "first_selected_raw_action="
         f"{np.array2string(first_selected_raw_action, precision=6, separator=',')}"
@@ -2018,7 +2066,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "action-chunk index such as 1 or 10."
         ),
     )
-    parser.add_argument("--temporal-agg-decay", type=float, default=0.3)
+    parser.add_argument(
+        "--temporal-agg-decay",
+        type=float,
+        default=OFFICIAL_TEMPORAL_AGGREGATION_DECAY,
+    )
     parser.add_argument("--chunk-len", type=int)
     parser.add_argument("--force-window-len", type=int)
     parser.add_argument("--force-window-duration", type=float)
@@ -2138,8 +2190,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("error: --hole-axis-world must be a finite nonzero vector", file=sys.stderr)
         return 2
     args.hole_axis_world = args.hole_axis_world / hole_axis_norm
-    if args.temporal_agg_decay < 0:
-        print("error: --temporal-agg-decay must be non-negative", file=sys.stderr)
+    if not np.isfinite(args.temporal_agg_decay) or args.temporal_agg_decay < 0:
+        print(
+            "error: --temporal-agg-decay must be finite and non-negative",
+            file=sys.stderr,
+        )
         return 2
     if args.snapshot_every <= 0:
         print("error: --snapshot-every must be positive", file=sys.stderr)

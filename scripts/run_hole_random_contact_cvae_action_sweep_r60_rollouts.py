@@ -157,7 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=list(DEFAULT_MODES),
         help="1-based chunk positions and/or temporal (default: 1..10 temporal).",
     )
-    parser.add_argument("--temporal-agg-decay", type=float, default=0.3)
+    parser.add_argument("--temporal-agg-decay", type=float, default=0.01)
     parser.add_argument("--python-executable", default=sys.executable)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="cuda")
     parser.add_argument("--mujoco-gl", default="egl")

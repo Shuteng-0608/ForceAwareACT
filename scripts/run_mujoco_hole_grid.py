@@ -845,7 +845,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="zero")
     parser.add_argument("--action-mode", default="action")
     parser.add_argument("--action-select-mode", default="mid")
-    parser.add_argument("--temporal-agg-decay", type=float, default=0.3)
+    parser.add_argument("--temporal-agg-decay", type=float, default=0.01)
     parser.add_argument("--chunk-len", type=int, default=10)
     parser.add_argument("--force-window-len", type=int, default=20)
     parser.add_argument("--force-window-duration", type=float, default=0.25)
