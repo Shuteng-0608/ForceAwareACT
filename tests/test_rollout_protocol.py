@@ -154,6 +154,8 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.max_delta_q == DEFAULT_MAX_DELTA_Q
     assert args.force_stop_threshold == DEFAULT_FORCE_STOP_THRESHOLD
     assert args.safe_force_threshold == DEFAULT_SAFE_FORCE_THRESHOLD
+    assert args.force_stop_threshold == 100.0
+    assert args.safe_force_threshold == 40.0
     assert args.success_distance_threshold == DEFAULT_SUCCESS_DISTANCE_THRESHOLD
     assert args.success_dwell_time == DEFAULT_SUCCESS_DWELL_TIME
     assert args.success_lateral_threshold is None
