@@ -10,8 +10,6 @@ from scripts.run_mujoco_policy_rollout import (
     _resolve_inference_device,
     _run_mode,
     _stats_to_device,
-    _success_condition,
-    _update_success_hold_counter,
     _selected_action_delta_norm_raw_to_current,
     _selected_action_index,
     _validate_stats_action_mode,
@@ -177,28 +175,6 @@ def test_missing_stats_action_mode_allows_legacy_joint_pos():
 def test_missing_stats_action_mode_rejects_command_modes():
     with pytest.raises(ValueError, match="do not contain action_mode metadata"):
         _validate_stats_action_mode({}, "delta_joint_cmd")
-
-
-def test_success_condition_requires_distance_lateral_and_force_thresholds():
-    assert _success_condition(
-        peg_to_hole_dist=0.004,
-        peg_to_hole_lateral_error=0.005,
-        force_norm=50.0,
-        distance_threshold=0.005,
-        lateral_threshold=0.006,
-        force_threshold=80.0,
-    )
-    assert not _success_condition(0.005, 0.005, 50.0, 0.005, 0.006, 80.0)
-    assert not _success_condition(0.004, 0.006, 50.0, 0.005, 0.006, 80.0)
-    assert not _success_condition(0.004, 0.005, 80.0, 0.005, 0.006, 80.0)
-
-
-def test_success_hold_counter_resets_on_failed_step():
-    counter = 0
-    for condition in [True, True, False, True, True, True]:
-        counter = _update_success_hold_counter(counter, condition)
-
-    assert counter == 3
 
 
 def test_summary_schema_validation_accepts_required_keys():

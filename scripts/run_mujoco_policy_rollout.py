@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import sys
 from collections import deque
 from pathlib import Path
@@ -23,13 +24,28 @@ if str(SRC_ROOT) not in sys.path:
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
 from force_aware_act.inference import (  # noqa: E402
     ACT_ALIGNED_ROLLOUT_KIND,
+    CONTROL_POSTPROCESS_VERSION,
+    DEFAULT_EMA_ALPHA,
+    DEFAULT_FORCE_STOP_THRESHOLD,
+    DEFAULT_MAX_DELTA_Q,
+    DEFAULT_MAX_ROLLOUT_STEPS,
+    DEFAULT_POLICY_RATE_HZ,
+    DEFAULT_SAFE_FORCE_THRESHOLD,
+    DEFAULT_SUCCESS_DISTANCE_THRESHOLD,
+    DEFAULT_SUCCESS_DWELL_TIME,
     OFFICIAL_TEMPORAL_AGGREGATION_DECAY,
     OFFICIAL_TEMPORAL_AGGREGATION_VERSION,
     OFFICIAL_TEMPORAL_CANDIDATE_ORDER,
     OFFICIAL_TEMPORAL_WEIGHT_FORMULA,
     OFFICIAL_ACT_ROLLOUT_KIND,
+    POLICY_STEP_SCHEDULER_VERSION,
+    ROLLOUT_PROTOCOL_VERSION,
+    TASK_SUCCESS_VERSION,
+    CumulativePolicyStepScheduler,
+    JointPositionPostprocessor,
     OfficialTemporalActionChunkExecutor,
     RolloutPolicyAdapter,
+    TaskSuccessTracker,
     checkpoint_uses_rollout_adapter,
 )
 from force_aware_act.models import (  # noqa: E402
@@ -70,6 +86,10 @@ ACTION_MODE_CHOICES = (
 )
 DELTA_ACTION_MODES = ("delta_joint_cmd", "delta_joint_pos_command")
 SUMMARY_REQUIRED_KEYS = (
+    "rollout_protocol_version",
+    "policy_step_scheduler_version",
+    "control_postprocess_version",
+    "task_success_version",
     "output_dir",
     "checkpoint",
     "normalization_stats",
@@ -103,17 +123,36 @@ SUMMARY_REQUIRED_KEYS = (
     "force_history_valid_samples_final",
     "force_history_valid_samples_max",
     "policy_rate_hz",
+    "physics_timestep",
+    "physics_steps_total",
+    "physics_steps_per_policy_min",
+    "physics_steps_per_policy_max",
+    "achieved_policy_rate_hz",
     "max_rollout_steps",
+    "ema_alpha",
     "max_delta_q",
+    "delta_clip_applied_steps",
+    "ema_modified_steps",
+    "ctrlrange_clip_applied_steps",
+    "force_monitoring_rate",
     "force_stop_threshold",
     "success",
+    "task_success",
+    "safe_success",
+    "safe_force_threshold",
     "success_step",
     "success_time",
     "success_hold_steps_observed",
+    "success_hold_time_observed",
     "success_distance_threshold",
     "success_lateral_threshold",
     "success_force_threshold",
     "success_hold_steps",
+    "success_dwell_time",
+    "success_dwell_source",
+    "task_success_definition",
+    "success_lateral_threshold_role",
+    "success_force_threshold_role",
     "success_stop_enabled",
     "stop_reason",
     "steps_executed",
@@ -800,12 +839,13 @@ def _fieldnames() -> list[str]:
         "dry_run",
         "action_mode",
         "action_select_mode",
-            "selected_action_index",
-            "force_history_valid_samples",
-            "force_history_padding_samples",
-            "deployment_latent_source",
-            "deployment_latent_max_abs",
-        ]
+        "selected_action_index",
+        "physics_steps_this_policy",
+        "force_history_valid_samples",
+        "force_history_padding_samples",
+        "deployment_latent_source",
+        "deployment_latent_max_abs",
+    ]
     fields.extend(f"qpos_{index}" for index in range(7))
     fields.extend(f"qvel_{index}" for index in range(7))
     fields.extend(f"ft_{index}" for index in range(6))
@@ -874,6 +914,9 @@ def _fieldnames() -> list[str]:
             "action_delta_norm_raw_to_current",
             "action_delta_norm_after_clip",
             "action_delta_norm_after_ema",
+            "delta_clip_applied",
+            "ema_modified",
+            "ctrlrange_clip_applied",
             "target_ctrl_delta_from_qpos_norm",
             "applied_ctrl_delta_from_qpos_norm",
             "selected_action_delta_norm_raw_to_current",
@@ -895,6 +938,7 @@ def _fieldnames() -> list[str]:
             "prior_vs_zero_force_mean_abs_diff",
             "success_condition",
             "success_hold_counter",
+            "success_hold_time",
             "stop_reason",
         ]
     )
@@ -928,31 +972,6 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(item) for item in value]
     return value
-
-
-def _success_condition(
-    peg_to_hole_dist: float,
-    peg_to_hole_lateral_error: float,
-    force_norm: float,
-    distance_threshold: float,
-    lateral_threshold: float,
-    force_threshold: float,
-) -> bool:
-    return bool(
-        np.isfinite(peg_to_hole_dist)
-        and np.isfinite(peg_to_hole_lateral_error)
-        and np.isfinite(force_norm)
-        and peg_to_hole_dist < distance_threshold
-        and peg_to_hole_lateral_error < lateral_threshold
-        and force_norm < force_threshold
-    )
-
-
-def _update_success_hold_counter(
-    hold_counter: int,
-    success_condition: bool,
-) -> int:
-    return hold_counter + 1 if success_condition else 0
 
 
 def _finite_min_step(values: Sequence[tuple[int, float]], abs_value: bool = False) -> tuple[int, float]:
@@ -1157,8 +1176,19 @@ def run_rollout(args: argparse.Namespace) -> int:
     hole_offset_metadata.update(hole_structure_metadata)
 
     control_ranges = np.asarray(mj_model.actuator_ctrlrange[actuator_ids], dtype=np.float64)
-    physics_steps_per_policy = max(
-        1, int(round(1.0 / (args.policy_rate_hz * float(mj_model.opt.timestep))))
+    policy_step_scheduler = CumulativePolicyStepScheduler(
+        policy_rate_hz=args.policy_rate_hz,
+        physics_timestep=float(mj_model.opt.timestep),
+    )
+    command_postprocessor = JointPositionPostprocessor(
+        control_ranges=control_ranges,
+        initial_command=internal_initial,
+        max_delta_q=args.max_delta_q,
+        ema_alpha=args.ema_alpha,
+    )
+    task_success_tracker = TaskSuccessTracker(
+        distance_threshold=args.success_distance_threshold,
+        dwell_time=args.success_dwell_time,
     )
     current_wrench = _read_wrench(data, force_slice, torque_slice)
     force_history: deque[tuple[float, np.ndarray]] = deque(
@@ -1176,7 +1206,6 @@ def run_rollout(args: argparse.Namespace) -> int:
         if args.action_select_mode == "temporal"
         else None
     )
-    previous_command = internal_initial.copy()
     renderer = mujoco.Renderer(
         mj_model,
         height=args.image_height,
@@ -1214,12 +1243,14 @@ def run_rollout(args: argparse.Namespace) -> int:
     raw_delta_norms: list[float] = []
     clipped_delta_norms: list[float] = []
     ema_delta_norms: list[float] = []
+    physics_steps_per_policy_values: list[int] = []
+    delta_clip_applied_steps = 0
+    ema_modified_steps = 0
+    ctrlrange_clip_applied_steps = 0
     stop_reason = "max_rollout_steps"
     success = False
     success_step: Optional[int] = None
     success_time: Optional[float] = None
-    success_hold_counter = 0
-    max_success_hold_counter = 0
     initial_task: Optional[dict[str, np.ndarray | float]] = None
     final_task: Optional[dict[str, np.ndarray | float]] = None
     snapshots_saved = False
@@ -1236,7 +1267,8 @@ def run_rollout(args: argparse.Namespace) -> int:
             qvel = np.asarray(data.qvel[joint_dofadr], dtype=np.float32).copy()
             wrench = _read_wrench(data, force_slice, torque_slice).astype(np.float32)
             force_norm = float(np.linalg.norm(wrench[:3]))
-            force_norm_history.append(force_norm)
+            if not force_norm_history:
+                force_norm_history.append(force_norm)
             if adapter is not None and adapter.uses_force_history:
                 state_rate_force_history.append(wrench.copy())
                 force_window_np = np.stack(state_rate_force_history)
@@ -1273,20 +1305,14 @@ def run_rollout(args: argparse.Namespace) -> int:
             if initial_task is None:
                 initial_task = task
             final_task = task
-            step_success_condition = _success_condition(
-                float(task["peg_to_hole_dist"]),
-                float(task["peg_to_hole_lateral_error"]),
-                force_norm,
-                args.success_distance_threshold,
-                args.success_lateral_threshold,
-                args.success_force_threshold,
+            success_update = task_success_tracker.update(
+                timestamp=float(data.time),
+                distance=float(task["peg_to_hole_dist"]),
             )
-            success_hold_counter = _update_success_hold_counter(
-                success_hold_counter,
-                step_success_condition,
-            )
-            max_success_hold_counter = max(max_success_hold_counter, success_hold_counter)
-            if not success and success_hold_counter >= args.success_hold_steps:
+            step_success_condition = success_update.condition
+            success_hold_counter = success_update.consecutive_observations
+            success_hold_time = success_update.accumulated_time
+            if success_update.just_succeeded:
                 success = True
                 success_step = step
                 success_time = float(data.time)
@@ -1509,27 +1535,30 @@ def run_rollout(args: argparse.Namespace) -> int:
             raw_delta_norm = float(np.linalg.norm(target_ctrl_with_bias - qpos))
             clipped_delta_norm = float("nan")
             ema_delta_norm = float("nan")
-            if args.execute_actions:
-                delta_clipped_action = qpos + np.clip(
-                    target_ctrl_with_bias - qpos,
-                    -args.max_delta_q,
-                    args.max_delta_q,
+            delta_clip_applied = False
+            ema_modified = False
+            ctrlrange_clip_applied = False
+            if np.isfinite(target_ctrl_with_bias).all() and np.isfinite(qpos).all():
+                postprocess_result = command_postprocessor.process(
+                    target=target_ctrl_with_bias,
+                    current_qpos=qpos,
+                    commit=not bool(row_stop_reason),
                 )
-                ema_action = (
-                    args.ema_alpha * delta_clipped_action
-                    + (1.0 - args.ema_alpha) * previous_command
-                )
-                ctrl_clipped_action = np.clip(
-                    ema_action,
-                    control_ranges[:, 0],
-                    control_ranges[:, 1],
-                )
+                delta_clipped_action = postprocess_result.delta_clipped
+                ema_action = postprocess_result.ema
+                ctrl_clipped_action = postprocess_result.ctrlrange_clipped
+                delta_clip_applied = postprocess_result.delta_clip_applied
+                ema_modified = postprocess_result.ema_modified
+                ctrlrange_clip_applied = postprocess_result.ctrlrange_clip_applied
                 clipped_delta_norm = float(np.linalg.norm(delta_clipped_action - qpos))
                 ema_delta_norm = float(np.linalg.norm(ema_action - qpos))
+                if not row_stop_reason:
+                    delta_clip_applied_steps += int(delta_clip_applied)
+                    ema_modified_steps += int(ema_modified)
+                    ctrlrange_clip_applied_steps += int(ctrlrange_clip_applied)
 
             if args.execute_actions and not row_stop_reason:
                 data.ctrl[actuator_ids] = ctrl_clipped_action
-                previous_command = ctrl_clipped_action.copy()
             qcmd = np.asarray(data.ctrl[actuator_ids], dtype=np.float64).copy()
             applied_ctrl_delta_norm = float(np.linalg.norm(qcmd - qpos))
             raw_delta_norms.append(raw_delta_norm)
@@ -1538,6 +1567,9 @@ def run_rollout(args: argparse.Namespace) -> int:
             if first_qcmd is None:
                 first_qcmd = qcmd.copy()
             final_qcmd = qcmd.copy()
+            physics_steps_this_policy = (
+                0 if row_stop_reason else policy_step_scheduler.next_step_count()
+            )
 
             row: dict[str, object] = {
                 "step": step,
@@ -1547,6 +1579,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "action_mode": args.action_mode,
                 "action_select_mode": args.action_select_mode,
                 "selected_action_index": selected_action_index,
+                "physics_steps_this_policy": physics_steps_this_policy,
                 "force_history_valid_samples": deployment_diagnostics[
                     "force_history_valid_samples"
                 ],
@@ -1563,6 +1596,9 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "action_delta_norm_raw_to_current": raw_delta_norm,
                 "action_delta_norm_after_clip": clipped_delta_norm,
                 "action_delta_norm_after_ema": ema_delta_norm,
+                "delta_clip_applied": delta_clip_applied,
+                "ema_modified": ema_modified,
+                "ctrlrange_clip_applied": ctrlrange_clip_applied,
                 "target_ctrl_delta_from_qpos_norm": raw_delta_norm,
                 "applied_ctrl_delta_from_qpos_norm": applied_ctrl_delta_norm,
                 "selected_action_delta_norm_raw_to_current": selected_raw_delta_norm,
@@ -1601,6 +1637,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                 ),
                 "success_condition": step_success_condition,
                 "success_hold_counter": success_hold_counter,
+                "success_hold_time": success_hold_time,
                 "stop_reason": row_stop_reason,
             }
             row.update({f"qpos_{index}": float(value) for index, value in enumerate(qpos)})
@@ -1725,13 +1762,38 @@ def run_rollout(args: argparse.Namespace) -> int:
             rows.append(row)
 
             if row_stop_reason:
+                physics_steps_per_policy_values.append(0)
                 stop_reason = row_stop_reason
                 break
 
-            for _ in range(physics_steps_per_policy):
+            executed_physics_steps = 0
+            physics_force_stop = False
+            for _ in range(physics_steps_this_policy):
                 mujoco.mj_step(mj_model, data)
+                executed_physics_steps += 1
                 sampled_wrench = _read_wrench(data, force_slice, torque_slice)
                 force_history.append((float(data.time), sampled_wrench.copy()))
+                sampled_force_norm = float(np.linalg.norm(sampled_wrench[:3]))
+                force_norm_history.append(sampled_force_norm)
+                if sampled_force_norm > args.force_stop_threshold:
+                    physics_force_stop = True
+                    stop_reason = "force_stop_threshold"
+                    row["stop_reason"] = stop_reason
+                    if args.execute_actions:
+                        hold_qpos = np.asarray(
+                            data.qpos[joint_qposadr],
+                            dtype=np.float64,
+                        )
+                        data.ctrl[actuator_ids] = np.clip(
+                            hold_qpos,
+                            control_ranges[:, 0],
+                            control_ranges[:, 1],
+                        )
+                    break
+            row["physics_steps_this_policy"] = executed_physics_steps
+            physics_steps_per_policy_values.append(executed_physics_steps)
+            if physics_force_stop:
+                break
             oldest_needed = float(data.time) - args.force_window_duration - float(mj_model.opt.timestep)
             while len(force_history) > 1 and force_history[1][0] < oldest_needed:
                 force_history.popleft()
@@ -1757,8 +1819,32 @@ def run_rollout(args: argparse.Namespace) -> int:
     videos_saved = args.save_videos and any(video_frame_counts.values())
     if first_deployment_diagnostics is None or final_deployment_diagnostics is None:
         raise RuntimeError("rollout produced no deployment diagnostics")
+    positive_physics_step_counts = [
+        value for value in physics_steps_per_policy_values if value > 0
+    ]
+    physics_steps_total = int(sum(positive_physics_step_counts))
+    simulated_control_duration = (
+        physics_steps_total * float(mj_model.opt.timestep)
+    )
+    achieved_policy_rate_hz = (
+        len(positive_physics_step_counts) / simulated_control_duration
+        if simulated_control_duration > 0.0
+        else float("nan")
+    )
+    safe_success = bool(
+        success
+        and np.isfinite(max_force_norm)
+        and max_force_norm <= args.safe_force_threshold
+    )
+    nominal_success_hold_steps = (
+        math.ceil(args.success_dwell_time * args.policy_rate_hz) + 1
+    )
     summary_path = args.output_dir / "summary.json"
     summary = {
+        "rollout_protocol_version": ROLLOUT_PROTOCOL_VERSION,
+        "policy_step_scheduler_version": POLICY_STEP_SCHEDULER_VERSION,
+        "control_postprocess_version": CONTROL_POSTPROCESS_VERSION,
+        "task_success_version": TASK_SUCCESS_VERSION,
         "output_dir": args.output_dir,
         "checkpoint": args.checkpoint,
         "checkpoint_format": checkpoint.get("format_version", "model_only"),
@@ -1829,17 +1915,46 @@ def run_rollout(args: argparse.Namespace) -> int:
             force_history_valid_samples_values
         ),
         "policy_rate_hz": args.policy_rate_hz,
+        "physics_timestep": float(mj_model.opt.timestep),
+        "physics_steps_total": physics_steps_total,
+        "physics_steps_per_policy_min": (
+            min(positive_physics_step_counts)
+            if positive_physics_step_counts
+            else None
+        ),
+        "physics_steps_per_policy_max": (
+            max(positive_physics_step_counts)
+            if positive_physics_step_counts
+            else None
+        ),
+        "achieved_policy_rate_hz": achieved_policy_rate_hz,
         "max_rollout_steps": args.max_rollout_steps,
+        "ema_alpha": args.ema_alpha,
         "max_delta_q": args.max_delta_q,
+        "delta_clip_applied_steps": delta_clip_applied_steps,
+        "ema_modified_steps": ema_modified_steps,
+        "ctrlrange_clip_applied_steps": ctrlrange_clip_applied_steps,
+        "force_monitoring_rate": "every_physics_step",
         "force_stop_threshold": args.force_stop_threshold,
         "success": success,
+        "task_success": success,
+        "safe_success": safe_success,
+        "safe_force_threshold": args.safe_force_threshold,
         "success_step": success_step,
         "success_time": success_time,
-        "success_hold_steps_observed": max_success_hold_counter,
+        "success_hold_steps_observed": (
+            task_success_tracker.max_consecutive_observations
+        ),
+        "success_hold_time_observed": task_success_tracker.max_accumulated_time,
         "success_distance_threshold": args.success_distance_threshold,
-        "success_lateral_threshold": args.success_lateral_threshold,
-        "success_force_threshold": args.success_force_threshold,
-        "success_hold_steps": args.success_hold_steps,
+        "success_lateral_threshold": None,
+        "success_force_threshold": args.safe_force_threshold,
+        "success_hold_steps": nominal_success_hold_steps,
+        "success_dwell_time": args.success_dwell_time,
+        "success_dwell_source": args.success_dwell_source,
+        "task_success_definition": "site_distance_le_threshold_continuous_dwell",
+        "success_lateral_threshold_role": "not_used_for_task_success",
+        "success_force_threshold_role": "safe_success_only",
         "success_stop_enabled": args.success_stop_enabled,
         "stop_reason": stop_reason,
         "steps_executed": len(rows),
@@ -1908,6 +2023,18 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"action_mode={args.action_mode}")
     print(f"action_select_mode={args.action_select_mode}")
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
+    print(f"rollout_protocol_version={ROLLOUT_PROTOCOL_VERSION}")
+    print(f"policy_step_scheduler_version={POLICY_STEP_SCHEDULER_VERSION}")
+    print(f"control_postprocess_version={CONTROL_POSTPROCESS_VERSION}")
+    print(f"task_success_version={TASK_SUCCESS_VERSION}")
+    print(f"achieved_policy_rate_hz={achieved_policy_rate_hz:.9g}")
+    print(f"physics_steps_per_policy_min={summary['physics_steps_per_policy_min']}")
+    print(f"physics_steps_per_policy_max={summary['physics_steps_per_policy_max']}")
+    print(f"ema_alpha={args.ema_alpha:.9g}")
+    print(f"max_delta_q={args.max_delta_q:.9g}")
+    print(f"delta_clip_applied_steps={delta_clip_applied_steps}")
+    print(f"ema_modified_steps={ema_modified_steps}")
+    print(f"ctrlrange_clip_applied_steps={ctrlrange_clip_applied_steps}")
     print(f"force_history_contract={summary['force_history_contract']}")
     print(f"force_history_valid_samples_first={summary['force_history_valid_samples_first']}")
     print(f"force_history_valid_samples_final={summary['force_history_valid_samples_final']}")
@@ -2019,10 +2146,21 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"min_peg_to_hole_dist={min_dist:.9g}")
     print(f"min_peg_to_hole_dist_step={min_dist_step}")
     print(f"final_peg_to_hole_distance={float(final_task['peg_to_hole_dist']):.9g}")
-    print(f"success={success}")
+    print(f"task_success={success}")
+    print(f"safe_success={safe_success}")
+    print(f"safe_force_threshold={args.safe_force_threshold:.9g}")
     print(f"success_step={success_step}")
     print(f"success_time={success_time}")
-    print(f"success_hold_steps_observed={max_success_hold_counter}")
+    print(
+        "success_hold_steps_observed="
+        f"{task_success_tracker.max_consecutive_observations}"
+    )
+    print(
+        "success_hold_time_observed="
+        f"{task_success_tracker.max_accumulated_time:.9g}"
+    )
+    print(f"success_distance_threshold={args.success_distance_threshold:.9g}")
+    print(f"success_dwell_time={args.success_dwell_time:.9g}")
     print(f"success_stop_enabled={args.success_stop_enabled}")
     print(f"snapshots_saved={snapshots_saved}")
     if snapshots_saved:
@@ -2074,20 +2212,62 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--chunk-len", type=int)
     parser.add_argument("--force-window-len", type=int)
     parser.add_argument("--force-window-duration", type=float)
-    parser.add_argument("--policy-rate-hz", type=float, default=30.0)
-    parser.add_argument("--max-rollout-steps", type=int, default=100)
+    parser.add_argument(
+        "--policy-rate-hz",
+        type=float,
+        default=DEFAULT_POLICY_RATE_HZ,
+    )
+    parser.add_argument(
+        "--max-rollout-steps",
+        type=int,
+        default=DEFAULT_MAX_ROLLOUT_STEPS,
+    )
     parser.add_argument("--image-width", type=int, default=640)
     parser.add_argument("--image-height", type=int, default=480)
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--execute-actions", action="store_true")
-    parser.add_argument("--ema-alpha", type=float, default=0.3)
-    parser.add_argument("--max-delta-q", type=float, default=0.05)
-    parser.add_argument("--force-stop-threshold", type=float, default=300.0)
-    parser.add_argument("--success-distance-threshold", type=float, default=0.005)
-    parser.add_argument("--success-lateral-threshold", type=float, default=0.006)
-    parser.add_argument("--success-force-threshold", type=float, default=40.0)
-    parser.add_argument("--success-hold-steps", type=int, default=15)
+    parser.add_argument("--ema-alpha", type=float, default=DEFAULT_EMA_ALPHA)
+    parser.add_argument("--max-delta-q", type=float, default=DEFAULT_MAX_DELTA_Q)
+    parser.add_argument(
+        "--force-stop-threshold",
+        type=float,
+        default=DEFAULT_FORCE_STOP_THRESHOLD,
+    )
+    parser.add_argument(
+        "--success-distance-threshold",
+        type=float,
+        default=DEFAULT_SUCCESS_DISTANCE_THRESHOLD,
+    )
+    parser.add_argument(
+        "--success-dwell-time",
+        type=float,
+        default=DEFAULT_SUCCESS_DWELL_TIME,
+    )
+    parser.add_argument(
+        "--safe-force-threshold",
+        "--success-force-threshold",
+        dest="safe_force_threshold",
+        type=float,
+        default=DEFAULT_SAFE_FORCE_THRESHOLD,
+        help=(
+            "Measured-force threshold for safe_success only. The legacy "
+            "--success-force-threshold spelling remains an alias."
+        ),
+    )
+    parser.add_argument(
+        "--success-lateral-threshold",
+        type=float,
+        help="Deprecated and ignored; task success uses total site distance.",
+    )
+    parser.add_argument(
+        "--success-hold-steps",
+        type=int,
+        help=(
+            "Deprecated compatibility override. Converts steps to seconds "
+            "using --policy-rate-hz."
+        ),
+    )
     parser.add_argument("--disable-success-stop", action="store_true")
     parser.add_argument("--hole-site-name", default=DEFAULT_HOLE_SITE_NAME)
     parser.add_argument("--hole-body-name", default=DEFAULT_HOLE_BODY_NAME)
@@ -2116,6 +2296,27 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    args.success_dwell_source = "collector_seconds"
+    if args.success_hold_steps is not None:
+        if args.success_hold_steps <= 0 or args.policy_rate_hz <= 0:
+            print(
+                "error: legacy --success-hold-steps and policy rate must be positive",
+                file=sys.stderr,
+            )
+            return 2
+        args.success_dwell_time = args.success_hold_steps / args.policy_rate_hz
+        args.success_dwell_source = "legacy_steps_divided_by_policy_rate"
+        print(
+            "warning: --success-hold-steps is deprecated; resolved "
+            f"success dwell time to {args.success_dwell_time:.9g} s",
+            file=sys.stderr,
+        )
+    if args.success_lateral_threshold is not None:
+        print(
+            "warning: --success-lateral-threshold is deprecated and ignored; "
+            "task success uses total site distance and dwell time",
+            file=sys.stderr,
+        )
     for key in ("checkpoint", "model_xml"):
         path = getattr(args, key).expanduser().resolve()
         setattr(args, key, path)
@@ -2142,25 +2343,37 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if (
         args.force_window_duration is not None
         and args.force_window_duration < 0
-    ) or args.policy_rate_hz <= 0:
+    ) or not np.isfinite(args.policy_rate_hz) or args.policy_rate_hz <= 0:
         print("error: force window duration must be non-negative and policy rate positive", file=sys.stderr)
         return 2
     if args.image_width <= 0 or args.image_height <= 0 or args.image_size <= 0:
         print("error: image dimensions must be positive", file=sys.stderr)
         return 2
-    if not 0.0 <= args.ema_alpha <= 1.0:
+    if not np.isfinite(args.ema_alpha) or not 0.0 <= args.ema_alpha <= 1.0:
         print("error: --ema-alpha must be in [0, 1]", file=sys.stderr)
         return 2
-    if args.max_delta_q <= 0 or args.force_stop_threshold <= 0:
+    if (
+        not np.isfinite(args.max_delta_q)
+        or not np.isfinite(args.force_stop_threshold)
+        or args.max_delta_q <= 0
+        or args.force_stop_threshold <= 0
+    ):
         print("error: --max-delta-q and --force-stop-threshold must be positive", file=sys.stderr)
         return 2
     if (
-        args.success_distance_threshold <= 0
-        or args.success_lateral_threshold <= 0
-        or args.success_force_threshold <= 0
-        or args.success_hold_steps <= 0
+        not np.isfinite(args.success_distance_threshold)
+        or not np.isfinite(args.success_dwell_time)
+        or not np.isfinite(args.safe_force_threshold)
+        or args.success_distance_threshold <= 0
+        or args.success_dwell_time <= 0
+        or args.safe_force_threshold <= 0
+        or args.safe_force_threshold > args.force_stop_threshold
     ):
-        print("error: success thresholds and --success-hold-steps must be positive", file=sys.stderr)
+        print(
+            "error: success distance/dwell and safe-force threshold must be "
+            "positive; safe-force threshold must not exceed force-stop threshold",
+            file=sys.stderr,
+        )
         return 2
     args.success_stop_enabled = not args.disable_success_stop
     hole_offset = np.asarray(
