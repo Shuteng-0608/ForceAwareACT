@@ -18,7 +18,11 @@ from force_aware_act.inference import (
     JointPositionPostprocessor,
     TaskSuccessTracker,
 )
-from scripts.run_mujoco_policy_rollout import _fieldnames, parse_args
+from scripts.run_mujoco_policy_rollout import (
+    _fieldnames,
+    _summarize_policy_intervals,
+    parse_args,
+)
 
 
 def test_cumulative_scheduler_is_exact_over_one_second_at_30_hz():
@@ -185,9 +189,30 @@ def test_rollout_csv_schema_contains_protocol_diagnostics():
     fields = set(_fieldnames())
 
     assert {
+        "scheduled_physics_steps_this_policy",
         "physics_steps_this_policy",
+        "physics_interval_completed",
+        "max_force_norm_during_policy_interval",
+        "force_stop_time",
+        "safety_hold_applied",
+        "safety_hold_ctrl_0",
         "delta_clip_applied",
         "ema_modified",
         "ctrlrange_clip_applied",
         "success_hold_time",
     } <= fields
+
+
+def test_partial_safety_stop_does_not_distort_completed_policy_rate():
+    diagnostics = _summarize_policy_intervals(
+        scheduled_steps=[33, 34, 33],
+        executed_steps=[33, 34, 1],
+        physics_timestep=0.001,
+    )
+
+    assert diagnostics["physics_steps_total"] == 68
+    assert diagnostics["physics_intervals_completed"] == 2
+    assert diagnostics["partial_physics_interval_steps"] == 1
+    assert diagnostics["physics_steps_per_policy_min"] == 33
+    assert diagnostics["physics_steps_per_policy_max"] == 34
+    assert diagnostics["achieved_policy_rate_hz"] == pytest.approx(2 / 0.067)

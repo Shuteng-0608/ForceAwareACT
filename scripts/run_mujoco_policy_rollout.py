@@ -125,6 +125,8 @@ SUMMARY_REQUIRED_KEYS = (
     "policy_rate_hz",
     "physics_timestep",
     "physics_steps_total",
+    "physics_intervals_completed",
+    "partial_physics_interval_steps",
     "physics_steps_per_policy_min",
     "physics_steps_per_policy_max",
     "achieved_policy_rate_hz",
@@ -136,6 +138,10 @@ SUMMARY_REQUIRED_KEYS = (
     "ctrlrange_clip_applied_steps",
     "force_monitoring_rate",
     "force_stop_threshold",
+    "force_stop_time",
+    "safety_hold_applied",
+    "initial_applied_ctrl",
+    "final_applied_ctrl",
     "success",
     "task_success",
     "safe_success",
@@ -840,7 +846,9 @@ def _fieldnames() -> list[str]:
         "action_mode",
         "action_select_mode",
         "selected_action_index",
+        "scheduled_physics_steps_this_policy",
         "physics_steps_this_policy",
+        "physics_interval_completed",
         "force_history_valid_samples",
         "force_history_padding_samples",
         "deployment_latent_source",
@@ -887,6 +895,10 @@ def _fieldnames() -> list[str]:
     fields.extend(
         [
             "force_norm",
+            "max_force_norm_during_policy_interval",
+            "force_stop_time",
+            "safety_hold_applied",
+            *(f"safety_hold_ctrl_{index}" for index in range(7)),
             *(f"pred_action0_{index}" for index in range(7)),
             *(f"raw_pred_action0_{index}" for index in range(7)),
             *(f"selected_action_raw_{index}" for index in range(7)),
@@ -943,6 +955,41 @@ def _fieldnames() -> list[str]:
         ]
     )
     return fields
+
+
+def _summarize_policy_intervals(
+    scheduled_steps: list[int],
+    executed_steps: list[int],
+    physics_timestep: float,
+) -> dict[str, float | int | None]:
+    """Summarize completed policy intervals without treating a safety stop as a tick."""
+    if len(scheduled_steps) != len(executed_steps):
+        raise ValueError("scheduled and executed policy interval counts must match")
+    completed = [
+        actual
+        for planned, actual in zip(scheduled_steps, executed_steps)
+        if planned > 0 and actual == planned
+    ]
+    partial = [
+        actual
+        for planned, actual in zip(scheduled_steps, executed_steps)
+        if planned > 0 and 0 < actual < planned
+    ]
+    completed_duration = sum(completed) * physics_timestep
+    achieved_rate = (
+        len(completed) / completed_duration
+        if completed_duration > 0.0
+        else float("nan")
+    )
+    positive_executed = [value for value in executed_steps if value > 0]
+    return {
+        "physics_steps_total": int(sum(positive_executed)),
+        "physics_intervals_completed": len(completed),
+        "partial_physics_interval_steps": int(sum(partial)),
+        "physics_steps_per_policy_min": min(completed) if completed else None,
+        "physics_steps_per_policy_max": max(completed) if completed else None,
+        "achieved_policy_rate_hz": achieved_rate,
+    }
 
 
 def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
@@ -1243,6 +1290,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     raw_delta_norms: list[float] = []
     clipped_delta_norms: list[float] = []
     ema_delta_norms: list[float] = []
+    scheduled_physics_steps_per_policy_values: list[int] = []
     physics_steps_per_policy_values: list[int] = []
     delta_clip_applied_steps = 0
     ema_modified_steps = 0
@@ -1251,6 +1299,8 @@ def run_rollout(args: argparse.Namespace) -> int:
     success = False
     success_step: Optional[int] = None
     success_time: Optional[float] = None
+    force_stop_time: Optional[float] = None
+    safety_hold_applied = False
     initial_task: Optional[dict[str, np.ndarray | float]] = None
     final_task: Optional[dict[str, np.ndarray | float]] = None
     snapshots_saved = False
@@ -1432,6 +1482,18 @@ def run_rollout(args: argparse.Namespace) -> int:
                 row_stop_reason = "nonfinite_value"
             elif force_norm > args.force_stop_threshold:
                 row_stop_reason = "force_stop_threshold"
+                force_stop_time = float(data.time)
+                if args.execute_actions:
+                    hold_qpos = np.asarray(
+                        data.qpos[joint_qposadr],
+                        dtype=np.float64,
+                    )
+                    data.ctrl[actuator_ids] = np.clip(
+                        hold_qpos,
+                        control_ranges[:, 0],
+                        control_ranges[:, 1],
+                    )
+                    safety_hold_applied = True
             elif (
                 success
                 and args.success_stop_enabled
@@ -1567,7 +1629,7 @@ def run_rollout(args: argparse.Namespace) -> int:
             if first_qcmd is None:
                 first_qcmd = qcmd.copy()
             final_qcmd = qcmd.copy()
-            physics_steps_this_policy = (
+            scheduled_physics_steps_this_policy = (
                 0 if row_stop_reason else policy_step_scheduler.next_step_count()
             )
 
@@ -1579,7 +1641,11 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "action_mode": args.action_mode,
                 "action_select_mode": args.action_select_mode,
                 "selected_action_index": selected_action_index,
-                "physics_steps_this_policy": physics_steps_this_policy,
+                "scheduled_physics_steps_this_policy": (
+                    scheduled_physics_steps_this_policy
+                ),
+                "physics_steps_this_policy": 0,
+                "physics_interval_completed": False,
                 "force_history_valid_samples": deployment_diagnostics[
                     "force_history_valid_samples"
                 ],
@@ -1593,6 +1659,16 @@ def run_rollout(args: argparse.Namespace) -> int:
                     "latent_max_abs"
                 ],
                 "force_norm": force_norm,
+                "max_force_norm_during_policy_interval": force_norm,
+                "force_stop_time": (
+                    force_stop_time
+                    if row_stop_reason == "force_stop_threshold"
+                    else ""
+                ),
+                "safety_hold_applied": bool(
+                    row_stop_reason == "force_stop_threshold"
+                    and safety_hold_applied
+                ),
                 "action_delta_norm_raw_to_current": raw_delta_norm,
                 "action_delta_norm_after_clip": clipped_delta_norm,
                 "action_delta_norm_after_ema": ema_delta_norm,
@@ -1646,6 +1722,17 @@ def run_rollout(args: argparse.Namespace) -> int:
             row.update({f"ft_{index}": float(value) for index, value in enumerate(wrench)})
             row.update({f"qcmd_{index}": float(value) for index, value in enumerate(qcmd)})
             row.update({f"applied_ctrl_{index}": float(value) for index, value in enumerate(qcmd)})
+            row.update(
+                {
+                    f"safety_hold_ctrl_{index}": (
+                        float(value)
+                        if row_stop_reason == "force_stop_threshold"
+                        and safety_hold_applied
+                        else ""
+                    )
+                    for index, value in enumerate(qcmd)
+                }
+            )
             row.update(
                 {
                     **{
@@ -1762,23 +1849,31 @@ def run_rollout(args: argparse.Namespace) -> int:
             rows.append(row)
 
             if row_stop_reason:
+                scheduled_physics_steps_per_policy_values.append(0)
                 physics_steps_per_policy_values.append(0)
                 stop_reason = row_stop_reason
                 break
 
             executed_physics_steps = 0
             physics_force_stop = False
-            for _ in range(physics_steps_this_policy):
+            interval_peak_force_norm = force_norm
+            for _ in range(scheduled_physics_steps_this_policy):
                 mujoco.mj_step(mj_model, data)
                 executed_physics_steps += 1
                 sampled_wrench = _read_wrench(data, force_slice, torque_slice)
                 force_history.append((float(data.time), sampled_wrench.copy()))
                 sampled_force_norm = float(np.linalg.norm(sampled_wrench[:3]))
                 force_norm_history.append(sampled_force_norm)
+                interval_peak_force_norm = max(
+                    interval_peak_force_norm,
+                    sampled_force_norm,
+                )
                 if sampled_force_norm > args.force_stop_threshold:
                     physics_force_stop = True
                     stop_reason = "force_stop_threshold"
+                    force_stop_time = float(data.time)
                     row["stop_reason"] = stop_reason
+                    row["force_stop_time"] = force_stop_time
                     if args.execute_actions:
                         hold_qpos = np.asarray(
                             data.qpos[joint_qposadr],
@@ -1789,10 +1884,30 @@ def run_rollout(args: argparse.Namespace) -> int:
                             control_ranges[:, 0],
                             control_ranges[:, 1],
                         )
+                        safety_hold_applied = True
+                        row["safety_hold_applied"] = True
+                        row.update(
+                            {
+                                f"safety_hold_ctrl_{index}": float(value)
+                                for index, value in enumerate(data.ctrl[actuator_ids])
+                            }
+                        )
                     break
             row["physics_steps_this_policy"] = executed_physics_steps
+            row["physics_interval_completed"] = bool(
+                scheduled_physics_steps_this_policy > 0
+                and executed_physics_steps == scheduled_physics_steps_this_policy
+            )
+            row["max_force_norm_during_policy_interval"] = interval_peak_force_norm
+            scheduled_physics_steps_per_policy_values.append(
+                scheduled_physics_steps_this_policy
+            )
             physics_steps_per_policy_values.append(executed_physics_steps)
             if physics_force_stop:
+                final_qcmd = np.asarray(
+                    data.ctrl[actuator_ids],
+                    dtype=np.float64,
+                ).copy()
                 break
             oldest_needed = float(data.time) - args.force_window_duration - float(mj_model.opt.timestep)
             while len(force_history) > 1 and force_history[1][0] < oldest_needed:
@@ -1802,6 +1917,17 @@ def run_rollout(args: argparse.Namespace) -> int:
         for video_writer in video_writers.values():
             video_writer.close()
 
+    final_task = _task_diagnostics(data, site_ids, body_ids, args.hole_axis_world)
+    final_qcmd = np.asarray(data.ctrl[actuator_ids], dtype=np.float64).copy()
+    if rows:
+        final_step = int(rows[-1]["step"])
+        distance_history.append((final_step, float(final_task["peg_to_hole_dist"])))
+        axial_error_history.append(
+            (final_step, float(final_task["peg_to_hole_axial_error"]))
+        )
+        lateral_error_history.append(
+            (final_step, float(final_task["peg_to_hole_lateral_error"]))
+        )
     if rows and not rows[-1]["stop_reason"]:
         rows[-1]["stop_reason"] = stop_reason
     log_path = args.output_dir / "rollout_log.csv"
@@ -1819,18 +1945,12 @@ def run_rollout(args: argparse.Namespace) -> int:
     videos_saved = args.save_videos and any(video_frame_counts.values())
     if first_deployment_diagnostics is None or final_deployment_diagnostics is None:
         raise RuntimeError("rollout produced no deployment diagnostics")
-    positive_physics_step_counts = [
-        value for value in physics_steps_per_policy_values if value > 0
-    ]
-    physics_steps_total = int(sum(positive_physics_step_counts))
-    simulated_control_duration = (
-        physics_steps_total * float(mj_model.opt.timestep)
+    interval_diagnostics = _summarize_policy_intervals(
+        scheduled_physics_steps_per_policy_values,
+        physics_steps_per_policy_values,
+        float(mj_model.opt.timestep),
     )
-    achieved_policy_rate_hz = (
-        len(positive_physics_step_counts) / simulated_control_duration
-        if simulated_control_duration > 0.0
-        else float("nan")
-    )
+    achieved_policy_rate_hz = float(interval_diagnostics["achieved_policy_rate_hz"])
     safe_success = bool(
         success
         and np.isfinite(max_force_norm)
@@ -1916,17 +2036,19 @@ def run_rollout(args: argparse.Namespace) -> int:
         ),
         "policy_rate_hz": args.policy_rate_hz,
         "physics_timestep": float(mj_model.opt.timestep),
-        "physics_steps_total": physics_steps_total,
-        "physics_steps_per_policy_min": (
-            min(positive_physics_step_counts)
-            if positive_physics_step_counts
-            else None
-        ),
-        "physics_steps_per_policy_max": (
-            max(positive_physics_step_counts)
-            if positive_physics_step_counts
-            else None
-        ),
+        "physics_steps_total": interval_diagnostics["physics_steps_total"],
+        "physics_intervals_completed": interval_diagnostics[
+            "physics_intervals_completed"
+        ],
+        "partial_physics_interval_steps": interval_diagnostics[
+            "partial_physics_interval_steps"
+        ],
+        "physics_steps_per_policy_min": interval_diagnostics[
+            "physics_steps_per_policy_min"
+        ],
+        "physics_steps_per_policy_max": interval_diagnostics[
+            "physics_steps_per_policy_max"
+        ],
         "achieved_policy_rate_hz": achieved_policy_rate_hz,
         "max_rollout_steps": args.max_rollout_steps,
         "ema_alpha": args.ema_alpha,
@@ -1936,6 +2058,10 @@ def run_rollout(args: argparse.Namespace) -> int:
         "ctrlrange_clip_applied_steps": ctrlrange_clip_applied_steps,
         "force_monitoring_rate": "every_physics_step",
         "force_stop_threshold": args.force_stop_threshold,
+        "force_stop_time": force_stop_time,
+        "safety_hold_applied": safety_hold_applied,
+        "initial_applied_ctrl": first_qcmd,
+        "final_applied_ctrl": final_qcmd,
         "success": success,
         "task_success": success,
         "safe_success": safe_success,
