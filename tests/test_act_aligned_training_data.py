@@ -13,7 +13,15 @@ from force_aware_act.act_aligned_training import (
     create_episode_split,
     discover_episodes,
 )
-from force_aware_act.models.act_aligned import ACTAlignedConfig
+from force_aware_act.act_aligned_training.checkpoint import (
+    CHECKPOINT_FORMAT_VERSION,
+)
+from force_aware_act.act_aligned_training.schema import load_state_aligned_force
+from force_aware_act.inference import RolloutPolicyAdapter
+from force_aware_act.models.act_aligned import (
+    ACTAlignedConfig,
+    ACTAlignedContactCVAEPolicy,
+)
 
 
 def _write_episode(root: Path, name: str, offset: float) -> None:
@@ -194,4 +202,49 @@ def test_dataset_preserves_native_images_without_interpolation(tmp_path):
         sample.images[1],
         torch.full((3, 6, 8), 50.0 / 255.0),
     )
+    dataset.close()
+
+
+def test_training_and_rollout_share_identical_causal_force_windows(tmp_path):
+    _write_episode(tmp_path, "episode_a", 0.0)
+    _write_episode(tmp_path, "episode_b", 10.0)
+    manifest = create_episode_split(
+        tmp_path,
+        validation_fraction=0.5,
+        seed=0,
+    )
+    record = manifest.train_episodes[0]
+    stats = compute_normalization_stats(tmp_path, (record,))
+    config = _config(force_window_len=2)
+    dataset = ACTAlignedHDF5Dataset(tmp_path, (record,), stats, config)
+    checkpoint = {
+        "format_version": CHECKPOINT_FORMAT_VERSION,
+        "architecture_version": config.architecture_version,
+        "model_config": config.__dict__,
+        "model_state": ACTAlignedContactCVAEPolicy(config).state_dict(),
+        "normalization": stats.to_dict(),
+    }
+    adapter = RolloutPolicyAdapter.from_checkpoint(
+        checkpoint,
+        device=torch.device("cpu"),
+    )
+    with h5py.File(record.resolve(tmp_path), "r") as handle:
+        aligned_force = load_state_aligned_force(handle)
+
+    for timestep in range(record.num_steps):
+        training_sample = dataset[timestep]
+        rollout_history, rollout_mask = adapter.prepare_force_history(
+            aligned_force[: timestep + 1]
+        )
+        torch.testing.assert_close(
+            rollout_history[0],
+            training_sample.force_history,
+            atol=0.0,
+            rtol=0.0,
+        )
+        assert torch.equal(
+            rollout_mask[0],
+            training_sample.force_padding_mask,
+        )
+
     dataset.close()

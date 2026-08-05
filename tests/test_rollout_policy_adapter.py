@@ -11,6 +11,7 @@ from force_aware_act.act_aligned_training.checkpoint import (
 )
 from force_aware_act.inference import (
     ACT_ALIGNED_ROLLOUT_KIND,
+    NO_FORCE_HISTORY_CONTRACT,
     OFFICIAL_ACT_ROLLOUT_KIND,
     RolloutPolicyAdapter,
     checkpoint_uses_rollout_adapter,
@@ -98,6 +99,7 @@ def test_official_adapter_supports_full_and_best_policy_checkpoints(
     assert adapter.kind == OFFICIAL_ACT_ROLLOUT_KIND
     assert adapter.chunk_len == 3
     assert not adapter.uses_force_history
+    assert adapter.force_history_contract == NO_FORCE_HISTORY_CONTRACT
 
     native_images = torch.rand(2, 3, 32, 48)
     with patch("torch.nn.functional.interpolate") as interpolate:
@@ -121,6 +123,9 @@ def test_contact_adapter_reproduces_causal_left_padded_force_contract():
     )
     assert adapter.kind == ACT_ALIGNED_ROLLOUT_KIND
     assert adapter.force_window_len == 4
+    assert adapter.force_history_contract == (
+        "causal_state_rate_last_l_left_padded_normalized_v1"
+    )
 
     raw = np.stack(
         (
@@ -156,9 +161,40 @@ def test_contact_adapter_reproduces_causal_left_padded_force_contract():
     )
     action, force = adapter.denormalize_predictions(first)
     assert first["contact_latent_source"] == "zero"
+    diagnostics = adapter.deployment_diagnostics(
+        first,
+        force_padding_mask=padding_mask,
+        requested_latent_mode="zero",
+    )
+    assert diagnostics == {
+        "latent_name": "z_contact",
+        "latent_source": "zero",
+        "latent_max_abs": 0.0,
+        "force_history_valid_samples": 2,
+        "force_history_padding_samples": 2,
+    }
     assert torch.equal(first["pred_action"], second["pred_action"])
     assert action.shape == (3, 7)
     assert force.shape == (3, 6)
+
+
+def test_adapter_rejects_nonzero_deployment_latent_marked_as_zero():
+    adapter = RolloutPolicyAdapter.from_checkpoint(
+        _contact_checkpoint(),
+        device=torch.device("cpu"),
+    )
+    output = {
+        "z_contact": torch.ones(1, adapter.config.latent_dim),
+        "contact_latent_source": "zero",
+    }
+    padding_mask = torch.zeros(1, adapter.force_window_len, dtype=torch.bool)
+
+    with pytest.raises(RuntimeError, match="zero latent is not exactly zero"):
+        adapter.deployment_diagnostics(
+            output,
+            force_padding_mask=padding_mask,
+            requested_latent_mode="zero",
+        )
 
 
 def test_adapter_rejects_missing_embedded_normalization():

@@ -12,6 +12,10 @@ import torch.nn.functional as functional
 from force_aware_act.act_aligned_training.checkpoint import (
     CHECKPOINT_FORMAT_VERSION,
 )
+from force_aware_act.force_history import (
+    CAUSAL_STATE_RATE_FORCE_HISTORY_V1,
+    prepare_causal_state_rate_force_history,
+)
 from force_aware_act.models.act_aligned import (
     ACT_ALIGNED_ARCHITECTURE_VERSION,
     ACTAlignedConfig,
@@ -29,6 +33,7 @@ from force_aware_act.official_act_training.checkpoint import (
 
 OFFICIAL_ACT_ROLLOUT_KIND = "official_act"
 ACT_ALIGNED_ROLLOUT_KIND = "act_aligned_contact_cvae"
+NO_FORCE_HISTORY_CONTRACT = "not_used"
 
 
 def checkpoint_uses_rollout_adapter(checkpoint: Mapping[str, Any]) -> bool:
@@ -130,6 +135,14 @@ class RolloutPolicyAdapter:
         )
 
     @property
+    def force_history_contract(self) -> str:
+        return (
+            CAUSAL_STATE_RATE_FORCE_HISTORY_V1
+            if self.uses_force_history
+            else NO_FORCE_HISTORY_CONTRACT
+        )
+
+    @property
     def has_contact_prior(self) -> bool:
         return self.kind == ACT_ALIGNED_ROLLOUT_KIND
 
@@ -188,17 +201,13 @@ class RolloutPolicyAdapter:
             )
         if values.shape[0] == 0:
             raise ValueError("force history must contain the current wrench")
-        window_len = int(self.config.force_window_len)
-        values = values[-window_len:]
-        valid_length = int(values.shape[0])
-        history = values.new_zeros(window_len, self.config.force_dim)
-        padding_mask = torch.ones(
-            window_len,
-            dtype=torch.bool,
-            device=values.device,
+        history, padding_mask = prepare_causal_state_rate_force_history(
+            values,
+            window_len=int(self.config.force_window_len),
+            force_dim=int(self.config.force_dim),
+            mean=self.normalization["force_mean"],
+            std=self.normalization["force_std"],
         )
-        history[-valid_length:] = self._normalize(values, "force")
-        padding_mask[-valid_length:] = False
         return history.unsqueeze(0), padding_mask.unsqueeze(0)
 
     def forward(
@@ -214,12 +223,18 @@ class RolloutPolicyAdapter:
             if self.kind == OFFICIAL_ACT_ROLLOUT_KIND:
                 if contact_latent_mode != "zero":
                     raise ValueError("official ACT deployment latent must be zero")
-                return self.model(images, qpos)
+                output = self.model(images, qpos)
+                self.deployment_diagnostics(
+                    output,
+                    force_padding_mask=None,
+                    requested_latent_mode=contact_latent_mode,
+                )
+                return output
             if force_history is None or force_padding_mask is None:
                 raise ValueError(
                     "ACT-aligned Contact-CVAE requires force history and mask"
                 )
-            return self.model(
+            output = self.model(
                 images,
                 qpos,
                 force_history,
@@ -227,6 +242,64 @@ class RolloutPolicyAdapter:
                 contact_latent_mode=contact_latent_mode,
                 deterministic_prior=True,
             )
+            self.deployment_diagnostics(
+                output,
+                force_padding_mask=force_padding_mask,
+                requested_latent_mode=contact_latent_mode,
+            )
+            return output
+
+    def deployment_diagnostics(
+        self,
+        output: Mapping[str, Any],
+        *,
+        force_padding_mask: Optional[torch.Tensor],
+        requested_latent_mode: str,
+    ) -> dict[str, Any]:
+        """Validate and summarize the deployment-only latent/input contract."""
+
+        if self.kind == OFFICIAL_ACT_ROLLOUT_KIND:
+            latent_name = "z_motion"
+            source_name = "motion_latent_source"
+            expected_source = "zero"
+            valid_force_samples = 0
+            padding_samples = 0
+        else:
+            latent_name = "z_contact"
+            source_name = "contact_latent_source"
+            expected_source = (
+                "zero" if requested_latent_mode == "zero" else "prior_mean"
+            )
+            if force_padding_mask is None:
+                raise RuntimeError("force padding mask is required for diagnostics")
+            if force_padding_mask.ndim != 2 or force_padding_mask.shape[0] != 1:
+                raise RuntimeError("force padding mask must have shape [1, L]")
+            valid_force_samples = int((~force_padding_mask[0]).sum().item())
+            padding_samples = int(force_padding_mask[0].sum().item())
+
+        latent = output.get(latent_name)
+        source = output.get(source_name)
+        if not isinstance(latent, torch.Tensor):
+            raise RuntimeError(f"deployment output is missing tensor {latent_name}")
+        if source != expected_source:
+            raise RuntimeError(
+                f"deployment latent source mismatch: expected {expected_source!r}, "
+                f"got {source!r}"
+            )
+        if not torch.isfinite(latent).all():
+            raise RuntimeError(f"deployment latent {latent_name} contains non-finite values")
+        max_abs = float(latent.detach().abs().max().cpu())
+        if requested_latent_mode == "zero" and max_abs != 0.0:
+            raise RuntimeError(
+                f"deployment zero latent is not exactly zero: max_abs={max_abs:.9g}"
+            )
+        return {
+            "latent_name": latent_name,
+            "latent_source": str(source),
+            "latent_max_abs": max_abs,
+            "force_history_valid_samples": valid_force_samples,
+            "force_history_padding_samples": padding_samples,
+        }
 
     def denormalize_predictions(
         self,

@@ -75,9 +75,16 @@ SUMMARY_REQUIRED_KEYS = (
     "action_select_mode",
     "selected_action_index",
     "contact_latent_mode",
+    "deployment_latent_name",
+    "deployment_latent_source",
+    "deployment_latent_max_abs_observed",
     "chunk_len",
+    "force_history_contract",
     "force_window_len",
     "force_window_duration",
+    "force_history_valid_samples_first",
+    "force_history_valid_samples_final",
+    "force_history_valid_samples_max",
     "policy_rate_hz",
     "max_rollout_steps",
     "max_delta_q",
@@ -796,8 +803,12 @@ def _fieldnames() -> list[str]:
         "dry_run",
         "action_mode",
         "action_select_mode",
-        "selected_action_index",
-    ]
+            "selected_action_index",
+            "force_history_valid_samples",
+            "force_history_padding_samples",
+            "deployment_latent_source",
+            "deployment_latent_max_abs",
+        ]
     fields.extend(f"qpos_{index}" for index in range(7))
     fields.extend(f"qvel_{index}" for index in range(7))
     fields.extend(f"ft_{index}" for index in range(6))
@@ -1181,6 +1192,10 @@ def run_rollout(args: argparse.Namespace) -> int:
     final_selected_raw_action: Optional[np.ndarray] = None
     first_action_chunk_diagnostics: Optional[dict[str, float]] = None
     final_action_chunk_diagnostics: Optional[dict[str, float]] = None
+    first_deployment_diagnostics: Optional[dict[str, Any]] = None
+    final_deployment_diagnostics: Optional[dict[str, Any]] = None
+    deployment_latent_max_abs_values: list[float] = []
+    force_history_valid_samples_values: list[int] = []
     first_temporal_num_predictions: Optional[int] = None
     final_temporal_num_predictions: Optional[int] = None
     first_temporal_mean_age: Optional[float] = None
@@ -1318,6 +1333,31 @@ def run_rollout(args: argparse.Namespace) -> int:
                 selected_action, selected_force = (
                     adapter.denormalize_predictions(selected_output)
                 )
+            if adapter is not None:
+                deployment_diagnostics = adapter.deployment_diagnostics(
+                    selected_output,
+                    force_padding_mask=(
+                        force_padding_mask if adapter.uses_force_history else None
+                    ),
+                    requested_latent_mode=args.contact_latent_mode,
+                )
+            else:
+                deployment_diagnostics = {
+                    "latent_name": "legacy_unverified",
+                    "latent_source": "legacy_unverified",
+                    "latent_max_abs": float("nan"),
+                    "force_history_valid_samples": int(force_window_np.shape[0]),
+                    "force_history_padding_samples": 0,
+                }
+            if first_deployment_diagnostics is None:
+                first_deployment_diagnostics = dict(deployment_diagnostics)
+            final_deployment_diagnostics = dict(deployment_diagnostics)
+            deployment_latent_max_abs_values.append(
+                float(deployment_diagnostics["latent_max_abs"])
+            )
+            force_history_valid_samples_values.append(
+                int(deployment_diagnostics["force_history_valid_samples"])
+            )
             zero_action = zero_force = None
             if args.contact_latent_mode == "prior" and _policy_has_contact_prior(policy_variant):
                 if adapter is None:
@@ -1494,6 +1534,18 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "action_mode": args.action_mode,
                 "action_select_mode": args.action_select_mode,
                 "selected_action_index": selected_action_index,
+                "force_history_valid_samples": deployment_diagnostics[
+                    "force_history_valid_samples"
+                ],
+                "force_history_padding_samples": deployment_diagnostics[
+                    "force_history_padding_samples"
+                ],
+                "deployment_latent_source": deployment_diagnostics[
+                    "latent_source"
+                ],
+                "deployment_latent_max_abs": deployment_diagnostics[
+                    "latent_max_abs"
+                ],
                 "force_norm": force_norm,
                 "action_delta_norm_raw_to_current": raw_delta_norm,
                 "action_delta_norm_after_clip": clipped_delta_norm,
@@ -1686,6 +1738,8 @@ def run_rollout(args: argparse.Namespace) -> int:
         else float("nan")
     )
     videos_saved = args.save_videos and any(video_frame_counts.values())
+    if first_deployment_diagnostics is None or final_deployment_diagnostics is None:
+        raise RuntimeError("rollout produced no deployment diagnostics")
     summary_path = args.output_dir / "summary.json"
     summary = {
         "output_dir": args.output_dir,
@@ -1703,12 +1757,10 @@ def run_rollout(args: argparse.Namespace) -> int:
             else "legacy_square_resize"
         ),
         "force_history_contract": (
-            "state_rate_causal_left_padded"
-            if adapter is not None and adapter.uses_force_history
+            adapter.force_history_contract
+            if adapter is not None
             else (
-                "not_used"
-                if adapter is not None
-                else "legacy_uniform_time_resample"
+                "legacy_uniform_time_resample"
             )
         ),
         "model_xml": args.model_xml,
@@ -1718,9 +1770,23 @@ def run_rollout(args: argparse.Namespace) -> int:
         "action_select_mode": args.action_select_mode,
         "selected_action_index": _selected_action_index(args.chunk_len, args.action_select_mode),
         "contact_latent_mode": args.contact_latent_mode,
+        "deployment_latent_name": first_deployment_diagnostics["latent_name"],
+        "deployment_latent_source": first_deployment_diagnostics["latent_source"],
+        "deployment_latent_max_abs_observed": _finite_max(
+            deployment_latent_max_abs_values
+        ),
         "chunk_len": args.chunk_len,
         "force_window_len": args.force_window_len,
         "force_window_duration": args.force_window_duration,
+        "force_history_valid_samples_first": first_deployment_diagnostics[
+            "force_history_valid_samples"
+        ],
+        "force_history_valid_samples_final": final_deployment_diagnostics[
+            "force_history_valid_samples"
+        ],
+        "force_history_valid_samples_max": max(
+            force_history_valid_samples_values
+        ),
         "policy_rate_hz": args.policy_rate_hz,
         "max_rollout_steps": args.max_rollout_steps,
         "max_delta_q": args.max_delta_q,
@@ -1801,6 +1867,14 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"action_mode={args.action_mode}")
     print(f"action_select_mode={args.action_select_mode}")
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
+    print(f"force_history_contract={summary['force_history_contract']}")
+    print(f"force_history_valid_samples_first={summary['force_history_valid_samples_first']}")
+    print(f"force_history_valid_samples_final={summary['force_history_valid_samples_final']}")
+    print(f"deployment_latent_source={summary['deployment_latent_source']}")
+    print(
+        "deployment_latent_max_abs_observed="
+        f"{summary['deployment_latent_max_abs_observed']:.9g}"
+    )
     print(f"hole_site_name={hole_offset_metadata['hole_site_name']}")
     print(f"hole_body_name={hole_offset_metadata['hole_body_name']}")
     print(f"site_owner_body_name={hole_offset_metadata['site_owner_body_name']}")

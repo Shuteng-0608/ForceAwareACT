@@ -12,6 +12,9 @@ import torch
 import torch.nn.functional as functional
 from torch.utils.data import Dataset
 
+from force_aware_act.force_history import (
+    prepare_causal_state_rate_force_history,
+)
 from force_aware_act.act_aligned_training.batch import ACTAlignedBatch
 from force_aware_act.act_aligned_training.normalization import NormalizationStats
 from force_aware_act.act_aligned_training.schema import (
@@ -114,20 +117,17 @@ class ACTAlignedHDF5Dataset(Dataset):
         )
         qpos = self.normalization.normalize_qpos(qpos)
 
-        force_history = torch.zeros(
-            self.model_config.force_window_len,
-            self.model_config.force_dim,
-            dtype=torch.float32,
-        )
-        force_padding_mask = torch.ones(
-            self.model_config.force_window_len,
-            dtype=torch.bool,
-        )
         history_start = max(0, timestep - self.model_config.force_window_len + 1)
         history = torch.from_numpy(aligned_force[history_start : timestep + 1].copy())
-        history = self.normalization.normalize_force(history)
-        force_history[-history.shape[0] :] = history
-        force_padding_mask[-history.shape[0] :] = False
+        force_history, force_padding_mask = (
+            prepare_causal_state_rate_force_history(
+                history,
+                window_len=self.model_config.force_window_len,
+                force_dim=self.model_config.force_dim,
+                mean=self.normalization.force_mean,
+                std=self.normalization.force_std,
+            )
+        )
 
         future_end = min(
             record.num_steps,
