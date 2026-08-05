@@ -66,6 +66,9 @@ class TrainingStack:
     run_validation_epoch: Callable[..., dict[str, float]]
     smoke_model_config: Callable[[], Any]
     formal_model_config: Callable[[], Any]
+    dataset_type: type = ACTAlignedHDF5Dataset
+    collate_fn: Callable[..., Any] = collate_act_aligned_samples
+    normalization_fn: Callable[..., NormalizationStats] = compute_normalization_stats
 
 
 def _contact_smoke_model_config() -> ACTAlignedConfig:
@@ -153,7 +156,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
             official_reference_epochs=args.official_reference_epochs,
             checkpoint_interval_steps=args.checkpoint_interval_steps,
         )
-        normalization = compute_normalization_stats(
+        normalization = stack.normalization_fn(
             args.data_root,
             manifest.train_episodes,
         )
@@ -198,13 +201,13 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         if loaded.dataloader_generator_state is not None:
             generator.set_state(loaded.dataloader_generator_state)
 
-    train_dataset = ACTAlignedHDF5Dataset(
+    train_dataset = stack.dataset_type(
         args.data_root,
         manifest.train_episodes,
         normalization,
         model_config,
     )
-    validation_dataset = ACTAlignedHDF5Dataset(
+    validation_dataset = stack.dataset_type(
         args.data_root,
         manifest.validation_episodes,
         normalization,
@@ -227,6 +230,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         num_workers=args.num_workers,
         generator=generator,
         pin_memory=device.type == "cuda",
+        collate_fn=stack.collate_fn,
     )
     validation_loader = _make_loader(
         validation_source,
@@ -235,6 +239,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         num_workers=args.num_workers,
         generator=None,
         pin_memory=device.type == "cuda",
+        collate_fn=stack.collate_fn,
     )
 
     log_path = args.output_dir / "metrics.jsonl"
@@ -541,13 +546,14 @@ def _make_loader(
     num_workers: int,
     generator,
     pin_memory: bool,
+    collate_fn,
 ) -> DataLoader:
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        collate_fn=collate_act_aligned_samples,
+        collate_fn=collate_fn,
         generator=generator,
         worker_init_fn=_seed_worker,
         pin_memory=pin_memory,

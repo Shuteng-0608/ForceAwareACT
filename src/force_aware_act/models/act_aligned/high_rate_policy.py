@@ -31,6 +31,10 @@ class ACTAlignedHighRateContactCVAEPolicy(ACTAlignedContactCVAEPolicy):
         self.high_rate_force_encoder = ACTAlignedHighRateForceEncoder(config)
         self.online_force_encoder = ACTAlignedOnlineForceIntervalEncoder(config)
         self.contact_posterior = ACTAlignedHighRateContactPosterior(config)
+        self.high_rate_force_head = nn.Linear(
+            config.d_model,
+            config.max_force_samples_per_interval * config.force_dim,
+        )
 
     def forward(
         self,
@@ -215,3 +219,26 @@ class ACTAlignedHighRateContactCVAEPolicy(ACTAlignedContactCVAEPolicy):
             "z_F_online": online_force,
             "z_VF": force_vision,
         }
+
+    def _decode(
+        self,
+        contact_latent: torch.Tensor,
+        online: Dict[str, torch.Tensor],
+        *,
+        return_intermediate_decoder: bool,
+    ) -> Dict[str, torch.Tensor]:
+        outputs = super()._decode(
+            contact_latent,
+            online,
+            return_intermediate_decoder=return_intermediate_decoder,
+        )
+        batch_size = outputs["decoder_hidden"].shape[0]
+        outputs["pred_force_highrate"] = self.high_rate_force_head(
+            outputs["decoder_hidden"]
+        ).reshape(
+            batch_size,
+            self.config.chunk_len,
+            self.config.max_force_samples_per_interval,
+            self.config.force_dim,
+        )
+        return outputs

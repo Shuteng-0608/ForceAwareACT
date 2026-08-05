@@ -120,6 +120,12 @@ def test_v2_policy_forward_train_shapes_and_shared_encoder_registration():
 
     assert output["pred_action"].shape == (2, config.chunk_len, config.action_dim)
     assert output["pred_force"].shape == (2, config.chunk_len, config.force_dim)
+    assert output["pred_force_highrate"].shape == (
+        2,
+        config.chunk_len,
+        config.max_force_samples_per_interval,
+        config.force_dim,
+    )
     assert output["z_F_online"].shape == (2, config.d_model)
     assert output["future_force_interval_tokens"].shape == (
         2,

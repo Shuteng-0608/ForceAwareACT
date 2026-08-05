@@ -91,6 +91,48 @@ def compute_normalization_stats(
     )
 
 
+def compute_high_rate_normalization_stats(
+    data_root: Path,
+    episodes: Iterable[EpisodeRecord],
+    *,
+    minimum_std: float = 1.0e-6,
+) -> NormalizationStats:
+    """Compute force statistics from every native-rate training sample.
+
+    Joint positions and actions retain the ACT state-rate convention. Force
+    statistics deliberately use the complete ``observations/ft_wrench``
+    stream so normalization does not discard the information preserved by the
+    500 Hz v2 data contract.
+    """
+
+    if minimum_std <= 0:
+        raise ValueError("minimum_std must be positive")
+    qpos_accumulator = _MomentAccumulator(7)
+    action_accumulator = _MomentAccumulator(7)
+    force_accumulator = _MomentAccumulator(6)
+    episode_count = 0
+    for record in episodes:
+        episode_count += 1
+        with h5py.File(record.resolve(data_root), "r") as handle:
+            qpos_accumulator.update(handle["observations/joint_pos"][...])
+            action_accumulator.update(handle["action"][...])
+            force_accumulator.update(handle["observations/ft_wrench"][...])
+    if episode_count == 0:
+        raise ValueError("normalization requires at least one training episode")
+    qpos_mean, qpos_std = qpos_accumulator.finalize(minimum_std)
+    action_mean, action_std = action_accumulator.finalize(minimum_std)
+    force_mean, force_std = force_accumulator.finalize(minimum_std)
+    return NormalizationStats(
+        qpos_mean=tuple(qpos_mean.tolist()),
+        qpos_std=tuple(qpos_std.tolist()),
+        action_mean=tuple(action_mean.tolist()),
+        action_std=tuple(action_std.tolist()),
+        force_mean=tuple(force_mean.tolist()),
+        force_std=tuple(force_std.tolist()),
+        minimum_std=float(minimum_std),
+    )
+
+
 class _MomentAccumulator:
     def __init__(self, dimension: int) -> None:
         self.count = 0

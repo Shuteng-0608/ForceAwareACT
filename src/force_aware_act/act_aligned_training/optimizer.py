@@ -91,6 +91,15 @@ def build_act_aligned_optimizer(
     )
 
 
+def build_act_aligned_high_rate_optimizer(
+    model: ACTAlignedContactCVAEPolicy,
+    config: ACTAlignedTrainingConfig,
+) -> torch.optim.AdamW:
+    """Build the canonical groups for the high-rate policy subclass."""
+
+    return build_act_aligned_optimizer(model, config)
+
+
 def build_act_aligned_motion_optimizer(
     model: ACTAlignedMotionCVAEControlPolicy,
     config: ACTAlignedMotionTrainingConfig,
