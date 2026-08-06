@@ -39,12 +39,44 @@ from force_aware_act.inference import (  # noqa: E402
     RecedingChunkActionExecutor,
     RecencyTemporalActionChunkExecutor,
     RolloutPolicyAdapter,
+    SignedAgeTemporalActionChunkExecutor,
+    TemporalEndpointActionChunkExecutor,
 )
 
 
-SWEEP_VERSION = "paired50_validation_action_executor_sweep_v1"
+SWEEP_VERSION = "paired50_validation_action_executor_sweep_v2"
 CONTACT_STAGE_NAMES = ("free_lt5n", "contact_5_to_20n", "contact_ge20n")
 OFFICIAL_BASELINE_ID = "official_temporal_k0p01"
+SIGNED_OFFICIAL_BASELINE_ID = "signed_temporal_km0p01"
+DEFAULT_SIGNED_DECAYS = (
+    -1.0,
+    -0.5,
+    -0.3,
+    -0.2,
+    -0.1,
+    -0.05,
+    -0.03,
+    -0.02,
+    -0.01,
+    -0.005,
+    0.0,
+    0.005,
+    0.01,
+    0.02,
+    0.03,
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.5,
+    1.0,
+)
+TEMPORAL_FAMILIES = {
+    "official_temporal",
+    "recency_temporal",
+    "signed_temporal",
+    "temporal_endpoint",
+}
 
 
 @dataclass(frozen=True)
@@ -53,12 +85,21 @@ class ExecutorSpec:
     family: str
     decay: float | None = None
     query_interval: int | None = None
+    endpoint: str | None = None
 
     def build(self):
         if self.family == "official_temporal":
             return OfficialTemporalActionChunkExecutor(decay=float(self.decay))
         if self.family == "recency_temporal":
             return RecencyTemporalActionChunkExecutor(decay=float(self.decay))
+        if self.family == "signed_temporal":
+            return SignedAgeTemporalActionChunkExecutor(
+                signed_decay=float(self.decay)
+            )
+        if self.family == "temporal_endpoint":
+            return TemporalEndpointActionChunkExecutor(
+                preference=str(self.endpoint)
+            )
         if self.family == "receding_chunk":
             return RecedingChunkActionExecutor(
                 query_interval=int(self.query_interval)
@@ -155,6 +196,50 @@ def build_executor_specs(
     return tuple(specs)
 
 
+def build_signed_temporal_specs(
+    signed_decays: Sequence[float],
+    *,
+    include_endpoints: bool = True,
+) -> tuple[ExecutorSpec, ...]:
+    """Build a Q=1 grid with one signed old/new preference convention."""
+
+    specs = [
+        ExecutorSpec(
+            executor_id=f"signed_temporal_k{_float_token(value)}",
+            family="signed_temporal",
+            decay=float(value),
+            query_interval=1,
+        )
+        for value in signed_decays
+    ]
+    if include_endpoints:
+        specs.extend(
+            (
+                ExecutorSpec(
+                    executor_id="latest_only",
+                    family="temporal_endpoint",
+                    query_interval=1,
+                    endpoint="newest",
+                ),
+                ExecutorSpec(
+                    executor_id="oldest_only",
+                    family="temporal_endpoint",
+                    query_interval=1,
+                    endpoint="oldest",
+                ),
+            )
+        )
+    identifiers = [item.executor_id for item in specs]
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("signed temporal sweep contains duplicate configurations")
+    if SIGNED_OFFICIAL_BASELINE_ID not in identifiers:
+        raise ValueError(
+            "signed temporal sweep must contain k=-0.01, which is equivalent "
+            "to the official ACT k=0.01 baseline"
+        )
+    return tuple(specs)
+
+
 def classify_contact_stages(force_norms: np.ndarray) -> np.ndarray:
     values = np.asarray(force_norms, dtype=np.float64)
     if values.ndim != 1 or not np.isfinite(values).all():
@@ -179,7 +264,7 @@ def replay_action_chunks(
     chunk_indices: list[int] = []
     for step, chunk_value in enumerate(chunks):
         chunk = np.asarray(chunk_value, dtype=np.float64)
-        if spec.family in ("official_temporal", "recency_temporal"):
+        if spec.family in TEMPORAL_FAMILIES:
             result = executor.update(step, chunk)
             actions.append(result.action)
             ages.append(result.weighted_mean_age)
@@ -321,6 +406,8 @@ def _episode_replay_row(
         "executor_id": spec.executor_id,
         "executor_family": spec.family,
         "decay": spec.decay,
+        "signed_decay": spec.decay if spec.family == "signed_temporal" else None,
+        "temporal_endpoint": spec.endpoint,
         "query_interval": spec.query_interval,
         "num_steps": int(targets.shape[0]),
         "action_l1_physical": float(np.abs(differences).mean()),
@@ -351,6 +438,8 @@ def _episode_replay_row(
 def aggregate_replay_rows(
     episode_caches: Mapping[str, EpisodeCache],
     specs: Sequence[ExecutorSpec],
+    *,
+    reference_baseline_id: str = OFFICIAL_BASELINE_ID,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     per_episode: list[dict[str, Any]] = []
     aggregate: list[dict[str, Any]] = []
@@ -403,6 +492,10 @@ def aggregate_replay_rows(
                     "executor_id": spec.executor_id,
                     "executor_family": spec.family,
                     "decay": spec.decay,
+                    "signed_decay": (
+                        spec.decay if spec.family == "signed_temporal" else None
+                    ),
+                    "temporal_endpoint": spec.endpoint,
                     "query_interval": spec.query_interval,
                     "episode_count": len(episode_l1_values),
                     "timestep_count": step_count,
@@ -435,11 +528,11 @@ def aggregate_replay_rows(
     baseline_by_model = {
         row["model"]: float(row["action_l1_physical_global"])
         for row in aggregate
-        if row["executor_id"] == OFFICIAL_BASELINE_ID
+        if row["executor_id"] == reference_baseline_id
     }
     if set(baseline_by_model) != {"official", "contact"}:
         raise ValueError(
-            f"sweep must include the baseline {OFFICIAL_BASELINE_ID!r}"
+            f"sweep must include the baseline {reference_baseline_id!r}"
         )
     for row in aggregate:
         baseline = baseline_by_model[row["model"]]
@@ -450,6 +543,10 @@ def aggregate_replay_rows(
             if baseline > 0.0
             else (0.0 if current == 0.0 else None)
         )
+        row["l1_delta_from_reference_baseline"] = current - baseline
+        row["l1_relative_improvement_from_reference_baseline"] = row[
+            "l1_relative_improvement_from_official_k0p01"
+        ]
     return aggregate, per_episode
 
 
@@ -559,10 +656,18 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         contact_checkpoint, device=device
     )
     _validate_pair(official, contact)
-    specs = build_executor_specs(
-        args.official_decays,
-        args.recency_decays,
-        args.receding_intervals,
+    if args.sweep_profile == "legacy":
+        specs = build_executor_specs(
+            args.official_decays,
+            args.recency_decays,
+            args.receding_intervals,
+        )
+    else:
+        specs = build_signed_temporal_specs(args.signed_decays)
+    reference_baseline_id = (
+        OFFICIAL_BASELINE_ID
+        if args.sweep_profile == "legacy"
+        else SIGNED_OFFICIAL_BASELINE_ID
     )
     for spec in specs:
         if (
@@ -686,7 +791,11 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         dataset.close()
     if cursor != sample_count:
         raise RuntimeError(f"cached {cursor} validation samples, expected {sample_count}")
-    aggregate_rows, episode_rows = aggregate_replay_rows(episodes, specs)
+    aggregate_rows, episode_rows = aggregate_replay_rows(
+        episodes,
+        specs,
+        reference_baseline_id=reference_baseline_id,
+    )
     rankings, paired_ranking = build_rankings(aggregate_rows)
     all_force_norms = np.concatenate(
         [
@@ -713,6 +822,22 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "holdout_used": False,
         "deployment_latents": {"official": "zero", "contact": "zero"},
         "prediction_cache": "in_memory_once_per_model_timestep",
+        "sweep_profile": args.sweep_profile,
+        "fixed_policy_query_interval": (
+            1 if args.sweep_profile == "expanded_signed_temporal" else None
+        ),
+        "signed_decay_convention": (
+            "weight=softmax(-signed_k*prediction_age); negative=old, "
+            "zero=uniform, positive=new"
+            if args.sweep_profile == "expanded_signed_temporal"
+            else None
+        ),
+        "reference_baseline_executor_id": reference_baseline_id,
+        "official_act_decay_mapping": (
+            {"official_candidate_index_k": 0.01, "signed_age_k": -0.01}
+            if args.sweep_profile == "expanded_signed_temporal"
+            else None
+        ),
         "model_forward_samples_per_model": cursor,
         "data_root": str(args.data_root.resolve()),
         "experiment_manifest": str(args.experiment_manifest.resolve()),
@@ -759,6 +884,22 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument(
+        "--sweep-profile",
+        choices=("legacy", "expanded_signed_temporal"),
+        default="legacy",
+        help=(
+            "legacy reproduces the original mixed executor grid; "
+            "expanded_signed_temporal fixes policy query interval to one and "
+            "sweeps a signed prediction-age decay"
+        ),
+    )
+    parser.add_argument(
+        "--signed-decays",
+        type=float,
+        nargs="+",
+        default=DEFAULT_SIGNED_DECAYS,
+    )
+    parser.add_argument(
         "--official-decays",
         type=float,
         nargs="+",
@@ -799,6 +940,20 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         values = getattr(args, name)
         if not values or any(not math.isfinite(value) or value < 0 for value in values):
             parser.error(f"{name.replace('_', ' ')} must be finite and non-negative")
+    if not args.signed_decays or any(
+        not math.isfinite(value) for value in args.signed_decays
+    ):
+        parser.error("signed decays must be finite")
+    if len(set(args.signed_decays)) != len(args.signed_decays):
+        parser.error("signed decays must not contain duplicates")
+    if (
+        args.sweep_profile == "expanded_signed_temporal"
+        and -0.01 not in args.signed_decays
+    ):
+        parser.error(
+            "expanded signed temporal profile requires -0.01 as the official "
+            "ACT reference baseline"
+        )
     if not args.receding_intervals or any(
         value <= 0 for value in args.receding_intervals
     ):

@@ -11,6 +11,8 @@ from force_aware_act.inference import (
     RECENCY_TEMPORAL_AGGREGATION_VERSION,
     RecencyTemporalActionChunkExecutor,
     RecedingChunkActionExecutor,
+    SignedAgeTemporalActionChunkExecutor,
+    TemporalEndpointActionChunkExecutor,
 )
 from scripts.run_mujoco_policy_rollout import parse_args
 
@@ -152,6 +154,65 @@ def test_recency_decay_zero_matches_uniform_official_aggregation():
 
     np.testing.assert_allclose(recency_result.action, official_result.action)
     np.testing.assert_allclose(recency_result.weights, official_result.weights)
+
+
+def test_signed_negative_official_mapping_is_exact():
+    official = OfficialTemporalActionChunkExecutor(decay=0.01)
+    signed = SignedAgeTemporalActionChunkExecutor(signed_decay=-0.01)
+    for step in range(100):
+        chunk = _chunk(step, chunk_len=100)
+        official_result = official.update(step, chunk)
+        signed_result = signed.update(step, chunk)
+
+    np.testing.assert_allclose(signed_result.action, official_result.action)
+    np.testing.assert_allclose(signed_result.weights, official_result.weights)
+    assert signed_result.weighted_mean_age == pytest.approx(
+        official_result.weighted_mean_age
+    )
+
+
+@pytest.mark.parametrize(
+    ("signed_decay", "favored_endpoint"),
+    ((-1.0, "oldest"), (0.0, "uniform"), (1.0, "newest")),
+)
+def test_signed_temporal_direction_and_extremes_are_stable(
+    signed_decay, favored_endpoint
+):
+    executor = SignedAgeTemporalActionChunkExecutor(signed_decay=signed_decay)
+    for step in range(100):
+        result = executor.update(step, np.full((100, 1), step, dtype=np.float64))
+
+    weights = np.asarray(result.weights)
+    assert np.isfinite(weights).all()
+    assert weights.sum() == pytest.approx(1.0)
+    if favored_endpoint == "oldest":
+        assert result.oldest_weight > 0.63
+        assert result.oldest_weight > result.newest_weight
+    elif favored_endpoint == "newest":
+        assert result.newest_weight > 0.63
+        assert result.newest_weight > result.oldest_weight
+    else:
+        np.testing.assert_allclose(weights, np.full(100, 0.01))
+
+
+@pytest.mark.parametrize("signed_decay", (float("nan"), float("inf")))
+def test_signed_temporal_rejects_non_finite_decay(signed_decay):
+    with pytest.raises(ValueError, match="signed_decay must be finite"):
+        SignedAgeTemporalActionChunkExecutor(signed_decay=signed_decay)
+
+
+def test_temporal_endpoint_selects_exact_oldest_or_newest_prediction():
+    oldest = TemporalEndpointActionChunkExecutor(preference="oldest")
+    newest = TemporalEndpointActionChunkExecutor(preference="newest")
+    for step in range(4):
+        chunk = _chunk(step, chunk_len=4)
+        oldest_result = oldest.update(step, chunk)
+        newest_result = newest.update(step, chunk)
+
+    np.testing.assert_allclose(oldest_result.action, _chunk(0, 4)[3])
+    np.testing.assert_allclose(newest_result.action, _chunk(3, 4)[0])
+    assert oldest_result.weighted_mean_age == 3.0
+    assert newest_result.weighted_mean_age == 0.0
 
 
 def test_receding_chunk_query_interval_one_uses_each_fresh_first_action():

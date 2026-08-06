@@ -3,13 +3,16 @@ import pytest
 import torch
 
 from scripts.sweep_paired50_validation_action_execution import (
+    DEFAULT_SIGNED_DECAYS,
     OFFICIAL_BASELINE_ID,
+    SIGNED_OFFICIAL_BASELINE_ID,
     EpisodeCache,
     ExecutorSpec,
     _latest_linear_force_norms,
     aggregate_replay_rows,
     build_rankings,
     build_executor_specs,
+    build_signed_temporal_specs,
     classify_contact_stages,
     replay_action_chunks,
 )
@@ -29,6 +32,21 @@ def test_default_spec_grid_has_stable_unique_baseline_identifier():
     assert len(specs) == 11
     assert len({item.executor_id for item in specs}) == len(specs)
     assert OFFICIAL_BASELINE_ID in {item.executor_id for item in specs}
+
+
+def test_expanded_signed_grid_fixes_q1_and_includes_exact_endpoints():
+    specs = build_signed_temporal_specs(DEFAULT_SIGNED_DECAYS)
+
+    assert len(specs) == 23
+    assert len({item.executor_id for item in specs}) == len(specs)
+    assert SIGNED_OFFICIAL_BASELINE_ID in {item.executor_id for item in specs}
+    assert {item.executor_id for item in specs} >= {"latest_only", "oldest_only"}
+    assert {item.query_interval for item in specs} == {1}
+
+
+def test_expanded_signed_grid_requires_official_equivalent_baseline():
+    with pytest.raises(ValueError, match="must contain k=-0.01"):
+        build_signed_temporal_specs((-0.02, 0.0, 0.02))
 
 
 def test_contact_stage_boundaries_are_explicit_and_exhaustive():
@@ -60,6 +78,47 @@ def test_official_and_recency_temporal_replay_use_shared_alignment():
     assert official.prediction_ages[-1] > recency.prediction_ages[-1]
     assert official.policy_queried.all()
     assert recency.policy_queried.all()
+
+
+def test_signed_replay_and_endpoints_share_q1_temporal_alignment():
+    chunks = [
+        _constant_chunk([0.0, 10.0, 20.0]),
+        _constant_chunk([100.0, 110.0, 120.0]),
+        _constant_chunk([200.0, 210.0, 220.0]),
+    ]
+    old = replay_action_chunks(
+        chunks,
+        ExecutorSpec("old", "signed_temporal", decay=-1.0, query_interval=1),
+    )
+    new = replay_action_chunks(
+        chunks,
+        ExecutorSpec("new", "signed_temporal", decay=1.0, query_interval=1),
+    )
+    oldest = replay_action_chunks(
+        chunks,
+        ExecutorSpec(
+            "oldest_only",
+            "temporal_endpoint",
+            query_interval=1,
+            endpoint="oldest",
+        ),
+    )
+    latest = replay_action_chunks(
+        chunks,
+        ExecutorSpec(
+            "latest_only",
+            "temporal_endpoint",
+            query_interval=1,
+            endpoint="newest",
+        ),
+    )
+
+    assert old.actions[-1, 0] < new.actions[-1, 0]
+    assert old.prediction_ages[-1] > new.prediction_ages[-1]
+    assert oldest.actions[-1, 0] == 20.0
+    assert latest.actions[-1, 0] == 200.0
+    assert oldest.policy_queried.all()
+    assert latest.policy_queried.all()
 
 
 def test_receding_replay_queries_and_executes_chunk_in_order():

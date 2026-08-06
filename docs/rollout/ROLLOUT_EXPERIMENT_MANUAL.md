@@ -362,6 +362,47 @@ PYTHONPATH=src python scripts/sweep_paired50_validation_action_execution.py \
 `per_episode.csv`，并按当前原生力样本划分 `<5 N`、`5–20 N`、`>=20 N`
 三个阶段。该结果只用于筛选闭环候选，不能替代 rollout 成功率。
 
+若要固定每个观测帧都重新预测（`policy query interval=1`），并只扫描
+temporal aggregation 对新旧预测的偏好，使用扩展 signed-k profile：
+
+```bash
+PYTHONPATH=src python scripts/sweep_paired50_validation_action_execution.py \
+  mujoco_data/peg_hole_100 \
+  --experiment-manifest configs/experiments/peg_hole_paired50_seed0.json \
+  --official-checkpoint runs/paired50_official_act_formal_e2000_b8_seed0/best_policy.pt \
+  --contact-checkpoint runs/paired50_highrate_contact_v3_formal_s10000_b8_seed0/best.pt \
+  --output-dir runs/paired50_validation_signed_temporal_sweep_b1 \
+  --sweep-profile expanded_signed_temporal \
+  --device cuda \
+  --batch-size 1 \
+  --num-workers 2 \
+  --log-interval 100
+```
+
+该 profile 统一采用：
+
+```text
+weight = softmax(-signed_k * prediction_age)
+signed_k < 0：偏向旧预测
+signed_k = 0：全部有效预测等权
+signed_k > 0：偏向新预测
+```
+
+默认扫描21个 signed-k：
+
+```text
+-1, -0.5, -0.3, -0.2, -0.1, -0.05, -0.03, -0.02, -0.01, -0.005,
+ 0,
+ 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 1
+```
+
+此外包含 `latest_only` 和 `oldest_only` 两个精确端点，共23种配置。
+`signed_k=-0.01` 与官方候选顺序下的 ACT `k=0.01`权重严格等价，并作为
+相对改善的参考基线。`oldest_only`只用于离线诊断，不应未经单独安全审计
+直接用于闭环控制。所有23种配置共享同一批缓存模型输出；额外配置不会增加
+模型前向次数。可用 `--signed-decays`覆盖默认网格，但必须包含`-0.01`以保持
+参考基线完整。
+
 ### 5.7 成功、安全成功和硬力停止
 
 单次 task success 要求以下条件连续满足 `success_hold_steps` 个 policy steps：

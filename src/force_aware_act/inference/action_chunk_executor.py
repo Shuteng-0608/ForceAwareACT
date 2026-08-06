@@ -16,6 +16,10 @@ OFFICIAL_TEMPORAL_WEIGHT_FORMULA = "exp(-k*candidate_index)"
 RECENCY_TEMPORAL_AGGREGATION_VERSION = "recency_temporal_ensemble_v1"
 RECENCY_TEMPORAL_CANDIDATE_ORDER = "oldest_prediction_to_newest_prediction"
 RECENCY_TEMPORAL_WEIGHT_FORMULA = "exp(-k*prediction_age)"
+SIGNED_AGE_TEMPORAL_AGGREGATION_VERSION = "signed_age_temporal_ensemble_v1"
+SIGNED_AGE_TEMPORAL_CANDIDATE_ORDER = "oldest_prediction_to_newest_prediction"
+SIGNED_AGE_TEMPORAL_WEIGHT_FORMULA = "softmax(-signed_k*prediction_age)"
+TEMPORAL_ENDPOINT_AGGREGATION_VERSION = "temporal_endpoint_ensemble_v1"
 RECEDING_CHUNK_EXECUTION_VERSION = "receding_chunk_execution_v1"
 
 
@@ -133,8 +137,7 @@ class OfficialTemporalActionChunkExecutor:
                 f"no temporally aligned action exists at step {current_step}"
             )
 
-        unnormalized_weights = self._unnormalized_weights(ages)
-        weights = unnormalized_weights / unnormalized_weights.sum()
+        weights = self._normalized_weights(ages)
         action = np.sum(
             np.asarray(aligned_actions, dtype=np.float64) * weights[:, None],
             axis=0,
@@ -151,8 +154,19 @@ class OfficialTemporalActionChunkExecutor:
             weighted_mean_age=weighted_mean_age,
         )
 
-    def _unnormalized_weights(self, ages: list[int]) -> np.ndarray:
-        return np.exp(-self.decay * np.arange(len(ages), dtype=np.float64))
+    def _log_weights(self, ages: list[int]) -> np.ndarray:
+        return -self.decay * np.arange(len(ages), dtype=np.float64)
+
+    def _normalized_weights(self, ages: list[int]) -> np.ndarray:
+        log_weights = np.asarray(self._log_weights(ages), dtype=np.float64)
+        if log_weights.shape != (len(ages),) or not np.isfinite(log_weights).all():
+            raise FloatingPointError("temporal executor produced invalid log weights")
+        shifted = log_weights - log_weights.max()
+        unnormalized = np.exp(shifted)
+        denominator = unnormalized.sum()
+        if not math.isfinite(float(denominator)) or denominator <= 0.0:
+            raise FloatingPointError("temporal executor produced invalid weights")
+        return unnormalized / denominator
 
 
 class RecencyTemporalActionChunkExecutor(OfficialTemporalActionChunkExecutor):
@@ -168,8 +182,50 @@ class RecencyTemporalActionChunkExecutor(OfficialTemporalActionChunkExecutor):
     candidate_order = RECENCY_TEMPORAL_CANDIDATE_ORDER
     weight_formula = RECENCY_TEMPORAL_WEIGHT_FORMULA
 
-    def _unnormalized_weights(self, ages: list[int]) -> np.ndarray:
-        return np.exp(-self.decay * np.asarray(ages, dtype=np.float64))
+    def _log_weights(self, ages: list[int]) -> np.ndarray:
+        return -self.decay * np.asarray(ages, dtype=np.float64)
+
+
+class SignedAgeTemporalActionChunkExecutor(OfficialTemporalActionChunkExecutor):
+    """Query every step and sweep old/new preference with one signed parameter.
+
+    The normalized weight of a prediction with age ``a`` is proportional to
+    ``exp(-signed_decay * a)``. Positive values favor recent predictions,
+    negative values favor old predictions, and zero gives uniform weights.
+    Log weights are centered before exponentiation, so deliberately extreme
+    diagnostic values remain numerically stable.
+    """
+
+    version = SIGNED_AGE_TEMPORAL_AGGREGATION_VERSION
+    candidate_order = SIGNED_AGE_TEMPORAL_CANDIDATE_ORDER
+    weight_formula = SIGNED_AGE_TEMPORAL_WEIGHT_FORMULA
+
+    def __init__(self, *, signed_decay: float) -> None:
+        if not math.isfinite(signed_decay):
+            raise ValueError("signed_decay must be finite")
+        super().__init__(decay=0.0)
+        self.signed_decay = float(signed_decay)
+
+    def _log_weights(self, ages: list[int]) -> np.ndarray:
+        return -self.signed_decay * np.asarray(ages, dtype=np.float64)
+
+
+class TemporalEndpointActionChunkExecutor(OfficialTemporalActionChunkExecutor):
+    """Exact newest-only or oldest-valid temporal diagnostic endpoint."""
+
+    version = TEMPORAL_ENDPOINT_AGGREGATION_VERSION
+
+    def __init__(self, *, preference: str) -> None:
+        if preference not in {"newest", "oldest"}:
+            raise ValueError("preference must be 'newest' or 'oldest'")
+        super().__init__(decay=0.0)
+        self.preference = preference
+        self.weight_formula = f"{preference}_valid_prediction_only"
+
+    def _normalized_weights(self, ages: list[int]) -> np.ndarray:
+        weights = np.zeros(len(ages), dtype=np.float64)
+        weights[-1 if self.preference == "newest" else 0] = 1.0
+        return weights
 
 
 @dataclass(frozen=True)
