@@ -340,6 +340,28 @@ PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
 和 `executor_prediction_age` 区分模型查询与缓存动作执行；summary 记录
 `action_executor_version`、`receding_query_interval` 和 `policy_query_count`。
 
+在闭环实验前，使用固定 validation split 对两个 checkpoint 的缓存 action
+chunk 做执行器 sweep；该工具不会读取 holdout episode 来选择参数：
+
+```bash
+PYTHONPATH=src python scripts/sweep_paired50_validation_action_execution.py \
+  mujoco_data/peg_hole_100 \
+  --experiment-manifest configs/experiments/peg_hole_paired50_seed0.json \
+  --official-checkpoint runs/paired50_official_act_formal_e2000_b8_seed0/best_policy.pt \
+  --contact-checkpoint runs/paired50_highrate_contact_v3_formal_s10000_b8_seed0/best.pt \
+  --output-dir runs/paired50_validation_action_executor_sweep \
+  --device cuda \
+  --batch-size 1 \
+  --num-workers 2
+```
+
+默认 sweep 包含 official temporal `k={0,0.01,0.03}`、recency temporal
+`k={0.01,0.03,0.1}` 和 receding chunk `Q={1,5,10,25,100}`。模型只在
+缓存阶段对每个 validation timestep 前向一次；之后所有执行器都重放同一份
+物理空间 action chunk。输出 `summary.json`、`aggregate.csv` 和
+`per_episode.csv`，并按当前原生力样本划分 `<5 N`、`5–20 N`、`>=20 N`
+三个阶段。该结果只用于筛选闭环候选，不能替代 rollout 成功率。
+
 ### 5.7 成功、安全成功和硬力停止
 
 单次 task success 要求以下条件连续满足 `success_hold_steps` 个 policy steps：
