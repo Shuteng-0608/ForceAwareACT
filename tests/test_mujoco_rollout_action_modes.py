@@ -155,6 +155,8 @@ def test_one_based_action_chunk_selection_maps_to_zero_based_indices():
     assert _selected_action_index(10, "mid") == 5
     assert _selected_action_index(10, "last") == 9
     assert _selected_action_index(10, "temporal") == -1
+    assert _selected_action_index(10, "recency_temporal") == -1
+    assert _selected_action_index(10, "receding_chunk") == -1
 
 
 @pytest.mark.parametrize("mode", ["0", "11", "unknown"])

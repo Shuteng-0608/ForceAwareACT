@@ -183,7 +183,7 @@ PYTHONPATH=src python scripts/inspect_hole_assembly.py \
 4. 应用可选 hole offset；
 5. 渲染 `ee_cam` 和 `base_top_cam`，构造 qpos 与历史 force 输入；
 6. 执行 deployable inference；
-7. 反归一化动作，并按 `first/mid/last/temporal` 或 1-based chunk 索引选择动作；
+7. 反归一化动作，并按固定索引、官方 temporal、新近优先 temporal 或 receding chunk 执行动作；
 8. 按 action mode 转成绝对 control target；
 9. 依次执行 `max_delta_q`、EMA 和 actuator ctrlrange 裁剪；
 10. 可选写入 `data.ctrl`，执行 MuJoCo stepping；
@@ -299,8 +299,9 @@ PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
 | `--model-xml` | MuJoCo 模型 XML；默认路径也是 `../arm_teleop/model/pangu_all_right.xml`。 |
 | `--contact-latent-mode` | `zero` 或 deployable `prior`；Motion-CVAE/ACT 分支忽略它。 |
 | `--action-mode` | 输出解释方式；必须与训练和 stats 一致。 |
-| `--action-select-mode` | `first`、`mid`、`last`、`temporal`，或从 `1` 开始的具体 chunk 位置。长度 10 时可用 `1`–`10`。 |
-| `--temporal-agg-decay` | temporal aggregation 衰减，单次脚本默认 `0.3`。 |
+| `--action-select-mode` | `first`、`mid`、`last`、`temporal`、`recency_temporal`、`receding_chunk`，或从 `1` 开始的具体 chunk 位置。 |
+| `--temporal-agg-decay` | 两类 temporal aggregation 的非负衰减，默认与官方 ACT 一致为 `0.01`。 |
+| `--receding-query-interval` | `receding_chunk` 的查询间隔 Q；省略时等于 checkpoint chunk length。Q=1 每步查询并执行第一个动作，Q=K 对应官方 ACT 非 temporal 的完整 chunk 顺序执行。 |
 | `--policy-rate-hz` | 策略调用频率；物理仿真在策略步之间继续 stepping。 |
 | `--max-rollout-steps` | 最大策略步数。 |
 | `--image-width`、`--image-height` | MuJoCo renderer 分辨率，默认 `640×480`。 |
@@ -329,10 +330,15 @@ PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
 | `first` | 使用当前预测 chunk 的第一个动作。 |
 | `mid` | 使用 chunk 中间动作。当前批量实验常用。 |
 | `last` | 使用 chunk 最后动作。 |
-| `temporal` | 聚合当前及历史预测 chunk 中对齐到当前时刻的动作。 |
+| `temporal` | 官方 ACT 聚合：候选按旧到新排列，权重 `exp(-k*candidate_index)`；正 k 偏向旧预测。 |
+| `recency_temporal` | 新近优先聚合：权重 `exp(-k*prediction_age)`；正 k 偏向新预测。 |
+| `receding_chunk` | 每 Q 步查询一次策略，并顺序执行当前 chunk 的前 Q 个动作；Q 由 `--receding-query-interval` 指定。 |
 | `1`–`K` | 使用当前新预测 chunk 的第 1 到第 K 个动作，编号为 1-based；不是先缓存 chunk 再顺序执行。长度 10 时 `1=first`、`6=mid`、`10=last`。 |
 
 不同 action-select mode 属于 rollout 控制协议差异。比较模型时必须保持一致，或将它作为显式实验变量。
+逐步 CSV 通过 `policy_queried`、`executor_query_step`、`executor_chunk_index`
+和 `executor_prediction_age` 区分模型查询与缓存动作执行；summary 记录
+`action_executor_version`、`receding_query_interval` 和 `policy_query_count`。
 
 ### 5.7 成功、安全成功和硬力停止
 

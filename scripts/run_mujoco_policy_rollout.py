@@ -36,9 +36,6 @@ from force_aware_act.inference import (  # noqa: E402
     DEFAULT_SUCCESS_DISTANCE_THRESHOLD,
     DEFAULT_SUCCESS_DWELL_TIME,
     OFFICIAL_TEMPORAL_AGGREGATION_DECAY,
-    OFFICIAL_TEMPORAL_AGGREGATION_VERSION,
-    OFFICIAL_TEMPORAL_CANDIDATE_ORDER,
-    OFFICIAL_TEMPORAL_WEIGHT_FORMULA,
     OFFICIAL_ACT_ROLLOUT_KIND,
     POLICY_STEP_SCHEDULER_VERSION,
     ROLLOUT_PROTOCOL_VERSION,
@@ -47,6 +44,8 @@ from force_aware_act.inference import (  # noqa: E402
     HighRateForceRingBuffer,
     JointPositionPostprocessor,
     OfficialTemporalActionChunkExecutor,
+    RecedingChunkActionExecutor,
+    RecencyTemporalActionChunkExecutor,
     RolloutPolicyAdapter,
     TaskSuccessTracker,
     checkpoint_uses_rollout_adapter,
@@ -88,6 +87,9 @@ ACTION_MODE_CHOICES = (
     "delta_joint_pos_command",
 )
 DELTA_ACTION_MODES = ("delta_joint_cmd", "delta_joint_pos_command")
+TEMPORAL_ACTION_SELECT_MODES = ("temporal", "recency_temporal")
+RECEDING_ACTION_SELECT_MODE = "receding_chunk"
+FIXED_INDEX_EXECUTION_VERSION = "fixed_chunk_index_requery_v1"
 SUMMARY_REQUIRED_KEYS = (
     "rollout_protocol_version",
     "policy_step_scheduler_version",
@@ -101,7 +103,10 @@ SUMMARY_REQUIRED_KEYS = (
     "rollout_mode",
     "action_mode",
     "action_select_mode",
+    "action_executor_version",
     "selected_action_index",
+    "receding_query_interval",
+    "policy_query_count",
     "temporal_aggregation_version",
     "temporal_candidate_order",
     "temporal_weight_formula",
@@ -811,7 +816,7 @@ def _selected_action_index(action_chunk_len: int, mode: str) -> int:
         return action_chunk_len // 2
     if mode == "last":
         return action_chunk_len - 1
-    if mode == "temporal":
+    if mode in (*TEMPORAL_ACTION_SELECT_MODES, RECEDING_ACTION_SELECT_MODE):
         return -1
     if mode.isdecimal():
         one_based_index = int(mode)
@@ -822,7 +827,8 @@ def _selected_action_index(action_chunk_len: int, mode: str) -> int:
         )
     raise ValueError(
         "unknown action selection mode: "
-        f"{mode!r}; use first, mid, last, temporal, or a 1-based chunk index"
+        f"{mode!r}; use first, mid, last, temporal, recency_temporal, "
+        "receding_chunk, or a 1-based chunk index"
     )
 
 
@@ -851,7 +857,12 @@ def _fieldnames() -> list[str]:
         "dry_run",
         "action_mode",
         "action_select_mode",
+        "action_executor_version",
         "selected_action_index",
+        "policy_queried",
+        "executor_query_step",
+        "executor_chunk_index",
+        "executor_prediction_age",
         "scheduled_physics_steps_this_policy",
         "physics_steps_this_policy",
         "physics_interval_completed",
@@ -1300,10 +1311,42 @@ def run_rollout(args: argparse.Namespace) -> int:
         if adapter is not None and adapter.uses_high_rate_force_history
         else None
     )
-    temporal_executor = (
-        OfficialTemporalActionChunkExecutor(decay=args.temporal_agg_decay)
-        if args.action_select_mode == "temporal"
+    temporal_executor = None
+    if args.action_select_mode == "temporal":
+        temporal_executor = OfficialTemporalActionChunkExecutor(
+            decay=args.temporal_agg_decay
+        )
+    elif args.action_select_mode == "recency_temporal":
+        temporal_executor = RecencyTemporalActionChunkExecutor(
+            decay=args.temporal_agg_decay
+        )
+    resolved_receding_query_interval = (
+        args.receding_query_interval
+        if args.receding_query_interval is not None
+        else args.chunk_len
+    )
+    receding_executor = (
+        RecedingChunkActionExecutor(
+            query_interval=resolved_receding_query_interval
+        )
+        if args.action_select_mode == RECEDING_ACTION_SELECT_MODE
         else None
+    )
+    if (
+        receding_executor is not None
+        and resolved_receding_query_interval > args.chunk_len
+    ):
+        raise ValueError(
+            "--receding-query-interval cannot exceed the checkpoint chunk length"
+        )
+    action_executor_version = (
+        temporal_executor.version
+        if temporal_executor is not None
+        else (
+            receding_executor.version
+            if receding_executor is not None
+            else FIXED_INDEX_EXECUTION_VERSION
+        )
     )
     renderer = mujoco.Renderer(
         mj_model,
@@ -1341,6 +1384,13 @@ def run_rollout(args: argparse.Namespace) -> int:
     final_temporal_oldest_weight: Optional[float] = None
     first_temporal_newest_weight: Optional[float] = None
     final_temporal_newest_weight: Optional[float] = None
+    cached_selected_output: Optional[dict[str, Any]] = None
+    cached_selected_action: Optional[np.ndarray] = None
+    cached_selected_force: Optional[np.ndarray] = None
+    cached_deployment_diagnostics: Optional[dict[str, Any]] = None
+    cached_zero_action: Optional[np.ndarray] = None
+    cached_zero_force: Optional[np.ndarray] = None
+    policy_query_count = 0
     axial_push_active_steps = 0
     axial_push_dq_norms: list[float] = []
     raw_delta_norms: list[float] = []
@@ -1369,6 +1419,10 @@ def run_rollout(args: argparse.Namespace) -> int:
         if args.save_videos:
             video_writers = _open_video_writers(video_dir, args.video_fps)
         for step in range(args.max_rollout_steps):
+            policy_queried = bool(
+                receding_executor is None
+                or receding_executor.should_query(step)
+            )
             qpos = np.asarray(data.qpos[joint_qposadr], dtype=np.float32).copy()
             qvel = np.asarray(data.qvel[joint_dofadr], dtype=np.float32).copy()
             wrench = _read_wrench(data, force_slice, torque_slice).astype(np.float32)
@@ -1459,17 +1513,18 @@ def run_rollout(args: argparse.Namespace) -> int:
                     stats["force_std"],
                 )
                 force_padding_mask = None
-                selected_output = _run_mode(
-                    model,
-                    images,
-                    qpos_tensor,
-                    force_window_tensor,
-                    args.contact_latent_mode,
-                )
-                selected_action, selected_force = _denormalize_predictions(
-                    selected_output,
-                    stats,
-                )
+                if policy_queried:
+                    selected_output = _run_mode(
+                        model,
+                        images,
+                        qpos_tensor,
+                        force_window_tensor,
+                        args.contact_latent_mode,
+                    )
+                    selected_action, selected_force = _denormalize_predictions(
+                        selected_output,
+                        stats,
+                    )
             else:
                 qpos_tensor = adapter.prepare_qpos(qpos)
                 if adapter.uses_state_rate_force_history:
@@ -1495,12 +1550,13 @@ def run_rollout(args: argparse.Namespace) -> int:
                     high_rate_input_max_abs = float(
                         force_window_tensor.detach().abs().max().cpu().item()
                     )
-                    high_rate_window_span_values.append(high_rate_window_span)
-                    high_rate_latest_age_values.append(high_rate_latest_force_age)
-                    high_rate_input_peak_values.append(high_rate_input_max_abs)
-                    high_rate_interval_count_values.append(
-                        int((~high_rate_interval_padding_mask[0]).sum().item())
-                    )
+                    if policy_queried:
+                        high_rate_window_span_values.append(high_rate_window_span)
+                        high_rate_latest_age_values.append(high_rate_latest_force_age)
+                        high_rate_input_peak_values.append(high_rate_input_max_abs)
+                        high_rate_interval_count_values.append(
+                            int((~high_rate_interval_padding_mask[0]).sum().item())
+                        )
                 else:
                     force_window_tensor = torch.empty(
                         (1, 0, 6),
@@ -1508,81 +1564,8 @@ def run_rollout(args: argparse.Namespace) -> int:
                         device=inference_device,
                     )
                     force_padding_mask = None
-                selected_output = adapter.forward(
-                    images,
-                    qpos_tensor,
-                    force_history=(
-                        force_window_tensor
-                        if adapter.uses_state_rate_force_history
-                        else None
-                    ),
-                    force_padding_mask=force_padding_mask,
-                    online_force_intervals=(
-                        force_window_tensor
-                        if adapter.uses_high_rate_force_history
-                        else None
-                    ),
-                    online_force_relative_time=(
-                        high_rate_relative_time
-                        if adapter.uses_high_rate_force_history
-                        else None
-                    ),
-                    online_force_sample_padding_mask=(
-                        high_rate_sample_padding_mask
-                        if adapter.uses_high_rate_force_history
-                        else None
-                    ),
-                    online_force_interval_padding_mask=(
-                        high_rate_interval_padding_mask
-                        if adapter.uses_high_rate_force_history
-                        else None
-                    ),
-                    contact_latent_mode=args.contact_latent_mode,
-                )
-                selected_action, selected_force = (
-                    adapter.denormalize_predictions(selected_output)
-                )
-            if adapter is not None:
-                deployment_diagnostics = adapter.deployment_diagnostics(
-                    selected_output,
-                    force_padding_mask=(
-                        force_padding_mask if adapter.uses_force_history else None
-                    ),
-                    requested_latent_mode=args.contact_latent_mode,
-                )
-            else:
-                deployment_diagnostics = {
-                    "latent_name": "legacy_unverified",
-                    "latent_source": "legacy_unverified",
-                    "latent_max_abs": float("nan"),
-                    "force_history_valid_samples": int(force_window_np.shape[0]),
-                    "force_history_padding_samples": 0,
-                }
-            if first_deployment_diagnostics is None:
-                first_deployment_diagnostics = dict(deployment_diagnostics)
-            final_deployment_diagnostics = dict(deployment_diagnostics)
-            deployment_latent_max_abs_values.append(
-                float(deployment_diagnostics["latent_max_abs"])
-            )
-            force_history_valid_samples_values.append(
-                int(deployment_diagnostics["force_history_valid_samples"])
-            )
-            zero_action = zero_force = None
-            if args.contact_latent_mode == "prior" and _policy_has_contact_prior(policy_variant):
-                if adapter is None:
-                    zero_output = _run_mode(
-                        model,
-                        images,
-                        qpos_tensor,
-                        force_window_tensor,
-                        "zero",
-                    )
-                    zero_action, zero_force = _denormalize_predictions(
-                        zero_output,
-                        stats,
-                    )
-                else:
-                    zero_output = adapter.forward(
+                if policy_queried:
+                    selected_output = adapter.forward(
                         images,
                         qpos_tensor,
                         force_history=(
@@ -1590,11 +1573,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                             if adapter.uses_state_rate_force_history
                             else None
                         ),
-                        force_padding_mask=(
-                            force_padding_mask
-                            if adapter.uses_state_rate_force_history
-                            else None
-                        ),
+                        force_padding_mask=force_padding_mask,
                         online_force_intervals=(
                             force_window_tensor
                             if adapter.uses_high_rate_force_history
@@ -1615,12 +1594,118 @@ def run_rollout(args: argparse.Namespace) -> int:
                             if adapter.uses_high_rate_force_history
                             else None
                         ),
-                        contact_latent_mode="zero",
+                        contact_latent_mode=args.contact_latent_mode,
                     )
-                    zero_action, zero_force = (
-                        adapter.denormalize_predictions(zero_output)
+                    selected_action, selected_force = (
+                        adapter.denormalize_predictions(selected_output)
                     )
-
+            if policy_queried:
+                policy_query_count += 1
+                if adapter is not None:
+                    deployment_diagnostics = adapter.deployment_diagnostics(
+                        selected_output,
+                        force_padding_mask=(
+                            force_padding_mask
+                            if adapter.uses_force_history
+                            else None
+                        ),
+                        requested_latent_mode=args.contact_latent_mode,
+                    )
+                else:
+                    deployment_diagnostics = {
+                        "latent_name": "legacy_unverified",
+                        "latent_source": "legacy_unverified",
+                        "latent_max_abs": float("nan"),
+                        "force_history_valid_samples": int(force_window_np.shape[0]),
+                        "force_history_padding_samples": 0,
+                    }
+                zero_action = zero_force = None
+                if (
+                    args.contact_latent_mode == "prior"
+                    and _policy_has_contact_prior(policy_variant)
+                ):
+                    if adapter is None:
+                        zero_output = _run_mode(
+                            model,
+                            images,
+                            qpos_tensor,
+                            force_window_tensor,
+                            "zero",
+                        )
+                        zero_action, zero_force = _denormalize_predictions(
+                            zero_output,
+                            stats,
+                        )
+                    else:
+                        zero_output = adapter.forward(
+                            images,
+                            qpos_tensor,
+                            force_history=(
+                                force_window_tensor
+                                if adapter.uses_state_rate_force_history
+                                else None
+                            ),
+                            force_padding_mask=(
+                                force_padding_mask
+                                if adapter.uses_state_rate_force_history
+                                else None
+                            ),
+                            online_force_intervals=(
+                                force_window_tensor
+                                if adapter.uses_high_rate_force_history
+                                else None
+                            ),
+                            online_force_relative_time=(
+                                high_rate_relative_time
+                                if adapter.uses_high_rate_force_history
+                                else None
+                            ),
+                            online_force_sample_padding_mask=(
+                                high_rate_sample_padding_mask
+                                if adapter.uses_high_rate_force_history
+                                else None
+                            ),
+                            online_force_interval_padding_mask=(
+                                high_rate_interval_padding_mask
+                                if adapter.uses_high_rate_force_history
+                                else None
+                            ),
+                            contact_latent_mode="zero",
+                        )
+                        zero_action, zero_force = (
+                            adapter.denormalize_predictions(zero_output)
+                        )
+                cached_selected_output = selected_output
+                cached_selected_action = selected_action
+                cached_selected_force = selected_force
+                cached_deployment_diagnostics = dict(deployment_diagnostics)
+                cached_zero_action = zero_action
+                cached_zero_force = zero_force
+            else:
+                if (
+                    cached_selected_output is None
+                    or cached_selected_action is None
+                    or cached_selected_force is None
+                    or cached_deployment_diagnostics is None
+                ):
+                    raise RuntimeError(
+                        "receding chunk execution has no cached policy query"
+                    )
+                selected_output = cached_selected_output
+                selected_action = cached_selected_action
+                selected_force = cached_selected_force
+                deployment_diagnostics = dict(cached_deployment_diagnostics)
+                zero_action = cached_zero_action
+                zero_force = cached_zero_force
+            if first_deployment_diagnostics is None:
+                first_deployment_diagnostics = dict(deployment_diagnostics)
+            final_deployment_diagnostics = dict(deployment_diagnostics)
+            deployment_latent_max_abs_values.append(
+                float(deployment_diagnostics["latent_max_abs"])
+            )
+            force_history_valid_samples_values.append(
+                int(deployment_diagnostics["force_history_valid_samples"])
+            )
             has_predicted_force = "pred_force" in selected_output
             predicted_force_norms = np.linalg.norm(selected_force[:, :3], axis=1)
             finite = bool(
@@ -1672,7 +1757,10 @@ def run_rollout(args: argparse.Namespace) -> int:
             temporal_newest_weight: float | str = ""
             temporal_oldest_prediction_step: int | str = ""
             temporal_newest_prediction_step: int | str = ""
-            if args.action_select_mode == "temporal":
+            executor_query_step: int | str = step
+            executor_chunk_index: int | str = selected_action_index
+            executor_prediction_age: float | str = 0.0
+            if args.action_select_mode in TEMPORAL_ACTION_SELECT_MODES:
                 if temporal_executor is None:
                     raise RuntimeError("temporal executor was not initialized")
                 temporal_result = temporal_executor.update(
@@ -1686,6 +1774,9 @@ def run_rollout(args: argparse.Namespace) -> int:
                 temporal_newest_weight = temporal_result.newest_weight
                 temporal_oldest_prediction_step = temporal_result.prediction_steps[0]
                 temporal_newest_prediction_step = temporal_result.prediction_steps[-1]
+                executor_query_step = ""
+                executor_chunk_index = ""
+                executor_prediction_age = temporal_result.weighted_mean_age
                 if first_temporal_num_predictions is None:
                     first_temporal_num_predictions = temporal_num_predictions
                     first_temporal_mean_age = temporal_mean_age
@@ -1695,6 +1786,17 @@ def run_rollout(args: argparse.Namespace) -> int:
                 final_temporal_mean_age = temporal_mean_age
                 final_temporal_oldest_weight = temporal_oldest_weight
                 final_temporal_newest_weight = temporal_newest_weight
+            elif args.action_select_mode == RECEDING_ACTION_SELECT_MODE:
+                if receding_executor is None:
+                    raise RuntimeError("receding chunk executor was not initialized")
+                receding_result = receding_executor.update(
+                    step,
+                    selected_action if policy_queried else None,
+                )
+                selected_raw_action = receding_result.action
+                executor_query_step = receding_result.query_step
+                executor_chunk_index = receding_result.chunk_index
+                executor_prediction_age = receding_result.prediction_age
             else:
                 selected_raw_action = selected_action[selected_action_index].astype(
                     np.float64, copy=True
@@ -1792,7 +1894,12 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "dry_run": not args.execute_actions,
                 "action_mode": args.action_mode,
                 "action_select_mode": args.action_select_mode,
+                "action_executor_version": action_executor_version,
                 "selected_action_index": selected_action_index,
+                "policy_queried": policy_queried,
+                "executor_query_step": executor_query_step,
+                "executor_chunk_index": executor_chunk_index,
+                "executor_prediction_age": executor_prediction_age,
                 "scheduled_physics_steps_this_policy": (
                     scheduled_physics_steps_this_policy
                 ),
@@ -2156,19 +2263,26 @@ def run_rollout(args: argparse.Namespace) -> int:
         "rollout_mode": "execute" if args.execute_actions else "dry_run",
         "action_mode": args.action_mode,
         "action_select_mode": args.action_select_mode,
+        "action_executor_version": action_executor_version,
         "selected_action_index": _selected_action_index(args.chunk_len, args.action_select_mode),
+        "receding_query_interval": (
+            resolved_receding_query_interval
+            if receding_executor is not None
+            else None
+        ),
+        "policy_query_count": policy_query_count,
         "temporal_aggregation_version": (
-            OFFICIAL_TEMPORAL_AGGREGATION_VERSION
+            temporal_executor.version
             if temporal_executor is not None
             else "not_used"
         ),
         "temporal_candidate_order": (
-            OFFICIAL_TEMPORAL_CANDIDATE_ORDER
+            temporal_executor.candidate_order
             if temporal_executor is not None
             else "not_used"
         ),
         "temporal_weight_formula": (
-            OFFICIAL_TEMPORAL_WEIGHT_FORMULA
+            temporal_executor.weight_formula
             if temporal_executor is not None
             else "not_used"
         ),
@@ -2342,7 +2456,10 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"final_qcmd={np.array2string(final_qcmd, precision=6, separator=',')}")
     print(f"action_mode={args.action_mode}")
     print(f"action_select_mode={args.action_select_mode}")
+    print(f"action_executor_version={summary['action_executor_version']}")
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
+    print(f"receding_query_interval={summary['receding_query_interval']}")
+    print(f"policy_query_count={policy_query_count}")
     print(f"rollout_protocol_version={ROLLOUT_PROTOCOL_VERSION}")
     print(f"policy_step_scheduler_version={POLICY_STEP_SCHEDULER_VERSION}")
     print(f"control_postprocess_version={CONTROL_POSTPROCESS_VERSION}")
@@ -2384,10 +2501,10 @@ def run_rollout(args: argparse.Namespace) -> int:
         "actual_hole_offset="
         f"{np.array2string(hole_offset_metadata['actual_hole_offset'], precision=6, separator=',')}"
     )
-    if args.action_select_mode == "temporal":
-        print(f"temporal_aggregation_version={OFFICIAL_TEMPORAL_AGGREGATION_VERSION}")
-        print(f"temporal_candidate_order={OFFICIAL_TEMPORAL_CANDIDATE_ORDER}")
-        print(f"temporal_weight_formula={OFFICIAL_TEMPORAL_WEIGHT_FORMULA}")
+    if temporal_executor is not None:
+        print(f"temporal_aggregation_version={temporal_executor.version}")
+        print(f"temporal_candidate_order={temporal_executor.candidate_order}")
+        print(f"temporal_weight_formula={temporal_executor.weight_formula}")
         print(f"temporal_agg_decay={args.temporal_agg_decay:.9g}")
         print(f"first_temporal_num_predictions={first_temporal_num_predictions}")
         print(f"final_temporal_num_predictions={final_temporal_num_predictions}")
@@ -2520,7 +2637,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--action-select-mode",
         default="temporal",
         help=(
-            "Select first/mid/last, temporal aggregation, or a 1-based "
+            "Select first/mid/last, official temporal aggregation, recency "
+            "temporal aggregation, receding chunk execution, or a 1-based "
             "action-chunk index such as 1 or 10."
         ),
     )
@@ -2528,6 +2646,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--temporal-agg-decay",
         type=float,
         default=OFFICIAL_TEMPORAL_AGGREGATION_DECAY,
+    )
+    parser.add_argument(
+        "--receding-query-interval",
+        type=int,
+        help=(
+            "Policy query interval Q for --action-select-mode=receding_chunk. "
+            "Defaults to the checkpoint action chunk length."
+        ),
     )
     parser.add_argument("--chunk-len", type=int)
     parser.add_argument("--force-window-len", type=int)
@@ -2656,9 +2782,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if (
         (args.chunk_len is not None and args.chunk_len <= 0)
         or (args.force_window_len is not None and args.force_window_len <= 0)
+        or (
+            args.receding_query_interval is not None
+            and args.receding_query_interval <= 0
+        )
         or args.max_rollout_steps <= 0
     ):
         print("error: chunk/window/rollout lengths must be positive", file=sys.stderr)
+        return 2
+    if (
+        args.receding_query_interval is not None
+        and args.action_select_mode != RECEDING_ACTION_SELECT_MODE
+    ):
+        print(
+            "error: --receding-query-interval requires "
+            "--action-select-mode=receding_chunk",
+            file=sys.stderr,
+        )
         return 2
     if (
         args.force_window_duration is not None

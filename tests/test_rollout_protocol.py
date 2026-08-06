@@ -164,10 +164,29 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.success_dwell_time == DEFAULT_SUCCESS_DWELL_TIME
     assert args.success_lateral_threshold is None
     assert args.success_hold_steps is None
-    assert ROLLOUT_PROTOCOL_VERSION == "paired_temporal_rollout_v1"
+    assert args.receding_query_interval is None
+    assert ROLLOUT_PROTOCOL_VERSION == "paired_action_executor_rollout_v2"
     assert POLICY_STEP_SCHEDULER_VERSION
     assert CONTROL_POSTPROCESS_VERSION
     assert TASK_SUCCESS_VERSION
+
+
+def test_rollout_cli_accepts_explicit_receding_chunk_interval():
+    args = parse_args(
+        [
+            "--checkpoint",
+            "model.pt",
+            "--output-dir",
+            "rollout",
+            "--action-select-mode",
+            "receding_chunk",
+            "--receding-query-interval",
+            "10",
+        ]
+    )
+
+    assert args.action_select_mode == "receding_chunk"
+    assert args.receding_query_interval == 10
 
 
 def test_legacy_success_force_flag_is_only_an_alias_for_safe_force():
@@ -200,6 +219,11 @@ def test_rollout_csv_schema_contains_protocol_diagnostics():
         "ema_modified",
         "ctrlrange_clip_applied",
         "success_hold_time",
+        "action_executor_version",
+        "policy_queried",
+        "executor_query_step",
+        "executor_chunk_index",
+        "executor_prediction_age",
     } <= fields
 
 

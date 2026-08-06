@@ -13,6 +13,10 @@ OFFICIAL_TEMPORAL_AGGREGATION_VERSION = "official_act_temporal_ensemble_v1"
 OFFICIAL_TEMPORAL_AGGREGATION_DECAY = 0.01
 OFFICIAL_TEMPORAL_CANDIDATE_ORDER = "oldest_prediction_to_newest_prediction"
 OFFICIAL_TEMPORAL_WEIGHT_FORMULA = "exp(-k*candidate_index)"
+RECENCY_TEMPORAL_AGGREGATION_VERSION = "recency_temporal_ensemble_v1"
+RECENCY_TEMPORAL_CANDIDATE_ORDER = "oldest_prediction_to_newest_prediction"
+RECENCY_TEMPORAL_WEIGHT_FORMULA = "exp(-k*prediction_age)"
+RECEDING_CHUNK_EXECUTION_VERSION = "receding_chunk_execution_v1"
 
 
 @dataclass(frozen=True)
@@ -83,14 +87,14 @@ class OfficialTemporalActionChunkExecutor:
         current_step: int,
         action_chunk: np.ndarray,
     ) -> TemporalAggregationResult:
-        """Add the current prediction and return its official temporal ensemble."""
+        """Add the current prediction and return the configured ensemble."""
 
         if not isinstance(current_step, int) or isinstance(current_step, bool):
             raise TypeError("current_step must be an int")
         expected_step = 0 if self._last_step is None else self._last_step + 1
         if current_step != expected_step:
             raise ValueError(
-                "official temporal execution requires one policy query per step: "
+                "temporal execution requires one policy query per step: "
                 f"expected step {expected_step}, got {current_step}"
             )
         chunk = np.asarray(action_chunk, dtype=np.float64)
@@ -129,9 +133,7 @@ class OfficialTemporalActionChunkExecutor:
                 f"no temporally aligned action exists at step {current_step}"
             )
 
-        unnormalized_weights = np.exp(
-            -self.decay * np.arange(len(aligned_actions), dtype=np.float64)
-        )
+        unnormalized_weights = self._unnormalized_weights(ages)
         weights = unnormalized_weights / unnormalized_weights.sum()
         action = np.sum(
             np.asarray(aligned_actions, dtype=np.float64) * weights[:, None],
@@ -147,4 +149,131 @@ class OfficialTemporalActionChunkExecutor:
             ages=tuple(ages),
             weights=tuple(float(value) for value in weights),
             weighted_mean_age=weighted_mean_age,
+        )
+
+    def _unnormalized_weights(self, ages: list[int]) -> np.ndarray:
+        return np.exp(-self.decay * np.arange(len(ages), dtype=np.float64))
+
+
+class RecencyTemporalActionChunkExecutor(OfficialTemporalActionChunkExecutor):
+    """Query every step and favor predictions made most recently.
+
+    Candidates remain in the same explicit oldest-to-newest order as the
+    official executor.  Unlike the official candidate-index weighting, this
+    executor weights the actual prediction age, so a positive decay gives a
+    newer prediction a larger weight.
+    """
+
+    version = RECENCY_TEMPORAL_AGGREGATION_VERSION
+    candidate_order = RECENCY_TEMPORAL_CANDIDATE_ORDER
+    weight_formula = RECENCY_TEMPORAL_WEIGHT_FORMULA
+
+    def _unnormalized_weights(self, ages: list[int]) -> np.ndarray:
+        return np.exp(-self.decay * np.asarray(ages, dtype=np.float64))
+
+
+@dataclass(frozen=True)
+class RecedingChunkResult:
+    """One action selected from the currently active open-loop chunk."""
+
+    action: np.ndarray
+    query_step: int
+    chunk_index: int
+
+    @property
+    def prediction_age(self) -> int:
+        return self.chunk_index
+
+
+class RecedingChunkActionExecutor:
+    """Query every ``query_interval`` steps and execute the chunk in order.
+
+    ``query_interval=1`` is fresh first-action receding-horizon control.
+    ``query_interval=chunk_len`` matches ACT's non-temporal execution: query
+    one chunk and execute every element before querying again.
+    """
+
+    version = RECEDING_CHUNK_EXECUTION_VERSION
+
+    def __init__(self, *, query_interval: int) -> None:
+        if (
+            not isinstance(query_interval, int)
+            or isinstance(query_interval, bool)
+            or query_interval <= 0
+        ):
+            raise ValueError("query_interval must be a positive int")
+        self.query_interval = query_interval
+        self._active_chunk: np.ndarray | None = None
+        self._query_step: int | None = None
+        self._chunk_len: int | None = None
+        self._action_dim: int | None = None
+        self._last_step: int | None = None
+        self._query_count = 0
+
+    @property
+    def query_count(self) -> int:
+        return self._query_count
+
+    @property
+    def chunk_len(self) -> int | None:
+        return self._chunk_len
+
+    @property
+    def action_dim(self) -> int | None:
+        return self._action_dim
+
+    def should_query(self, current_step: int) -> bool:
+        if not isinstance(current_step, int) or isinstance(current_step, bool):
+            raise TypeError("current_step must be an int")
+        if current_step < 0:
+            raise ValueError("current_step must be non-negative")
+        return current_step % self.query_interval == 0
+
+    def update(
+        self,
+        current_step: int,
+        action_chunk: np.ndarray | None,
+    ) -> RecedingChunkResult:
+        expected_step = 0 if self._last_step is None else self._last_step + 1
+        if current_step != expected_step:
+            raise ValueError(
+                "receding chunk execution requires consecutive control steps: "
+                f"expected step {expected_step}, got {current_step}"
+            )
+        query_now = self.should_query(current_step)
+        if query_now:
+            if action_chunk is None:
+                raise ValueError("a new action chunk is required on a query step")
+            chunk = np.asarray(action_chunk, dtype=np.float64)
+            if chunk.ndim != 2 or chunk.shape[0] <= 0 or chunk.shape[1] <= 0:
+                raise ValueError(
+                    "action_chunk must be non-empty with shape [K, action_dim]"
+                )
+            if self.query_interval > chunk.shape[0]:
+                raise ValueError(
+                    "query_interval cannot exceed the action chunk length"
+                )
+            if self._chunk_len is None:
+                self._chunk_len = int(chunk.shape[0])
+                self._action_dim = int(chunk.shape[1])
+            elif chunk.shape != (self._chunk_len, self._action_dim):
+                raise ValueError(
+                    "action_chunk shape changed during rollout: expected "
+                    f"{(self._chunk_len, self._action_dim)}, got {tuple(chunk.shape)}"
+                )
+            self._active_chunk = chunk.copy()
+            self._query_step = current_step
+            self._query_count += 1
+        elif action_chunk is not None:
+            raise ValueError("action_chunk must be omitted on a non-query step")
+        if self._active_chunk is None or self._query_step is None:
+            raise RuntimeError("no active action chunk is available")
+        chunk_index = current_step - self._query_step
+        if not 0 <= chunk_index < self._active_chunk.shape[0]:
+            raise RuntimeError("active action chunk was exhausted before the next query")
+        self._last_step = current_step
+        return RecedingChunkResult(
+            action=self._active_chunk[chunk_index].copy(),
+            query_step=self._query_step,
+            chunk_index=chunk_index,
         )

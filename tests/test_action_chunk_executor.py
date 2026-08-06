@@ -7,6 +7,10 @@ from force_aware_act.inference import (
     OFFICIAL_TEMPORAL_CANDIDATE_ORDER,
     OFFICIAL_TEMPORAL_WEIGHT_FORMULA,
     OfficialTemporalActionChunkExecutor,
+    RECEDING_CHUNK_EXECUTION_VERSION,
+    RECENCY_TEMPORAL_AGGREGATION_VERSION,
+    RecencyTemporalActionChunkExecutor,
+    RecedingChunkActionExecutor,
 )
 from scripts.run_mujoco_policy_rollout import parse_args
 
@@ -123,3 +127,76 @@ def test_executor_metadata_and_rollout_cli_default_are_official():
     assert OfficialTemporalActionChunkExecutor.weight_formula == (
         OFFICIAL_TEMPORAL_WEIGHT_FORMULA
     )
+
+
+def test_recency_executor_favors_newest_and_uses_prediction_age():
+    executor = RecencyTemporalActionChunkExecutor(decay=0.1)
+    result = None
+    for step in range(100):
+        result = executor.update(step, np.full((100, 1), step, dtype=np.float64))
+
+    assert result is not None
+    assert executor.version == RECENCY_TEMPORAL_AGGREGATION_VERSION
+    assert result.ages == tuple(range(99, -1, -1))
+    assert result.newest_weight > result.oldest_weight
+    assert result.weighted_mean_age == pytest.approx(9.50379174567408)
+
+
+def test_recency_decay_zero_matches_uniform_official_aggregation():
+    official = OfficialTemporalActionChunkExecutor(decay=0.0)
+    recency = RecencyTemporalActionChunkExecutor(decay=0.0)
+    for step in range(5):
+        chunk = _chunk(step, chunk_len=5)
+        official_result = official.update(step, chunk)
+        recency_result = recency.update(step, chunk)
+
+    np.testing.assert_allclose(recency_result.action, official_result.action)
+    np.testing.assert_allclose(recency_result.weights, official_result.weights)
+
+
+def test_receding_chunk_query_interval_one_uses_each_fresh_first_action():
+    executor = RecedingChunkActionExecutor(query_interval=1)
+    selected = []
+    for step in range(4):
+        assert executor.should_query(step)
+        result = executor.update(step, _chunk(step, chunk_len=4))
+        selected.append(result.action)
+        assert result.query_step == step
+        assert result.chunk_index == 0
+
+    assert executor.version == RECEDING_CHUNK_EXECUTION_VERSION
+    assert executor.query_count == 4
+    np.testing.assert_allclose(selected, [_chunk(step, 4)[0] for step in range(4)])
+
+
+def test_receding_chunk_executes_in_order_until_next_query():
+    executor = RecedingChunkActionExecutor(query_interval=4)
+    first = _chunk(0, chunk_len=4)
+    second = _chunk(4, chunk_len=4)
+    results = []
+    for step in range(8):
+        chunk = first if step == 0 else second if step == 4 else None
+        results.append(executor.update(step, chunk))
+
+    np.testing.assert_allclose([item.action for item in results[:4]], first)
+    np.testing.assert_allclose([item.action for item in results[4:]], second)
+    assert [item.chunk_index for item in results] == [0, 1, 2, 3, 0, 1, 2, 3]
+    assert [item.query_step for item in results] == [0, 0, 0, 0, 4, 4, 4, 4]
+    assert executor.query_count == 2
+
+
+def test_receding_chunk_rejects_missing_or_unexpected_queries():
+    executor = RecedingChunkActionExecutor(query_interval=2)
+    with pytest.raises(ValueError, match="required on a query step"):
+        executor.update(0, None)
+
+    executor = RecedingChunkActionExecutor(query_interval=2)
+    executor.update(0, _chunk(0, chunk_len=2))
+    with pytest.raises(ValueError, match="omitted on a non-query step"):
+        executor.update(1, _chunk(1, chunk_len=2))
+
+
+def test_receding_chunk_rejects_interval_longer_than_chunk():
+    executor = RecedingChunkActionExecutor(query_interval=5)
+    with pytest.raises(ValueError, match="cannot exceed"):
+        executor.update(0, _chunk(0, chunk_len=4))
