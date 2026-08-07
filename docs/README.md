@@ -110,6 +110,7 @@ The following files intentionally preserve conclusions, paths, and commands from
 - [`HISTORICAL_ARM_TELEOP_RECORDING_COMMAND_AUDIT.md`](data/HISTORICAL_ARM_TELEOP_RECORDING_COMMAND_AUDIT.md) describes a recorder path without command labels; current main datasets do have command labels.
 - [`HISTORICAL_ROLLOUT_ACTION_SELECTION_NOTES.md`](rollout/HISTORICAL_ROLLOUT_ACTION_SELECTION_NOTES.md) preserves early one-checkpoint action-selection observations, not general recommendations.
 - [`PEG100_EXPERIMENT_REPORT.md`](experiments/PEG100_EXPERIMENT_REPORT.md) and [`PEG_FIXED_INSERT_100_EXPERIMENT_PLAN.md`](experiments/PEG_FIXED_INSERT_100_EXPERIMENT_PLAN.md) describe specific datasets and staged experiments.
+- [`PAIRED50_Q1_SIGNED_TEMPORAL_VALIDATION_REPORT.md`](experiments/PAIRED50_Q1_SIGNED_TEMPORAL_VALIDATION_REPORT.md) records the validation-only fixed-Q=1 signed temporal aggregation sweep for the paired Official ACT and high-rate Contact-CVAE checkpoints.
 - Files under [`experiments/`](experiments/) are immutable rollout reports. Recompute metrics from raw outputs when changing a safety threshold.
 - Files under [`huggingface_models/`](huggingface_models/) and [`model_registry/`](model_registry/) describe released 100k-step artifacts. Their all-data training protocol is not a held-out generalization protocol.
 - `architecture/ACT_BACKBONE_FORCE_EXTENSION_AUDIT.json`, `training/checkpoint_save_logic_audit.json`, and `data/ARM_TELEOP_MUJOCO_INTEGRATION_SUMMARY.yaml` are machine-readable companions, not additional manuals.
