@@ -1,11 +1,16 @@
 # ForceAwareACT Documentation Index
 
-Last documentation-structure audit: 2026-07-17.
+Last documentation-structure audit: 2026-08-07.
 
 The implementation and CLI parsers are the final source of truth. This index
 assigns one role and category to every maintained document so that current
 manuals, focused references, audit snapshots, and historical experiment
 evidence are not used interchangeably.
+
+The three files under `methods/` are living method specifications. Any change
+to the model graph, training contract, or rollout semantics should update the
+corresponding method file in the same commit. Numerical experiment outcomes
+belong under `experiments/` and must not be folded into these method files.
 
 ## Directory Layout
 
@@ -13,6 +18,7 @@ The `docs/` root intentionally contains only this index.
 
 | Directory | Contents |
 | --- | --- |
+| [`methods/`](methods/) | Current high-rate Contact-CVAE model, training, and rollout method specifications; deliberately excludes experiment results |
 | [`architecture/`](architecture/) | Current architecture, policy algorithms, ACT baseline, component audits, and historical architecture/design evidence |
 | [`data/`](data/) | Dataset/action contracts, new-dataset processing, HDF5 field semantics, replay audits, and arm_teleop data integration |
 | [`training/`](training/) | Model training, validation, early stopping, and checkpoint-save behavior |
@@ -27,6 +33,9 @@ The `docs/` root intentionally contains only this index.
 
 | Need | Canonical document |
 | --- | --- |
+| Current high-rate Contact-CVAE model and every encoding stage | [`CONTACT_CVAE_MODEL_METHOD.md`](methods/CONTACT_CVAE_MODEL_METHOD.md) |
+| Current high-rate Contact-CVAE training configuration and logic | [`CONTACT_CVAE_TRAINING_METHOD.md`](methods/CONTACT_CVAE_TRAINING_METHOD.md) |
+| Current Contact-CVAE rollout and action-chunk execution logic | [`CONTACT_CVAE_ROLLOUT_METHOD.md`](methods/CONTACT_CVAE_ROLLOUT_METHOD.md) |
 | Repository overview and quick start | [`../README.md`](../README.md) |
 | Local MuJoCo dataset inventory and selection | [`../mujoco_data/DATASET_README.md`](../mujoco_data/DATASET_README.md) |
 | Data/model/rollout architecture | [`ARCHITECTURE.md`](architecture/ARCHITECTURE.md) |
@@ -45,6 +54,7 @@ Run commands from the repository root after activating the intended Python envir
 
 | Name pattern | Meaning | Authority |
 | --- | --- | --- |
+| `*_METHOD` | Current implementation-level method specification without experiment outcomes | Canonical within its model/training/rollout scope after source code |
 | `ARCHITECTURE`, `ACTION_SEMANTICS`, `SCRIPTS_REFERENCE`, `TESTING` | Current repository contracts and inventories | Canonical after source/CLI |
 | `*_MANUAL` | End-to-end operating procedure with decisions, checks, and troubleshooting | Canonical workflow |
 | `COMMAND_RECIPES` | Short commands for users who already understand the workflow | Convenience; manuals win on conflicts |
