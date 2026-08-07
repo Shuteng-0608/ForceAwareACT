@@ -41,8 +41,20 @@ def test_pilot_matrix_is_paired_and_interleaved_by_executor(tmp_path):
         "highrate_contact_v3__signed_kp0p01",
         "official_act__signed_kp0p03",
         "highrate_contact_v3__signed_kp0p03",
+        "official_act__signed_kp0p04",
+        "highrate_contact_v3__signed_kp0p04",
+        "official_act__signed_kp0p045",
+        "highrate_contact_v3__signed_kp0p045",
         "official_act__signed_kp0p05",
         "highrate_contact_v3__signed_kp0p05",
+        "official_act__signed_kp0p055",
+        "highrate_contact_v3__signed_kp0p055",
+        "official_act__signed_kp0p06",
+        "highrate_contact_v3__signed_kp0p06",
+        "official_act__signed_kp0p07",
+        "highrate_contact_v3__signed_kp0p07",
+        "official_act__signed_kp0p08",
+        "highrate_contact_v3__signed_kp0p08",
         "official_act__signed_kp0p1",
         "highrate_contact_v3__signed_kp0p1",
         "official_act__signed_kp0p2",
@@ -61,7 +73,13 @@ def test_pilot_matrix_is_paired_and_interleaved_by_executor(tmp_path):
         "signed_k0p0",
         "signed_kp0p01",
         "signed_kp0p03",
+        "signed_kp0p04",
+        "signed_kp0p045",
         "signed_kp0p05",
+        "signed_kp0p055",
+        "signed_kp0p06",
+        "signed_kp0p07",
+        "signed_kp0p08",
         "signed_kp0p1",
         "signed_kp0p2",
         "signed_kp0p3",
@@ -130,7 +148,7 @@ def test_completed_summary_contract_accepts_matching_q1_run(tmp_path):
     )
 
 
-def test_plan_only_main_writes_eighteen_run_manifest_without_launching(tmp_path):
+def test_plan_only_main_writes_thirty_run_manifest_without_launching(tmp_path):
     official = tmp_path / "official.pt"
     contact = tmp_path / "contact.pt"
     model_xml = tmp_path / "model.xml"
@@ -156,7 +174,7 @@ def test_plan_only_main_writes_eighteen_run_manifest_without_launching(tmp_path)
     assert plan["pilot_version"] == PILOT_VERSION
     assert plan["execution_enabled"] is False
     assert plan["fairness_contract"]["policy_query_interval"] == 1
-    assert len(plan["specifications"]) == 18
+    assert len(plan["specifications"]) == 30
     assert not list(output_dir.glob("*/summary.json"))
 
 

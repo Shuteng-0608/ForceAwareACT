@@ -44,6 +44,21 @@ rollout 只能用于：
 两个模型各运行上述 6 项，新增 12 次 rollout。runner v2 的完整登记为 9 种执行器
 乘2个模型，共18项；使用 `--skip-existing` 时会严格审计并跳过第一轮已完成的6项。
 
+第二轮发现 Contact-CVAE 在 `k=0.05`和`k=0.10`实现几何成功，但峰值力分别约为
+66 N和85 N，尚未满足40 N safe-success。第三轮围绕当前最佳`k=0.05`增加：
+
+| signed k | 100个候选稳定期的加权平均 prediction age |
+| ---: | ---: |
+| `0.040` | 22.64 steps |
+| `0.045` | 20.60 steps |
+| `0.055` | 17.28 steps |
+| `0.060` | 15.92 steps |
+| `0.070` | 13.70 steps |
+| `0.080` | 11.97 steps |
+
+两个模型各补充上述6项，新增12次 rollout。runner v3 共登记15种执行器乘2个模型，
+即30项；当已有18项完成时，`--skip-existing`只补跑这12项。
+
 ## 3. 固定公平性协议
 
 以下参数不得在两个模型之间变化：
@@ -113,7 +128,7 @@ official_act__latest_only
 highrate_contact_v3__latest_only
 ```
 
-也可以一次顺序运行所有已登记配置；当前 runner v2 共登记18条：
+也可以一次顺序运行所有已登记配置；当前 runner v3 共登记30条：
 
 ```bash
 PYTHONPATH=src python scripts/run_paired50_q1_temporal_rollout_pilot.py \
@@ -122,8 +137,8 @@ PYTHONPATH=src python scripts/run_paired50_q1_temporal_rollout_pilot.py \
 ```
 
 `--skip-existing`只接受通过完整协议审计的既有 `summary.json`，不会把任意同名目录
-当作已完成结果。若第一轮6条已经完成，上述命令只运行新增12条。runner 每完成一条
-都会重建累计 `aggregate.csv`。
+当作已完成结果。如果前两轮18条已经完成，上述命令只运行第三轮新增的12条。
+runner 每完成一条都会重建累计 `aggregate.csv`。
 
 ## 6. 每条 rollout 的必审计内容
 
