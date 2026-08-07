@@ -16,7 +16,7 @@ from typing import Any, Optional, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT_SCRIPT = REPO_ROOT / "scripts" / "run_mujoco_policy_rollout.py"
-PILOT_VERSION = "paired50_q1_temporal_rollout_pilot_v1"
+PILOT_VERSION = "paired50_q1_temporal_rollout_pilot_v2"
 ROLLOUT_PROTOCOL_VERSION = "paired_action_executor_rollout_v3"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "runs" / "paired50_q1_temporal_rollout_pilot_b1"
 DEFAULT_OFFICIAL_CHECKPOINT = (
@@ -52,6 +52,12 @@ def build_pilot_specs(
     )
     executors = (
         ("signed_km0p01", "signed_temporal", -0.01),
+        ("signed_k0p0", "signed_temporal", 0.0),
+        ("signed_kp0p01", "signed_temporal", 0.01),
+        ("signed_kp0p03", "signed_temporal", 0.03),
+        ("signed_kp0p05", "signed_temporal", 0.05),
+        ("signed_kp0p1", "signed_temporal", 0.1),
+        ("signed_kp0p2", "signed_temporal", 0.2),
         ("signed_kp0p3", "signed_temporal", 0.3),
         ("latest_only", "latest_only", None),
     )

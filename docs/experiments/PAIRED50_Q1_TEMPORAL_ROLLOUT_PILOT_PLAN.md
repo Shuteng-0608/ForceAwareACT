@@ -14,7 +14,7 @@ rollout 只能用于：
 
 ## 2. 实验矩阵
 
-两个 checkpoint 都运行完全相同的三种执行器，共 6 次 rollout：
+第一轮 pilot 让两个 checkpoint 运行完全相同的三种执行器，共 6 次 rollout：
 
 | model | executor | Q | 权重语义 |
 | --- | --- | ---: | --- |
@@ -28,6 +28,21 @@ rollout 只能用于：
 `k=+0.3`来自验证集离线 action-execution sweep 的候选结果，但离线误差优势不代表
 闭环成功率优势，因此仍需真实 rollout。`latest_only`是精确端点，不用一个任意大的
 正 `k`近似。
+
+第一轮发现 `k=-0.01`能够推进但在孔口触发 hard stop，而 `k=+0.3`和
+`latest_only`无法取得净前进。第二轮因此在两端之间增加 6 个 signed decay：
+
+| signed k | 100个候选稳定期的加权平均 prediction age |
+| ---: | ---: |
+| `0.00` | 49.50 steps |
+| `+0.01` | 41.30 steps |
+| `+0.03` | 27.60 steps |
+| `+0.05` | 18.83 steps |
+| `+0.10` | 9.50 steps |
+| `+0.20` | 4.52 steps |
+
+两个模型各运行上述 6 项，新增 12 次 rollout。runner v2 的完整登记为 9 种执行器
+乘2个模型，共18项；使用 `--skip-existing` 时会严格审计并跳过第一轮已完成的6项。
 
 ## 3. 固定公平性协议
 
@@ -98,7 +113,7 @@ official_act__latest_only
 highrate_contact_v3__latest_only
 ```
 
-也可以一次顺序运行全部 6 条：
+也可以一次顺序运行所有已登记配置；当前 runner v2 共登记18条：
 
 ```bash
 PYTHONPATH=src python scripts/run_paired50_q1_temporal_rollout_pilot.py \
@@ -107,7 +122,8 @@ PYTHONPATH=src python scripts/run_paired50_q1_temporal_rollout_pilot.py \
 ```
 
 `--skip-existing`只接受通过完整协议审计的既有 `summary.json`，不会把任意同名目录
-当作已完成结果。runner 每完成一条都会重建累计 `aggregate.csv`。
+当作已完成结果。若第一轮6条已经完成，上述命令只运行新增12条。runner 每完成一条
+都会重建累计 `aggregate.csv`。
 
 ## 6. 每条 rollout 的必审计内容
 
@@ -127,7 +143,7 @@ PYTHONPATH=src python scripts/run_paired50_q1_temporal_rollout_pilot.py \
 
 只有满足以下条件，才进入重复 rollout：
 
-- 6 个 summary 均通过 runner 的协议一致性检查；
+- 所有计划内 summary 均通过 runner 的协议一致性检查；
 - 没有非有限值、输入契约错误或实现异常；
 - force hard stop 如发生，可由真实接触行为解释；
 - 至少一个 executor 没有明显控制异常，值得增加重复次数；
