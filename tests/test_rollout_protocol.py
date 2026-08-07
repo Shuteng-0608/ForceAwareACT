@@ -19,6 +19,7 @@ from force_aware_act.inference import (
     TaskSuccessTracker,
 )
 from scripts.run_mujoco_policy_rollout import (
+    SUMMARY_REQUIRED_KEYS,
     _fieldnames,
     _summarize_policy_intervals,
     parse_args,
@@ -229,6 +230,10 @@ def test_rollout_csv_schema_contains_protocol_diagnostics():
         "executor_chunk_index",
         "executor_prediction_age",
     } <= fields
+
+
+def test_rollout_summary_schema_requires_seed_for_pairing_audit():
+    assert "seed" in SUMMARY_REQUIRED_KEYS
 
 
 def test_partial_safety_stop_does_not_distort_completed_policy_rate():

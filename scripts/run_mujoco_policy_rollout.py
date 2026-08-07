@@ -106,6 +106,7 @@ SUMMARY_REQUIRED_KEYS = (
     "control_postprocess_version",
     "task_success_version",
     "output_dir",
+    "seed",
     "checkpoint",
     "normalization_stats",
     "model_xml",
@@ -2371,6 +2372,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         "control_postprocess_version": CONTROL_POSTPROCESS_VERSION,
         "task_success_version": TASK_SUCCESS_VERSION,
         "output_dir": args.output_dir,
+        "seed": args.seed,
         "checkpoint": args.checkpoint,
         "checkpoint_format": checkpoint.get("format_version", "model_only"),
         "architecture_version": checkpoint.get("architecture_version", "legacy"),
@@ -2613,6 +2615,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         summary_file.write("\n")
 
     print(f"output_dir={args.output_dir}")
+    print(f"seed={args.seed}")
     print(f"rollout_mode={'execute' if args.execute_actions else 'dry_run'}")
     print(f"policy_variant={policy_variant}")
     print(f"steps_executed={len(rows)}")

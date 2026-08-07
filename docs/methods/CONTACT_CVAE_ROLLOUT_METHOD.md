@@ -373,7 +373,8 @@ summary 给出两者的 mean、p50、p95 和 max，并用 `1000/policy_rate_hz` 
 统计 `policy_deadline_miss_count/fraction`。若使用 `contact-latent-mode=prior`，代码
 还会额外运行 zero-latent 诊断 forward；它不计入所选 policy forward 延迟，但计入
 完整 step compute 延迟。上述统计用于判断计算预算，不改变 policy 的 30 Hz 时间
-语义，也不等价于真实机器人端到端控制延迟。
+语义，也不等价于真实机器人端到端控制延迟。协议 v3 的 summary 还必须保存
+rollout `seed`，使配对实验在脱离原始命令后仍可审计随机性设置。
 
 ## 14. 实测力安全逻辑
 
