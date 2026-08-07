@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 
-ROLLOUT_PROTOCOL_VERSION = "paired_action_executor_rollout_v2"
+ROLLOUT_PROTOCOL_VERSION = "paired_action_executor_rollout_v3"
 POLICY_STEP_SCHEDULER_VERSION = "cumulative_round_policy_clock_v1"
 CONTROL_POSTPROCESS_VERSION = "joint_target_delta_clip_ema_ctrlrange_v1"
 TASK_SUCCESS_VERSION = "collector_site_distance_dwell_v1"

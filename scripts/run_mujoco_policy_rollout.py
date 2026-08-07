@@ -8,9 +8,10 @@ import csv
 import json
 import math
 import sys
+import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, Optional, Sequence
 
 import numpy as np
 import torch
@@ -47,7 +48,9 @@ from force_aware_act.inference import (  # noqa: E402
     RecedingChunkActionExecutor,
     RecencyTemporalActionChunkExecutor,
     RolloutPolicyAdapter,
+    SignedAgeTemporalActionChunkExecutor,
     TaskSuccessTracker,
+    TemporalEndpointActionChunkExecutor,
     checkpoint_uses_rollout_adapter,
 )
 from force_aware_act.models import (  # noqa: E402
@@ -87,7 +90,14 @@ ACTION_MODE_CHOICES = (
     "delta_joint_pos_command",
 )
 DELTA_ACTION_MODES = ("delta_joint_cmd", "delta_joint_pos_command")
-TEMPORAL_ACTION_SELECT_MODES = ("temporal", "recency_temporal")
+SIGNED_TEMPORAL_ACTION_SELECT_MODE = "signed_temporal"
+LATEST_ONLY_ACTION_SELECT_MODE = "latest_only"
+TEMPORAL_ACTION_SELECT_MODES = (
+    "temporal",
+    "recency_temporal",
+    SIGNED_TEMPORAL_ACTION_SELECT_MODE,
+    LATEST_ONLY_ACTION_SELECT_MODE,
+)
 RECEDING_ACTION_SELECT_MODE = "receding_chunk"
 FIXED_INDEX_EXECUTION_VERSION = "fixed_chunk_index_requery_v1"
 SUMMARY_REQUIRED_KEYS = (
@@ -106,11 +116,14 @@ SUMMARY_REQUIRED_KEYS = (
     "action_executor_version",
     "selected_action_index",
     "receding_query_interval",
+    "policy_query_interval",
     "policy_query_count",
     "temporal_aggregation_version",
     "temporal_candidate_order",
     "temporal_weight_formula",
     "temporal_agg_decay",
+    "temporal_signed_decay_equivalent",
+    "temporal_endpoint",
     "temporal_first_num_predictions",
     "temporal_final_num_predictions",
     "temporal_first_mean_age",
@@ -131,6 +144,20 @@ SUMMARY_REQUIRED_KEYS = (
     "force_history_valid_samples_final",
     "force_history_valid_samples_max",
     "policy_rate_hz",
+    "policy_deadline_ms",
+    "policy_inference_timing_definition",
+    "policy_step_compute_timing_definition",
+    "policy_inference_time_ms_mean",
+    "policy_inference_time_ms_p50",
+    "policy_inference_time_ms_p95",
+    "policy_inference_time_ms_max",
+    "policy_inference_throughput_hz_from_mean",
+    "policy_step_compute_time_ms_mean",
+    "policy_step_compute_time_ms_p50",
+    "policy_step_compute_time_ms_p95",
+    "policy_step_compute_time_ms_max",
+    "policy_deadline_miss_count",
+    "policy_deadline_miss_fraction",
     "physics_timestep",
     "physics_steps_total",
     "physics_intervals_completed",
@@ -220,6 +247,68 @@ def _resolve_inference_device(requested_device: str) -> torch.device:
     if requested_device == "cuda" and not cuda_available:
         raise RuntimeError("--device=cuda was requested, but CUDA is not available")
     return torch.device(requested_device)
+
+
+def _synchronize_inference_device(device: torch.device) -> None:
+    """Wait for queued CUDA work so wall-clock inference timing is meaningful."""
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
+def _measure_policy_inference(
+    callback: Callable[[], Any],
+    device: torch.device,
+) -> tuple[Any, float]:
+    """Measure one policy query, excluding queued preprocessing CUDA work."""
+    _synchronize_inference_device(device)
+    start = time.perf_counter()
+    output = callback()
+    _synchronize_inference_device(device)
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    return output, elapsed_ms
+
+
+def _build_temporal_executor(action_select_mode: str, decay: float):
+    """Build a Q=1 temporal executor with explicit weighting semantics."""
+    if action_select_mode == "temporal":
+        return OfficialTemporalActionChunkExecutor(decay=decay)
+    if action_select_mode == "recency_temporal":
+        return RecencyTemporalActionChunkExecutor(decay=decay)
+    if action_select_mode == SIGNED_TEMPORAL_ACTION_SELECT_MODE:
+        return SignedAgeTemporalActionChunkExecutor(signed_decay=decay)
+    if action_select_mode == LATEST_ONLY_ACTION_SELECT_MODE:
+        return TemporalEndpointActionChunkExecutor(preference="newest")
+    return None
+
+
+def _signed_temporal_decay_equivalent(
+    action_select_mode: str,
+    decay: float,
+) -> Optional[float]:
+    """Express compatible temporal modes as exp(-signed_k * prediction_age)."""
+    if action_select_mode == "temporal":
+        return -float(decay)
+    if action_select_mode in ("recency_temporal", SIGNED_TEMPORAL_ACTION_SELECT_MODE):
+        return float(decay)
+    return None
+
+
+def _summarize_latency_ms(values: Sequence[float]) -> dict[str, float]:
+    finite = np.asarray(values, dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    if finite.size == 0:
+        return {
+            "mean": float("nan"),
+            "p50": float("nan"),
+            "p95": float("nan"),
+            "max": float("nan"),
+        }
+    return {
+        "mean": float(np.mean(finite)),
+        "p50": float(np.percentile(finite, 50)),
+        "p95": float(np.percentile(finite, 95)),
+        "max": float(np.max(finite)),
+    }
 
 
 def _stats_to_device(stats: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
@@ -828,7 +917,7 @@ def _selected_action_index(action_chunk_len: int, mode: str) -> int:
     raise ValueError(
         "unknown action selection mode: "
         f"{mode!r}; use first, mid, last, temporal, recency_temporal, "
-        "receding_chunk, or a 1-based chunk index"
+        "signed_temporal, latest_only, receding_chunk, or a 1-based chunk index"
     )
 
 
@@ -860,6 +949,10 @@ def _fieldnames() -> list[str]:
         "action_executor_version",
         "selected_action_index",
         "policy_queried",
+        "policy_inference_time_ms",
+        "policy_step_compute_time_ms",
+        "policy_deadline_ms",
+        "policy_deadline_missed",
         "executor_query_step",
         "executor_chunk_index",
         "executor_prediction_age",
@@ -1311,15 +1404,10 @@ def run_rollout(args: argparse.Namespace) -> int:
         if adapter is not None and adapter.uses_high_rate_force_history
         else None
     )
-    temporal_executor = None
-    if args.action_select_mode == "temporal":
-        temporal_executor = OfficialTemporalActionChunkExecutor(
-            decay=args.temporal_agg_decay
-        )
-    elif args.action_select_mode == "recency_temporal":
-        temporal_executor = RecencyTemporalActionChunkExecutor(
-            decay=args.temporal_agg_decay
-        )
+    temporal_executor = _build_temporal_executor(
+        args.action_select_mode,
+        args.temporal_agg_decay,
+    )
     resolved_receding_query_interval = (
         args.receding_query_interval
         if args.receding_query_interval is not None
@@ -1391,6 +1479,10 @@ def run_rollout(args: argparse.Namespace) -> int:
     cached_zero_action: Optional[np.ndarray] = None
     cached_zero_force: Optional[np.ndarray] = None
     policy_query_count = 0
+    policy_inference_time_ms_values: list[float] = []
+    policy_step_compute_time_ms_values: list[float] = []
+    policy_deadline_miss_values: list[bool] = []
+    policy_deadline_ms = 1000.0 / args.policy_rate_hz
     axial_push_active_steps = 0
     axial_push_dq_norms: list[float] = []
     raw_delta_norms: list[float] = []
@@ -1419,6 +1511,8 @@ def run_rollout(args: argparse.Namespace) -> int:
         if args.save_videos:
             video_writers = _open_video_writers(video_dir, args.video_fps)
         for step in range(args.max_rollout_steps):
+            policy_step_compute_start = time.perf_counter()
+            policy_inference_time_ms = float("nan")
             policy_queried = bool(
                 receding_executor is None
                 or receding_executor.should_query(step)
@@ -1514,12 +1608,17 @@ def run_rollout(args: argparse.Namespace) -> int:
                 )
                 force_padding_mask = None
                 if policy_queried:
-                    selected_output = _run_mode(
-                        model,
-                        images,
-                        qpos_tensor,
-                        force_window_tensor,
-                        args.contact_latent_mode,
+                    selected_output, policy_inference_time_ms = (
+                        _measure_policy_inference(
+                            lambda: _run_mode(
+                                model,
+                                images,
+                                qpos_tensor,
+                                force_window_tensor,
+                                args.contact_latent_mode,
+                            ),
+                            inference_device,
+                        )
                     )
                     selected_action, selected_force = _denormalize_predictions(
                         selected_output,
@@ -1565,42 +1664,48 @@ def run_rollout(args: argparse.Namespace) -> int:
                     )
                     force_padding_mask = None
                 if policy_queried:
-                    selected_output = adapter.forward(
-                        images,
-                        qpos_tensor,
-                        force_history=(
-                            force_window_tensor
-                            if adapter.uses_state_rate_force_history
-                            else None
-                        ),
-                        force_padding_mask=force_padding_mask,
-                        online_force_intervals=(
-                            force_window_tensor
-                            if adapter.uses_high_rate_force_history
-                            else None
-                        ),
-                        online_force_relative_time=(
-                            high_rate_relative_time
-                            if adapter.uses_high_rate_force_history
-                            else None
-                        ),
-                        online_force_sample_padding_mask=(
-                            high_rate_sample_padding_mask
-                            if adapter.uses_high_rate_force_history
-                            else None
-                        ),
-                        online_force_interval_padding_mask=(
-                            high_rate_interval_padding_mask
-                            if adapter.uses_high_rate_force_history
-                            else None
-                        ),
-                        contact_latent_mode=args.contact_latent_mode,
+                    selected_output, policy_inference_time_ms = (
+                        _measure_policy_inference(
+                            lambda: adapter.forward(
+                                images,
+                                qpos_tensor,
+                                force_history=(
+                                    force_window_tensor
+                                    if adapter.uses_state_rate_force_history
+                                    else None
+                                ),
+                                force_padding_mask=force_padding_mask,
+                                online_force_intervals=(
+                                    force_window_tensor
+                                    if adapter.uses_high_rate_force_history
+                                    else None
+                                ),
+                                online_force_relative_time=(
+                                    high_rate_relative_time
+                                    if adapter.uses_high_rate_force_history
+                                    else None
+                                ),
+                                online_force_sample_padding_mask=(
+                                    high_rate_sample_padding_mask
+                                    if adapter.uses_high_rate_force_history
+                                    else None
+                                ),
+                                online_force_interval_padding_mask=(
+                                    high_rate_interval_padding_mask
+                                    if adapter.uses_high_rate_force_history
+                                    else None
+                                ),
+                                contact_latent_mode=args.contact_latent_mode,
+                            ),
+                            inference_device,
+                        )
                     )
                     selected_action, selected_force = (
                         adapter.denormalize_predictions(selected_output)
                     )
             if policy_queried:
                 policy_query_count += 1
+                policy_inference_time_ms_values.append(policy_inference_time_ms)
                 if adapter is not None:
                     deployment_diagnostics = adapter.deployment_diagnostics(
                         selected_output,
@@ -1876,6 +1981,14 @@ def run_rollout(args: argparse.Namespace) -> int:
             if args.execute_actions and not row_stop_reason:
                 data.ctrl[actuator_ids] = ctrl_clipped_action
             qcmd = np.asarray(data.ctrl[actuator_ids], dtype=np.float64).copy()
+            policy_step_compute_time_ms = (
+                time.perf_counter() - policy_step_compute_start
+            ) * 1000.0
+            policy_deadline_missed = bool(
+                policy_step_compute_time_ms > policy_deadline_ms
+            )
+            policy_step_compute_time_ms_values.append(policy_step_compute_time_ms)
+            policy_deadline_miss_values.append(policy_deadline_missed)
             applied_ctrl_delta_norm = float(np.linalg.norm(qcmd - qpos))
             raw_delta_norms.append(raw_delta_norm)
             clipped_delta_norms.append(clipped_delta_norm)
@@ -1897,6 +2010,10 @@ def run_rollout(args: argparse.Namespace) -> int:
                 "action_executor_version": action_executor_version,
                 "selected_action_index": selected_action_index,
                 "policy_queried": policy_queried,
+                "policy_inference_time_ms": policy_inference_time_ms,
+                "policy_step_compute_time_ms": policy_step_compute_time_ms,
+                "policy_deadline_ms": policy_deadline_ms,
+                "policy_deadline_missed": policy_deadline_missed,
                 "executor_query_step": executor_query_step,
                 "executor_chunk_index": executor_chunk_index,
                 "executor_prediction_age": executor_prediction_age,
@@ -2222,6 +2339,22 @@ def run_rollout(args: argparse.Namespace) -> int:
         physics_steps_per_policy_values,
         float(mj_model.opt.timestep),
     )
+    inference_latency = _summarize_latency_ms(policy_inference_time_ms_values)
+    step_compute_latency = _summarize_latency_ms(
+        policy_step_compute_time_ms_values
+    )
+    policy_deadline_miss_count = sum(policy_deadline_miss_values)
+    policy_deadline_miss_fraction = (
+        policy_deadline_miss_count / len(policy_deadline_miss_values)
+        if policy_deadline_miss_values
+        else float("nan")
+    )
+    inference_throughput_hz = (
+        1000.0 / inference_latency["mean"]
+        if np.isfinite(inference_latency["mean"])
+        and inference_latency["mean"] > 0.0
+        else float("nan")
+    )
     achieved_policy_rate_hz = float(interval_diagnostics["achieved_policy_rate_hz"])
     safe_success = bool(
         success
@@ -2270,6 +2403,11 @@ def run_rollout(args: argparse.Namespace) -> int:
             if receding_executor is not None
             else None
         ),
+        "policy_query_interval": (
+            resolved_receding_query_interval
+            if receding_executor is not None
+            else 1
+        ),
         "policy_query_count": policy_query_count,
         "temporal_aggregation_version": (
             temporal_executor.version
@@ -2287,6 +2425,15 @@ def run_rollout(args: argparse.Namespace) -> int:
             else "not_used"
         ),
         "temporal_agg_decay": args.temporal_agg_decay,
+        "temporal_signed_decay_equivalent": _signed_temporal_decay_equivalent(
+            args.action_select_mode,
+            args.temporal_agg_decay,
+        ),
+        "temporal_endpoint": (
+            "newest"
+            if args.action_select_mode == LATEST_ONLY_ACTION_SELECT_MODE
+            else None
+        ),
         "temporal_first_num_predictions": first_temporal_num_predictions,
         "temporal_final_num_predictions": final_temporal_num_predictions,
         "temporal_first_mean_age": first_temporal_mean_age,
@@ -2343,6 +2490,30 @@ def run_rollout(args: argparse.Namespace) -> int:
             force_history_valid_samples_values
         ),
         "policy_rate_hz": args.policy_rate_hz,
+        "policy_deadline_ms": policy_deadline_ms,
+        "policy_inference_timing_definition": (
+            "CUDA-synchronized selected policy forward only; excludes input "
+            "rendering/preparation, output denormalization, temporal aggregation, "
+            "control postprocessing, optional prior-vs-zero diagnostic forward, "
+            "logging, and MuJoCo stepping"
+        ),
+        "policy_step_compute_timing_definition": (
+            "observation read through command preparation/application; includes "
+            "rendering, input preparation, selected policy forward, optional "
+            "prior-vs-zero diagnostic forward, temporal aggregation, and control "
+            "postprocessing; excludes CSV construction and MuJoCo stepping"
+        ),
+        "policy_inference_time_ms_mean": inference_latency["mean"],
+        "policy_inference_time_ms_p50": inference_latency["p50"],
+        "policy_inference_time_ms_p95": inference_latency["p95"],
+        "policy_inference_time_ms_max": inference_latency["max"],
+        "policy_inference_throughput_hz_from_mean": inference_throughput_hz,
+        "policy_step_compute_time_ms_mean": step_compute_latency["mean"],
+        "policy_step_compute_time_ms_p50": step_compute_latency["p50"],
+        "policy_step_compute_time_ms_p95": step_compute_latency["p95"],
+        "policy_step_compute_time_ms_max": step_compute_latency["max"],
+        "policy_deadline_miss_count": policy_deadline_miss_count,
+        "policy_deadline_miss_fraction": policy_deadline_miss_fraction,
         "physics_timestep": float(mj_model.opt.timestep),
         "physics_steps_total": interval_diagnostics["physics_steps_total"],
         "physics_intervals_completed": interval_diagnostics[
@@ -2459,11 +2630,29 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"action_executor_version={summary['action_executor_version']}")
     print(f"selected_action_index={_selected_action_index(args.chunk_len, args.action_select_mode)}")
     print(f"receding_query_interval={summary['receding_query_interval']}")
+    print(f"policy_query_interval={summary['policy_query_interval']}")
     print(f"policy_query_count={policy_query_count}")
     print(f"rollout_protocol_version={ROLLOUT_PROTOCOL_VERSION}")
     print(f"policy_step_scheduler_version={POLICY_STEP_SCHEDULER_VERSION}")
     print(f"control_postprocess_version={CONTROL_POSTPROCESS_VERSION}")
     print(f"task_success_version={TASK_SUCCESS_VERSION}")
+    print(
+        "policy_inference_time_ms="
+        f"mean={inference_latency['mean']:.9g},"
+        f"p50={inference_latency['p50']:.9g},"
+        f"p95={inference_latency['p95']:.9g},"
+        f"max={inference_latency['max']:.9g}"
+    )
+    print(
+        "policy_step_compute_time_ms="
+        f"mean={step_compute_latency['mean']:.9g},"
+        f"p50={step_compute_latency['p50']:.9g},"
+        f"p95={step_compute_latency['p95']:.9g},"
+        f"max={step_compute_latency['max']:.9g}"
+    )
+    print(f"policy_deadline_ms={policy_deadline_ms:.9g}")
+    print(f"policy_deadline_miss_count={policy_deadline_miss_count}")
+    print(f"policy_deadline_miss_fraction={policy_deadline_miss_fraction:.9g}")
     print(f"achieved_policy_rate_hz={achieved_policy_rate_hz:.9g}")
     print(f"physics_steps_per_policy_min={summary['physics_steps_per_policy_min']}")
     print(f"physics_steps_per_policy_max={summary['physics_steps_per_policy_max']}")
@@ -2506,6 +2695,11 @@ def run_rollout(args: argparse.Namespace) -> int:
         print(f"temporal_candidate_order={temporal_executor.candidate_order}")
         print(f"temporal_weight_formula={temporal_executor.weight_formula}")
         print(f"temporal_agg_decay={args.temporal_agg_decay:.9g}")
+        print(
+            "temporal_signed_decay_equivalent="
+            f"{summary['temporal_signed_decay_equivalent']}"
+        )
+        print(f"temporal_endpoint={summary['temporal_endpoint']}")
         print(f"first_temporal_num_predictions={first_temporal_num_predictions}")
         print(f"final_temporal_num_predictions={final_temporal_num_predictions}")
         print(f"first_temporal_mean_age={first_temporal_mean_age:.9g}")
@@ -2638,14 +2832,20 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default="temporal",
         help=(
             "Select first/mid/last, official temporal aggregation, recency "
-            "temporal aggregation, receding chunk execution, or a 1-based "
-            "action-chunk index such as 1 or 10."
+            "temporal aggregation, signed_temporal (Q=1 with signed age "
+            "decay), latest_only (Q=1 newest prediction endpoint), receding "
+            "chunk execution, or a 1-based action-chunk index such as 1 or 10."
         ),
     )
     parser.add_argument(
         "--temporal-agg-decay",
         type=float,
         default=OFFICIAL_TEMPORAL_AGGREGATION_DECAY,
+        help=(
+            "Temporal weight parameter. signed_temporal accepts any finite "
+            "value k and uses softmax(-k * prediction_age); legacy temporal "
+            "modes require a non-negative value. Ignored by latest_only."
+        ),
     )
     parser.add_argument(
         "--receding-query-interval",
@@ -2863,9 +3063,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("error: --hole-axis-world must be a finite nonzero vector", file=sys.stderr)
         return 2
     args.hole_axis_world = args.hole_axis_world / hole_axis_norm
-    if not np.isfinite(args.temporal_agg_decay) or args.temporal_agg_decay < 0:
+    if not np.isfinite(args.temporal_agg_decay) or (
+        args.action_select_mode != SIGNED_TEMPORAL_ACTION_SELECT_MODE
+        and args.temporal_agg_decay < 0
+    ):
         print(
-            "error: --temporal-agg-decay must be finite and non-negative",
+            "error: --temporal-agg-decay must be finite; negative values are "
+            "only valid with --action-select-mode=signed_temporal",
             file=sys.stderr,
         )
         return 2

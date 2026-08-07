@@ -13,7 +13,7 @@ scripts/run_mujoco_policy_rollout.py
 当前协议版本：
 
 ```text
-rollout protocol: paired_action_executor_rollout_v2
+rollout protocol: paired_action_executor_rollout_v3
 high-rate force:  causal_raw_500hz_last_100_grouped_state_intervals_v2
 ```
 
@@ -286,12 +286,39 @@ chunk 的固定 index。它们不是严格的绝对时间 receding-horizon 控�
 选择 `last`，实际总是在执行约 99 步以后所预测的目标。因此主要用于诊断，不应
 与默认 temporal 结果混为同一控制方法。
 
-### 11.4 Signed-age 扫描的当前边界
+### 11.4 Signed-age temporal 与 latest-only
 
-代码库中还有 `SignedAgeTemporalActionChunkExecutor` 和 newest/oldest endpoint
-executor，用于离线 validation action-execution sweep。它们能覆盖负、零、正
-signed `k`，但当前单次 MuJoCo rollout CLI 并未暴露这些 mode。文档不能把离线
-sweep 能力误写成当前在线 rollout 已支持的命令选项。
+单次 MuJoCo rollout 支持统一的有符号年龄参数：
+
+```text
+--action-select-mode signed_temporal
+--temporal-agg-decay signed_k
+```
+
+该模式固定每个 policy step query，即 `Q=1`，并使用：
+
+```text
+w_i proportional to exp(-signed_k * age_i)
+```
+
+- `signed_k < 0`：偏向旧 prediction；
+- `signed_k = 0`：所有有效 prediction 等权；
+- `signed_k > 0`：偏向新 prediction。
+
+官方 `temporal --temporal-agg-decay 0.01` 在 `Q=1` 下与
+`signed_temporal --temporal-agg-decay -0.01` 完全等价。summary 同时记录原始
+CLI 参数与 `temporal_signed_decay_equivalent`，避免两套符号约定混淆。
+
+精确的最新预测端点为：
+
+```text
+--action-select-mode latest_only
+```
+
+它仍然 `Q=1`，但只执行本帧新 chunk 的 `chunk[0]`；其行为不依赖
+`--temporal-agg-decay`。这是有限大正 `signed_k` 的明确端点，不用一个任意大数
+近似。每次 summary 都记录 `policy_query_interval=1` 和
+`temporal_endpoint=newest`。
 
 ## 12. 动作语义与控制后处理
 
@@ -333,6 +360,20 @@ steps_this_interval = cumulative_target_n - cumulative_target_(n-1)
 训练目标按 30 Hz state/action interval 定义，rollout 也强制高频 checkpoint 以
 30 Hz query；更高的闭环 policy rate 需要重新定义数据标签、时间区间和训练契约，
 不能仅靠缩短 simulator wait 直接宣称等价。
+
+协议 v3 逐步记录两种 wall-clock 指标：
+
+- `policy_inference_time_ms`：在 forward 前后执行 CUDA synchronize，只测所选部署
+  latent 的 policy forward；
+- `policy_step_compute_time_ms`：从读取 observation 到控制命令准备/写入，包含渲染、
+  输入构造、policy forward、temporal aggregation 和控制后处理，但不包含 MuJoCo
+  physics stepping 与 CSV 构造。
+
+summary 给出两者的 mean、p50、p95 和 max，并用 `1000/policy_rate_hz` 作为 deadline
+统计 `policy_deadline_miss_count/fraction`。若使用 `contact-latent-mode=prior`，代码
+还会额外运行 zero-latent 诊断 forward；它不计入所选 policy forward 延迟，但计入
+完整 step compute 延迟。上述统计用于判断计算预算，不改变 policy 的 30 Hz 时间
+语义，也不等价于真实机器人端到端控制延迟。
 
 ## 14. 实测力安全逻辑
 

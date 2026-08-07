@@ -131,6 +131,24 @@ def test_executor_metadata_and_rollout_cli_default_are_official():
     )
 
 
+def test_rollout_cli_parses_negative_signed_temporal_decay():
+    args = parse_args(
+        [
+            "--checkpoint",
+            "model.pt",
+            "--output-dir",
+            "rollout",
+            "--action-select-mode",
+            "signed_temporal",
+            "--temporal-agg-decay",
+            "-0.3",
+        ]
+    )
+
+    assert args.action_select_mode == "signed_temporal"
+    assert args.temporal_agg_decay == -0.3
+
+
 def test_recency_executor_favors_newest_and_uses_prediction_age():
     executor = RecencyTemporalActionChunkExecutor(decay=0.1)
     result = None

@@ -165,7 +165,7 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.success_lateral_threshold is None
     assert args.success_hold_steps is None
     assert args.receding_query_interval is None
-    assert ROLLOUT_PROTOCOL_VERSION == "paired_action_executor_rollout_v2"
+    assert ROLLOUT_PROTOCOL_VERSION == "paired_action_executor_rollout_v3"
     assert POLICY_STEP_SCHEDULER_VERSION
     assert CONTROL_POSTPROCESS_VERSION
     assert TASK_SUCCESS_VERSION
@@ -221,6 +221,10 @@ def test_rollout_csv_schema_contains_protocol_diagnostics():
         "success_hold_time",
         "action_executor_version",
         "policy_queried",
+        "policy_inference_time_ms",
+        "policy_step_compute_time_ms",
+        "policy_deadline_ms",
+        "policy_deadline_missed",
         "executor_query_step",
         "executor_chunk_index",
         "executor_prediction_age",

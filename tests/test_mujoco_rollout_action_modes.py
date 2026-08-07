@@ -3,13 +3,23 @@ import pytest
 import torch
 
 from force_aware_act.data import normalize_tensor
+from force_aware_act.inference import (
+    SignedAgeTemporalActionChunkExecutor,
+    TemporalEndpointActionChunkExecutor,
+)
 
 from scripts.run_mujoco_policy_rollout import (
+    LATEST_ONLY_ACTION_SELECT_MODE,
+    SIGNED_TEMPORAL_ACTION_SELECT_MODE,
     SUMMARY_REQUIRED_KEYS,
+    _build_temporal_executor,
     _interpret_selected_action,
+    _measure_policy_inference,
     _resolve_inference_device,
     _run_mode,
+    _signed_temporal_decay_equivalent,
     _stats_to_device,
+    _summarize_latency_ms,
     _selected_action_delta_norm_raw_to_current,
     _selected_action_index,
     _validate_stats_action_mode,
@@ -156,7 +166,40 @@ def test_one_based_action_chunk_selection_maps_to_zero_based_indices():
     assert _selected_action_index(10, "last") == 9
     assert _selected_action_index(10, "temporal") == -1
     assert _selected_action_index(10, "recency_temporal") == -1
+    assert _selected_action_index(10, "signed_temporal") == -1
+    assert _selected_action_index(10, "latest_only") == -1
     assert _selected_action_index(10, "receding_chunk") == -1
+
+
+def test_temporal_executor_builder_exposes_q1_signed_and_latest_modes():
+    signed = _build_temporal_executor(SIGNED_TEMPORAL_ACTION_SELECT_MODE, -0.3)
+    latest = _build_temporal_executor(LATEST_ONLY_ACTION_SELECT_MODE, 123.0)
+
+    assert isinstance(signed, SignedAgeTemporalActionChunkExecutor)
+    assert signed.signed_decay == -0.3
+    assert isinstance(latest, TemporalEndpointActionChunkExecutor)
+    assert latest.preference == "newest"
+
+
+def test_temporal_modes_report_equivalent_signed_age_parameter():
+    assert _signed_temporal_decay_equivalent("temporal", 0.01) == -0.01
+    assert _signed_temporal_decay_equivalent("recency_temporal", 0.03) == 0.03
+    assert _signed_temporal_decay_equivalent("signed_temporal", -0.3) == -0.3
+    assert _signed_temporal_decay_equivalent("latest_only", 0.01) is None
+
+
+def test_cpu_policy_inference_timer_and_latency_summary():
+    output, elapsed_ms = _measure_policy_inference(
+        lambda: {"value": 3},
+        torch.device("cpu"),
+    )
+    summary = _summarize_latency_ms([1.0, 2.0, 3.0, float("nan")])
+
+    assert output == {"value": 3}
+    assert elapsed_ms >= 0.0
+    assert summary == pytest.approx(
+        {"mean": 2.0, "p50": 2.0, "p95": 2.9, "max": 3.0}
+    )
 
 
 @pytest.mark.parametrize("mode", ["0", "11", "unknown"])
