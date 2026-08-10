@@ -11,6 +11,8 @@ from force_aware_act.visualization.force_feedback_overlay import (  # noqa: E402
 from force_aware_act.visualization.rollout_force_hud import (  # noqa: E402
     RolloutForceHUDAdapter,
     RolloutForceHUDConfig,
+    RolloutForceHUDIntervalPeakTracker,
+    draw_rollout_force_hud_rgb,
 )
 
 
@@ -198,6 +200,72 @@ def test_failed_data_update_does_not_advance_episode_state() -> None:
     snapshot = adapter.update(data, np.zeros(6), timestamp=0.0)
     assert snapshot.timestamp == 0.0
     assert adapter.update_count == 1
+
+
+def test_interval_peak_tracks_direct_raw_and_compensated_samples() -> None:
+    model, data = _model_and_data()
+    adapter = RolloutForceHUDAdapter(
+        model,
+        _feedback_config(),
+        RolloutForceHUDConfig(),
+    )
+    snapshot = adapter.update(data, [0, 0, 9.81, 0, 0, 0], timestamp=1.0)
+    tracker = RolloutForceHUDIntervalPeakTracker(adapter, snapshot)
+
+    tracker.observe(data, [0, 0, 0, 0, 0, 0], timestamp=1.002)
+    tracker.observe(data, [0, 0, 4, 0, 0, 0], timestamp=1.004)
+    peak = tracker.result()
+
+    assert peak.start_timestamp == 1.0
+    assert peak.end_timestamp == 1.004
+    assert peak.sample_count == 3
+    assert peak.raw_force_norm == pytest.approx(9.81)
+    assert peak.raw_timestamp == pytest.approx(1.0)
+    assert peak.compensated_force_norm == pytest.approx(9.81)
+    assert peak.compensated_timestamp == pytest.approx(1.002)
+    assert peak.primary_force_norm == pytest.approx(9.81)
+    assert peak.primary_timestamp == pytest.approx(1.002)
+    assert peak.primary_source_label == "comp"
+
+    with pytest.raises(ValueError, match="strictly increasing"):
+        tracker.observe(data, np.zeros(6), timestamp=1.004)
+
+
+def test_draw_rollout_force_hud_returns_rgb_without_mutating_input() -> None:
+    model, data = _model_and_data()
+    feedback_config = _feedback_config(enable_task_force_guidance_hud=True)
+    adapter = RolloutForceHUDAdapter(
+        model,
+        feedback_config,
+        RolloutForceHUDConfig(gravity_world=(0.0, 0.0, 0.0)),
+    )
+    snapshot = adapter.update(data, [3, 4, 0, 0, 0, 0], timestamp=0.0)
+    tracker = RolloutForceHUDIntervalPeakTracker(adapter, snapshot)
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    original = frame.copy()
+
+    output = draw_rollout_force_hud_rgb(
+        frame,
+        snapshot,
+        feedback_config,
+        tracker.result(),
+        output_width=400,
+        output_height=300,
+    )
+
+    assert output.shape == (300, 400, 3)
+    assert output.dtype == np.uint8
+    assert output.flags.c_contiguous
+    assert np.any(output != 0)
+    np.testing.assert_array_equal(frame, original)
+
+    with pytest.raises(ValueError, match="HxWx3 uint8"):
+        draw_rollout_force_hud_rgb(
+            frame.astype(np.float32),
+            snapshot,
+            feedback_config,
+            tracker.result(),
+        )
 
 
 @pytest.mark.parametrize("field", ["primary_wrench", "compensation_mode"])

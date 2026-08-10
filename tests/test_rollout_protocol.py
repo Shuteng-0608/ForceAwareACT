@@ -166,6 +166,11 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.success_lateral_threshold is None
     assert args.success_hold_steps is None
     assert args.receding_query_interval is None
+    assert args.save_force_hud_video is False
+    assert args.force_hud_camera == "cctv_cam"
+    assert args.force_hud_width == 1280
+    assert args.force_hud_height == 720
+    assert args.force_hud_primary_wrench == "compensated"
     assert ROLLOUT_PROTOCOL_VERSION == "paired_action_executor_rollout_v3"
     assert POLICY_STEP_SCHEDULER_VERSION
     assert CONTROL_POSTPROCESS_VERSION
@@ -230,6 +235,20 @@ def test_rollout_csv_schema_contains_protocol_diagnostics():
         "executor_chunk_index",
         "executor_prediction_age",
     } <= fields
+
+
+def test_force_hud_csv_fields_are_opt_in():
+    baseline_fields = set(_fieldnames())
+    hud_fields = set(_fieldnames(include_force_hud=True))
+    expected = {
+        "force_hud_current_raw_force_norm",
+        "force_hud_current_compensated_force_norm",
+        "force_hud_interval_sample_count",
+        "force_hud_interval_peak_primary_force_norm",
+    }
+
+    assert expected.isdisjoint(baseline_fields)
+    assert expected <= hud_fields
 
 
 def test_rollout_summary_schema_requires_seed_for_pairing_audit():

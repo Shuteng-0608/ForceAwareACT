@@ -65,6 +65,10 @@ from force_aware_act.models import (  # noqa: E402
 JOINT_NAMES = tuple(f"joint_{index}" for index in range(1, 8))
 ACTUATOR_NAMES = tuple(f"motor_joint_{index}" for index in range(1, 8))
 CAMERA_NAMES = ("ee_cam", "base_top_cam")
+DEFAULT_FORCE_HUD_CAMERA = "cctv_cam"
+DEFAULT_FORCE_HUD_WIDTH = 1280
+DEFAULT_FORCE_HUD_HEIGHT = 720
+FORCE_HUD_PRIMARY_WRENCH_CHOICES = ("raw", "compensated")
 SENSOR_NAMES = ("peg_ft_force", "peg_ft_torque")
 TASK_SITE_NAMES = ("peg_tip_site", "hole_goal_site")
 TASK_BODY_NAMES = ("peg_tool", "wall_task")
@@ -684,6 +688,14 @@ def _render_images(
     return tensor, np.asarray(frames, dtype=np.uint8)
 
 
+def _render_camera_rgb(renderer, data, camera_id: int) -> np.ndarray:
+    renderer.update_scene(data, camera=int(camera_id))
+    frame = np.asarray(renderer.render(), dtype=np.uint8)
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        raise ValueError("MuJoCo camera render must be an HxWx3 RGB frame")
+    return frame.copy()
+
+
 def _position_or_nan(positions: np.ndarray, object_id: int) -> np.ndarray:
     if object_id < 0:
         return np.full(3, np.nan, dtype=np.float64)
@@ -773,6 +785,151 @@ def _append_video_frames(
             "could not write MP4 video frames; ensure imageio and imageio-ffmpeg "
             "are installed with: .venv/bin/python -m pip install imageio imageio-ffmpeg"
         ) from error
+
+
+def _open_named_video_writer(path: Path, fps: int):
+    try:
+        import imageio.v2 as imageio
+    except ImportError as error:
+        raise RuntimeError(
+            "video recording requires imageio and imageio-ffmpeg; install them with: "
+            ".venv/bin/python -m pip install imageio imageio-ffmpeg"
+        ) from error
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        return imageio.get_writer(path, fps=fps)
+    except Exception as error:
+        raise RuntimeError(
+            f"could not initialize MP4 video writer for {path}; ensure imageio "
+            "and imageio-ffmpeg are installed"
+        ) from error
+
+
+def _append_named_video_frame(writer, frame_rgb: np.ndarray, path: Path) -> None:
+    try:
+        writer.append_data(frame_rgb)
+    except Exception as error:
+        raise RuntimeError(f"could not write MP4 video frame to {path}") from error
+
+
+def _force_hud_feedback_config(args: argparse.Namespace):
+    """Mirror the operator HUD settings in arm_teleop's peg configuration."""
+
+    from force_aware_act.visualization.force_feedback_overlay import (
+        ForceFeedbackConfig,
+    )
+
+    return ForceFeedbackConfig(
+        enabled=True,
+        display_mode="overlay",
+        overlay_cameras=[args.force_hud_camera],
+        low_threshold=10.0,
+        medium_threshold=40.0,
+        high_threshold=80.0,
+        excessive_threshold=100.0,
+        show_numbers=True,
+        show_axial_lateral=True,
+        show_trend=True,
+        show_contact_state=True,
+        show_arrow=False,
+        smoothing_alpha=0.25,
+        insertion_axis_world=args.hole_axis_world,
+        use_compensated_wrench=(
+            args.force_hud_primary_wrench == "compensated"
+        ),
+        trend_window_sec=0.8,
+        trend_rising_threshold=5.0,
+        trend_falling_threshold=-5.0,
+        contact_free_threshold=5.0,
+        contact_light_threshold=15.0,
+        axial_high_threshold=20.0,
+        lateral_high_threshold=10.0,
+        jam_force_threshold=25.0,
+        jam_lateral_threshold=12.0,
+        enable_task_force_guidance_hud=True,
+        task_force_guidance_mode="ring",
+        force_guidance_overlay_cameras=[args.force_hud_camera],
+        show_translation_ring=True,
+        show_torque_ring=True,
+        show_axial_core=True,
+        force_guidance_ring_radius_px=70,
+        force_guidance_max_vector_px=55,
+        force_guidance_max_force_n=40.0,
+        force_guidance_max_torque_nm=2.0,
+        torque_guidance_mode="off",
+        torque_guidance_min_force_n=5.0,
+        torque_guidance_min_torque_nm=0.05,
+        torque_guidance_label_as_posture=True,
+        torque_guidance_show_numeric_values=True,
+        force_guidance_draw_numeric_values=True,
+        force_guidance_show_caveat_label=True,
+        force_guidance_hud_anchor="custom",
+        force_guidance_hud_margin_px=[40, 40],
+        force_guidance_hud_offset_px=[0, 0],
+        force_guidance_hud_center_norm=[0.50, 0.18],
+        force_guidance_basis_mode="camera_screen",
+        force_guidance_basis_camera=args.force_hud_camera,
+        force_guidance_screen_right_sign=1.0,
+        force_guidance_screen_up_sign=1.0,
+        force_guidance_vector_semantics="contact",
+        force_guidance_correction_sign=-1.0,
+        wrench_label=(
+            "comp"
+            if args.force_hud_primary_wrench == "compensated"
+            else "raw"
+        ),
+    )
+
+
+def _write_force_hud_interval_frame(
+    writer,
+    output_path: Path,
+    frame_rgb: np.ndarray,
+    snapshot,
+    peak_tracker,
+    feedback_config,
+    output_width: int,
+    output_height: int,
+):
+    from force_aware_act.visualization.rollout_force_hud import (
+        draw_rollout_force_hud_rgb,
+    )
+
+    peak = peak_tracker.result()
+    annotated_rgb = draw_rollout_force_hud_rgb(
+        frame_rgb=frame_rgb,
+        snapshot=snapshot,
+        force_feedback_config=feedback_config,
+        interval_peak=peak,
+        output_width=output_width,
+        output_height=output_height,
+    )
+    _append_named_video_frame(writer, annotated_rgb, output_path)
+    return peak
+
+
+def _force_hud_row_values(snapshot, peak) -> dict[str, object]:
+    return {
+        "force_hud_primary_source": snapshot.primary_source_label,
+        "force_hud_current_raw_force_norm": snapshot.raw_force_norm,
+        "force_hud_current_compensated_force_norm": (
+            snapshot.compensated_force_norm
+        ),
+        "force_hud_interval_start_time": peak.start_timestamp,
+        "force_hud_interval_end_time": peak.end_timestamp,
+        "force_hud_interval_sample_count": peak.sample_count,
+        "force_hud_interval_peak_raw_force_norm": peak.raw_force_norm,
+        "force_hud_interval_peak_raw_time": peak.raw_timestamp,
+        "force_hud_interval_peak_compensated_force_norm": (
+            peak.compensated_force_norm
+        ),
+        "force_hud_interval_peak_compensated_time": (
+            peak.compensated_timestamp
+        ),
+        "force_hud_interval_peak_primary_force_norm": peak.primary_force_norm,
+        "force_hud_interval_peak_primary_time": peak.primary_timestamp,
+    }
 
 
 def _resample_force_window(
@@ -939,7 +1096,7 @@ def _axial_push_joint_bias(
     return arm_jacp.T @ np.linalg.solve(regularized, desired_dx_world)
 
 
-def _fieldnames() -> list[str]:
+def _fieldnames(include_force_hud: bool = False) -> list[str]:
     fields = [
         "step",
         "time",
@@ -1070,6 +1227,22 @@ def _fieldnames() -> list[str]:
             "stop_reason",
         ]
     )
+    if include_force_hud:
+        force_stop_index = fields.index("force_stop_time")
+        fields[force_stop_index:force_stop_index] = [
+            "force_hud_primary_source",
+            "force_hud_current_raw_force_norm",
+            "force_hud_current_compensated_force_norm",
+            "force_hud_interval_start_time",
+            "force_hud_interval_end_time",
+            "force_hud_interval_sample_count",
+            "force_hud_interval_peak_raw_force_norm",
+            "force_hud_interval_peak_raw_time",
+            "force_hud_interval_peak_compensated_force_norm",
+            "force_hud_interval_peak_compensated_time",
+            "force_hud_interval_peak_primary_force_norm",
+            "force_hud_interval_peak_primary_time",
+        ]
     return fields
 
 
@@ -1108,9 +1281,16 @@ def _summarize_policy_intervals(
     }
 
 
-def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
+def _write_csv(
+    path: Path,
+    rows: list[dict[str, object]],
+    include_force_hud: bool = False,
+) -> None:
     with path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=_fieldnames())
+        writer = csv.DictWriter(
+            csv_file,
+            fieldnames=_fieldnames(include_force_hud=include_force_hud),
+        )
         writer.writeheader()
         writer.writerows(rows)
 
@@ -1310,6 +1490,17 @@ def run_rollout(args: argparse.Namespace) -> int:
     camera_ids = _resolve_ids(
         mujoco, mj_model, mujoco.mjtObj.mjOBJ_CAMERA, CAMERA_NAMES, "cameras"
     )
+    force_hud_camera_id: Optional[int] = None
+    if args.save_force_hud_video:
+        force_hud_camera_id = int(
+            _resolve_ids(
+                mujoco,
+                mj_model,
+                mujoco.mjtObj.mjOBJ_CAMERA,
+                (args.force_hud_camera,),
+                "force HUD cameras",
+            )[0]
+        )
     sensor_ids = _resolve_ids(
         mujoco, mj_model, mujoco.mjtObj.mjOBJ_SENSOR, SENSOR_NAMES, "sensors"
     )
@@ -1442,6 +1633,33 @@ def run_rollout(args: argparse.Namespace) -> int:
         height=args.image_height,
         width=args.image_width,
     )
+    force_hud_feedback_config = (
+        _force_hud_feedback_config(args)
+        if args.save_force_hud_video
+        else None
+    )
+    if args.save_force_hud_video:
+        from force_aware_act.visualization.rollout_force_hud import (
+            RolloutForceHUDAdapter,
+            RolloutForceHUDConfig,
+            RolloutForceHUDIntervalPeakTracker,
+        )
+
+    force_hud_adapter = (
+        RolloutForceHUDAdapter(
+            mj_model,
+            force_hud_feedback_config,
+            RolloutForceHUDConfig(
+                camera_name=args.force_hud_camera,
+                primary_wrench=args.force_hud_primary_wrench,
+                gravity_world=tuple(
+                    np.asarray(mj_model.opt.gravity, dtype=np.float64).tolist()
+                ),
+            ),
+        )
+        if force_hud_feedback_config is not None
+        else None
+    )
 
     rows: list[dict[str, object]] = []
     force_norm_history: list[float] = []
@@ -1507,10 +1725,18 @@ def run_rollout(args: argparse.Namespace) -> int:
     video_dir = args.output_dir / "videos"
     video_writers: dict[str, object] = {}
     video_frame_counts = {camera_name: 0 for camera_name in CAMERA_NAMES}
+    force_hud_video_path = video_dir / f"{args.force_hud_camera}_force_hud.mp4"
+    force_hud_video_writer = None
+    force_hud_video_frame_count = 0
 
     try:
         if args.save_videos:
             video_writers = _open_video_writers(video_dir, args.video_fps)
+        if args.save_force_hud_video:
+            force_hud_video_writer = _open_named_video_writer(
+                force_hud_video_path,
+                args.video_fps,
+            )
         for step in range(args.max_rollout_steps):
             policy_step_compute_start = time.perf_counter()
             policy_inference_time_ms = float("nan")
@@ -1522,6 +1748,27 @@ def run_rollout(args: argparse.Namespace) -> int:
             qvel = np.asarray(data.qvel[joint_dofadr], dtype=np.float32).copy()
             wrench = _read_wrench(data, force_slice, torque_slice).astype(np.float32)
             force_norm = float(np.linalg.norm(wrench[:3]))
+            force_hud_snapshot = None
+            force_hud_frame_rgb = None
+            force_hud_peak_tracker = None
+            if force_hud_adapter is not None:
+                force_hud_snapshot = force_hud_adapter.update(
+                    data,
+                    wrench,
+                    timestamp=float(data.time),
+                )
+                if step % args.video_every == 0:
+                    if force_hud_camera_id is None:
+                        raise RuntimeError("force HUD camera was not initialized")
+                    force_hud_frame_rgb = _render_camera_rgb(
+                        renderer,
+                        data,
+                        force_hud_camera_id,
+                    )
+                    force_hud_peak_tracker = RolloutForceHUDIntervalPeakTracker(
+                        force_hud_adapter,
+                        force_hud_snapshot,
+                    )
             if not force_norm_history:
                 force_norm_history.append(force_norm)
             high_rate_tensors = None
@@ -2235,6 +2482,31 @@ def run_rollout(args: argparse.Namespace) -> int:
             rows.append(row)
 
             if row_stop_reason:
+                if force_hud_peak_tracker is not None:
+                    if (
+                        force_hud_video_writer is None
+                        or force_hud_frame_rgb is None
+                        or force_hud_snapshot is None
+                        or force_hud_feedback_config is None
+                    ):
+                        raise RuntimeError("force HUD frame state is incomplete")
+                    force_hud_peak = _write_force_hud_interval_frame(
+                        force_hud_video_writer,
+                        force_hud_video_path,
+                        force_hud_frame_rgb,
+                        force_hud_snapshot,
+                        force_hud_peak_tracker,
+                        force_hud_feedback_config,
+                        args.force_hud_width,
+                        args.force_hud_height,
+                    )
+                    row.update(
+                        _force_hud_row_values(
+                            force_hud_snapshot,
+                            force_hud_peak,
+                        )
+                    )
+                    force_hud_video_frame_count += 1
                 scheduled_physics_steps_per_policy_values.append(0)
                 physics_steps_per_policy_values.append(0)
                 stop_reason = row_stop_reason
@@ -2251,6 +2523,12 @@ def run_rollout(args: argparse.Namespace) -> int:
                 if high_rate_force_buffer is not None:
                     high_rate_force_buffer.observe_physics_step(
                         float(data.time), sampled_wrench.astype(np.float32)
+                    )
+                if force_hud_peak_tracker is not None:
+                    force_hud_peak_tracker.observe(
+                        data,
+                        sampled_wrench,
+                        timestamp=float(data.time),
                     )
                 sampled_force_norm = float(np.linalg.norm(sampled_wrench[:3]))
                 force_norm_history.append(sampled_force_norm)
@@ -2293,6 +2571,31 @@ def run_rollout(args: argparse.Namespace) -> int:
                 scheduled_physics_steps_this_policy
             )
             physics_steps_per_policy_values.append(executed_physics_steps)
+            if force_hud_peak_tracker is not None:
+                if (
+                    force_hud_video_writer is None
+                    or force_hud_frame_rgb is None
+                    or force_hud_snapshot is None
+                    or force_hud_feedback_config is None
+                ):
+                    raise RuntimeError("force HUD frame state is incomplete")
+                force_hud_peak = _write_force_hud_interval_frame(
+                    force_hud_video_writer,
+                    force_hud_video_path,
+                    force_hud_frame_rgb,
+                    force_hud_snapshot,
+                    force_hud_peak_tracker,
+                    force_hud_feedback_config,
+                    args.force_hud_width,
+                    args.force_hud_height,
+                )
+                row.update(
+                    _force_hud_row_values(
+                        force_hud_snapshot,
+                        force_hud_peak,
+                    )
+                )
+                force_hud_video_frame_count += 1
             if physics_force_stop:
                 final_qcmd = np.asarray(
                     data.ctrl[actuator_ids],
@@ -2306,6 +2609,8 @@ def run_rollout(args: argparse.Namespace) -> int:
         renderer.close()
         for video_writer in video_writers.values():
             video_writer.close()
+        if force_hud_video_writer is not None:
+            force_hud_video_writer.close()
 
     final_task = _task_diagnostics(data, site_ids, body_ids, args.hole_axis_world)
     final_qcmd = np.asarray(data.ctrl[actuator_ids], dtype=np.float64).copy()
@@ -2321,7 +2626,11 @@ def run_rollout(args: argparse.Namespace) -> int:
     if rows and not rows[-1]["stop_reason"]:
         rows[-1]["stop_reason"] = stop_reason
     log_path = args.output_dir / "rollout_log.csv"
-    _write_csv(log_path, rows)
+    _write_csv(
+        log_path,
+        rows,
+        include_force_hud=args.save_force_hud_video,
+    )
 
     min_dist_step, min_dist = _finite_min_step(distance_history)
     min_lateral_step, min_lateral_error = _finite_min_step(lateral_error_history)
@@ -2333,6 +2642,9 @@ def run_rollout(args: argparse.Namespace) -> int:
         else float("nan")
     )
     videos_saved = args.save_videos and any(video_frame_counts.values())
+    force_hud_video_saved = bool(
+        args.save_force_hud_video and force_hud_video_frame_count > 0
+    )
     if first_deployment_diagnostics is None or final_deployment_diagnostics is None:
         raise RuntimeError("rollout produced no deployment diagnostics")
     interval_diagnostics = _summarize_policy_intervals(
@@ -2609,6 +2921,23 @@ def run_rollout(args: argparse.Namespace) -> int:
         "nominal_hole_body_local_position": hole_offset_metadata["nominal_hole_body_local_position"],
         "actual_hole_body_local_position": hole_offset_metadata["actual_hole_body_local_position"],
     }
+    if args.save_force_hud_video:
+        summary.update(
+            {
+                "force_hud_video_saved": force_hud_video_saved,
+                "force_hud_video_path": force_hud_video_path,
+                "force_hud_video_frame_count": force_hud_video_frame_count,
+                "force_hud_camera": args.force_hud_camera,
+                "force_hud_resolution": [
+                    args.force_hud_width,
+                    args.force_hud_height,
+                ],
+                "force_hud_primary_wrench": args.force_hud_primary_wrench,
+                "force_hud_interval_sampling": (
+                    "current_policy_state_plus_every_executed_physics_step"
+                ),
+            }
+        )
     _validate_summary_schema(summary)
     with summary_path.open("w") as summary_file:
         json.dump(_json_safe(summary), summary_file, indent=2, sort_keys=True)
@@ -2805,6 +3134,16 @@ def run_rollout(args: argparse.Namespace) -> int:
         for camera_name in CAMERA_NAMES:
             print(f"video_frames_{camera_name}={video_frame_counts[camera_name]}")
         print(f"video_fps={args.video_fps}")
+    if args.save_force_hud_video:
+        print(f"force_hud_video_saved={force_hud_video_saved}")
+        print(f"force_hud_video_path={force_hud_video_path}")
+        print(f"force_hud_video_frames={force_hud_video_frame_count}")
+        print(f"force_hud_camera={args.force_hud_camera}")
+        print(
+            "force_hud_resolution="
+            f"{args.force_hud_width}x{args.force_hud_height}"
+        )
+        print(f"force_hud_primary_wrench={args.force_hud_primary_wrench}")
     print(f"stop_reason={stop_reason}")
     print(f"rollout_log_csv={log_path}")
     print(f"summary_json={summary_path}")
@@ -2939,6 +3278,33 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--save-videos", action="store_true")
     parser.add_argument("--video-fps", type=int, default=30)
     parser.add_argument("--video-every", type=int, default=1)
+    parser.add_argument(
+        "--save-force-hud-video",
+        action="store_true",
+        help=(
+            "Save a separate CCTV video with the operator force HUD. This "
+            "never changes policy camera tensors."
+        ),
+    )
+    parser.add_argument(
+        "--force-hud-camera",
+        default=DEFAULT_FORCE_HUD_CAMERA,
+    )
+    parser.add_argument(
+        "--force-hud-width",
+        type=int,
+        default=DEFAULT_FORCE_HUD_WIDTH,
+    )
+    parser.add_argument(
+        "--force-hud-height",
+        type=int,
+        default=DEFAULT_FORCE_HUD_HEIGHT,
+    )
+    parser.add_argument(
+        "--force-hud-primary-wrench",
+        choices=FORCE_HUD_PRIMARY_WRENCH_CHOICES,
+        default="compensated",
+    )
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args(argv)
 
@@ -3011,6 +3377,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if args.image_width <= 0 or args.image_height <= 0 or args.image_size <= 0:
         print("error: image dimensions must be positive", file=sys.stderr)
+        return 2
+    if args.force_hud_width <= 0 or args.force_hud_height <= 0:
+        print("error: force HUD dimensions must be positive", file=sys.stderr)
+        return 2
+    if args.save_force_hud_video and not args.force_hud_camera:
+        print("error: --force-hud-camera must be non-empty", file=sys.stderr)
         return 2
     if not np.isfinite(args.ema_alpha) or not 0.0 <= args.ema_alpha <= 1.0:
         print("error: --ema-alpha must be in [0, 1]", file=sys.stderr)

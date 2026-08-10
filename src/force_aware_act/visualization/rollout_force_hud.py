@@ -18,6 +18,8 @@ from .force_feedback_overlay import (
     ForceFeedbackConfig,
     ForceFeedbackSmoother,
     compute_force_feedback,
+    draw_force_feedback_overlay,
+    resize_with_aspect_padding,
     trend_label,
 )
 from .ft_wrench_utils import (
@@ -91,6 +93,33 @@ class RolloutForceHUDSnapshot:
     guidance_right_world: np.ndarray
     guidance_up_world: np.ndarray
     feedback: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RolloutForceHUDWrenches:
+    """Raw, gravity, compensated, and selected wrench at one instant."""
+
+    raw: np.ndarray
+    gravity: np.ndarray
+    compensated: np.ndarray
+    primary: np.ndarray
+    primary_source_label: str
+
+
+@dataclass(frozen=True)
+class RolloutForceHUDIntervalPeak:
+    """Force-norm peaks observed directly over one physics interval."""
+
+    start_timestamp: float
+    end_timestamp: float
+    sample_count: int
+    raw_force_norm: float
+    raw_timestamp: float
+    compensated_force_norm: float
+    compensated_timestamp: float
+    primary_force_norm: float
+    primary_timestamp: float
+    primary_source_label: str
 
 
 class RolloutForceHUDAdapter:
@@ -178,46 +207,13 @@ class RolloutForceHUDAdapter:
                 f"previous={self._last_timestamp} current={timestamp}"
             )
 
-        raw = np.asarray(raw_wrench, dtype=np.float64)
-        if raw.shape != (6,) or not np.isfinite(raw).all():
-            raise ValueError("raw_wrench must be a finite 6-vector")
-        raw = raw.copy()
-
+        wrenches = self.resolve_wrenches(data, raw_wrench)
+        raw = wrenches.raw
+        gravity = wrenches.gravity
+        compensated = wrenches.compensated
+        primary = wrenches.primary
+        source_label = wrenches.primary_source_label
         config = self.rollout_config
-        gravity = gravity_wrench_sensor_frame(
-            model=self.model,
-            data=data,
-            ft_site_id=self._force_sensor_site_id,
-            tool_body_ids=self._gravity_tool_body_ids,
-            gravity_world=config.gravity_world,
-            sensor_sign=config.gravity_sensor_sign,
-        )
-        if gravity is None:
-            raise ValueError("gravity wrench is unavailable")
-        gravity = np.asarray(gravity, dtype=np.float64)
-        if gravity.shape != (6,) or not np.isfinite(gravity).all():
-            raise ValueError("gravity wrench must be a finite 6-vector")
-
-        compensated = compensated_ft_wrench(
-            raw_wrench=raw,
-            gravity_wrench=gravity,
-            compensation_mode=config.compensation_mode,
-        )
-        if compensated is None:
-            raise ValueError(
-                "wrench compensation failed for mode "
-                f"{config.compensation_mode!r}"
-            )
-        compensated = np.asarray(compensated, dtype=np.float64)
-        if compensated.shape != (6,) or not np.isfinite(compensated).all():
-            raise ValueError("compensated wrench must be a finite 6-vector")
-
-        if config.primary_wrench == "compensated":
-            primary = compensated
-            source_label = "comp"
-        else:
-            primary = raw
-            source_label = "raw"
 
         _, sensor_rotation_world = ft_sensor_pose_world(
             data,
@@ -262,6 +258,61 @@ class RolloutForceHUDAdapter:
             feedback=feedback,
         )
 
+    def resolve_wrenches(
+        self,
+        data,
+        raw_wrench,
+    ) -> RolloutForceHUDWrenches:
+        """Resolve display wrenches without changing episode-local HUD state."""
+
+        raw = np.asarray(raw_wrench, dtype=np.float64)
+        if raw.shape != (6,) or not np.isfinite(raw).all():
+            raise ValueError("raw_wrench must be a finite 6-vector")
+        raw = raw.copy()
+
+        config = self.rollout_config
+        gravity = gravity_wrench_sensor_frame(
+            model=self.model,
+            data=data,
+            ft_site_id=self._force_sensor_site_id,
+            tool_body_ids=self._gravity_tool_body_ids,
+            gravity_world=config.gravity_world,
+            sensor_sign=config.gravity_sensor_sign,
+        )
+        if gravity is None:
+            raise ValueError("gravity wrench is unavailable")
+        gravity = np.asarray(gravity, dtype=np.float64)
+        if gravity.shape != (6,) or not np.isfinite(gravity).all():
+            raise ValueError("gravity wrench must be a finite 6-vector")
+
+        compensated = compensated_ft_wrench(
+            raw_wrench=raw,
+            gravity_wrench=gravity,
+            compensation_mode=config.compensation_mode,
+        )
+        if compensated is None:
+            raise ValueError(
+                "wrench compensation failed for mode "
+                f"{config.compensation_mode!r}"
+            )
+        compensated = np.asarray(compensated, dtype=np.float64)
+        if compensated.shape != (6,) or not np.isfinite(compensated).all():
+            raise ValueError("compensated wrench must be a finite 6-vector")
+
+        if config.primary_wrench == "compensated":
+            primary = compensated
+            source_label = "comp"
+        else:
+            primary = raw
+            source_label = "raw"
+        return RolloutForceHUDWrenches(
+            raw=raw.copy(),
+            gravity=gravity.copy(),
+            compensated=compensated.copy(),
+            primary=primary.copy(),
+            primary_source_label=source_label,
+        )
+
     def _update_trend(self, timestamp: float, force_norm: float) -> str:
         window_sec = max(0.0, float(self.force_feedback_config.trend_window_sec))
         self._force_norm_history.append((timestamp, force_norm))
@@ -304,6 +355,153 @@ class RolloutForceHUDAdapter:
         )
 
 
+class RolloutForceHUDIntervalPeakTracker:
+    """Accumulate display-only peaks from direct physics-step observations."""
+
+    def __init__(
+        self,
+        adapter: RolloutForceHUDAdapter,
+        snapshot: RolloutForceHUDSnapshot,
+    ) -> None:
+        self._adapter = adapter
+        self._start_timestamp = float(snapshot.timestamp)
+        self._end_timestamp = float(snapshot.timestamp)
+        self._sample_count = 0
+        self._raw_peak = (-np.inf, self._start_timestamp)
+        self._compensated_peak = (-np.inf, self._start_timestamp)
+        self._primary_peak = (-np.inf, self._start_timestamp)
+        self._source_label = snapshot.primary_source_label
+        self._observe_wrenches(
+            RolloutForceHUDWrenches(
+                raw=snapshot.raw_wrench,
+                gravity=snapshot.gravity_wrench,
+                compensated=snapshot.compensated_wrench,
+                primary=snapshot.primary_wrench,
+                primary_source_label=snapshot.primary_source_label,
+            ),
+            snapshot.timestamp,
+        )
+
+    def observe(self, data, raw_wrench, timestamp: float) -> None:
+        timestamp = float(timestamp)
+        if not np.isfinite(timestamp) or timestamp <= self._end_timestamp:
+            raise ValueError(
+                "interval peak timestamps must be strictly increasing: "
+                f"previous={self._end_timestamp} current={timestamp}"
+            )
+        self._observe_wrenches(
+            self._adapter.resolve_wrenches(data, raw_wrench),
+            timestamp,
+        )
+
+    def result(self) -> RolloutForceHUDIntervalPeak:
+        return RolloutForceHUDIntervalPeak(
+            start_timestamp=self._start_timestamp,
+            end_timestamp=self._end_timestamp,
+            sample_count=self._sample_count,
+            raw_force_norm=self._raw_peak[0],
+            raw_timestamp=self._raw_peak[1],
+            compensated_force_norm=self._compensated_peak[0],
+            compensated_timestamp=self._compensated_peak[1],
+            primary_force_norm=self._primary_peak[0],
+            primary_timestamp=self._primary_peak[1],
+            primary_source_label=self._source_label,
+        )
+
+    def _observe_wrenches(
+        self,
+        wrenches: RolloutForceHUDWrenches,
+        timestamp: float,
+    ) -> None:
+        if wrenches.primary_source_label != self._source_label:
+            raise ValueError("primary wrench source changed within an interval")
+        raw_norm = float(np.linalg.norm(wrenches.raw[:3]))
+        compensated_norm = float(np.linalg.norm(wrenches.compensated[:3]))
+        primary_norm = float(np.linalg.norm(wrenches.primary[:3]))
+        self._raw_peak = _updated_peak(self._raw_peak, raw_norm, timestamp)
+        self._compensated_peak = _updated_peak(
+            self._compensated_peak,
+            compensated_norm,
+            timestamp,
+        )
+        self._primary_peak = _updated_peak(
+            self._primary_peak,
+            primary_norm,
+            timestamp,
+        )
+        self._end_timestamp = float(timestamp)
+        self._sample_count += 1
+
+
+def draw_rollout_force_hud_rgb(
+    frame_rgb: np.ndarray,
+    snapshot: RolloutForceHUDSnapshot,
+    force_feedback_config: ForceFeedbackConfig,
+    interval_peak: RolloutForceHUDIntervalPeak,
+    output_width: Optional[int] = None,
+    output_height: Optional[int] = None,
+) -> np.ndarray:
+    """Draw the vendored CCTV HUD and interval audit onto an RGB video frame."""
+
+    import cv2
+
+    frame_rgb = np.asarray(frame_rgb)
+    if (
+        frame_rgb.ndim != 3
+        or frame_rgb.shape[2] != 3
+        or frame_rgb.dtype != np.uint8
+    ):
+        raise ValueError("frame_rgb must be an HxWx3 uint8 array")
+    if interval_peak.start_timestamp != snapshot.timestamp:
+        raise ValueError("interval peak and HUD snapshot start times must match")
+    if interval_peak.primary_source_label != snapshot.primary_source_label:
+        raise ValueError("interval peak and HUD snapshot sources must match")
+    if (output_width is None) != (output_height is None):
+        raise ValueError("output_width and output_height must be provided together")
+    if output_width is not None and (output_width <= 0 or output_height <= 0):
+        raise ValueError("HUD output dimensions must be positive")
+
+    frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+    if output_width is not None:
+        frame_bgr = resize_with_aspect_padding(
+            frame_bgr=frame_bgr,
+            target_width=int(output_width),
+            target_height=int(output_height),
+            padding_color=(0, 0, 0),
+        )
+    draw_force_feedback_overlay(
+        frame_bgr=frame_bgr,
+        feedback=snapshot.feedback,
+        config=force_feedback_config,
+        camera_name=snapshot.camera_name,
+    )
+    cv2.putText(
+        frame_bgr,
+        snapshot.camera_name,
+        (15, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.0,
+        (0, 255, 0),
+        2,
+        cv2.LINE_AA,
+    )
+    peak_text = (
+        f"interval peak |F| {interval_peak.primary_force_norm:5.1f} N "
+        f"({interval_peak.primary_source_label}, n={interval_peak.sample_count})"
+    )
+    cv2.putText(
+        frame_bgr,
+        peak_text,
+        (15, frame_bgr.shape[0] - 18),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.58,
+        (235, 235, 235),
+        2,
+        cv2.LINE_AA,
+    )
+    return np.ascontiguousarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+
+
 def _orthonormalize_task_plane_basis(
     right_world,
     up_world,
@@ -328,6 +526,18 @@ def _orthonormalize_task_plane_basis(
             raise ValueError("camera screen basis is degenerate")
         up = up / norm
     return right, up
+
+
+def _updated_peak(
+    current: Tuple[float, float],
+    value: float,
+    timestamp: float,
+) -> Tuple[float, float]:
+    if not np.isfinite(value):
+        raise ValueError("force peak observation must be finite")
+    if value > current[0]:
+        return float(value), float(timestamp)
+    return current
 
 
 def _project_to_task_plane(vector, axis: np.ndarray) -> Optional[np.ndarray]:
