@@ -24,6 +24,11 @@ def _args(tmp_path: Path) -> argparse.Namespace:
         hole_offset_z=0.0,
         seed=0,
         save_videos=True,
+        save_force_hud_videos=False,
+        force_hud_camera="cctv_cam",
+        force_hud_width=1280,
+        force_hud_height=720,
+        force_hud_primary_wrench="compensated",
     )
 
 
@@ -101,6 +106,29 @@ def test_rollout_command_locks_fairness_contract(tmp_path):
     assert command[command.index("--contact-latent-mode") + 1] == "zero"
     assert "--execute-actions" in command
     assert "--save-videos" in command
+    assert "--save-force-hud-video" not in command
+
+
+def test_rollout_command_can_save_only_force_hud_video(tmp_path):
+    args = _args(tmp_path)
+    args.save_videos = False
+    args.save_force_hud_videos = True
+    spec = build_pilot_specs(
+        tmp_path / "official.pt",
+        tmp_path / "contact.pt",
+    )[9]
+
+    command = build_rollout_command(args, spec)
+
+    assert spec.configuration_id == "highrate_contact_v3__signed_kp0p04"
+    assert "--save-videos" not in command
+    assert "--save-force-hud-video" in command
+    assert command[command.index("--force-hud-camera") + 1] == "cctv_cam"
+    assert command[command.index("--force-hud-width") + 1] == "1280"
+    assert command[command.index("--force-hud-height") + 1] == "720"
+    assert command[command.index("--force-hud-primary-wrench") + 1] == (
+        "compensated"
+    )
 
 
 def test_latest_only_command_does_not_inject_irrelevant_decay(tmp_path):
@@ -148,6 +176,71 @@ def test_completed_summary_contract_accepts_matching_q1_run(tmp_path):
     )
 
 
+def test_completed_summary_requires_real_force_hud_artifact(tmp_path):
+    args = _args(tmp_path)
+    args.save_force_hud_videos = True
+    args.model_xml.touch()
+    spec = build_pilot_specs(
+        tmp_path / "official.pt",
+        tmp_path / "contact.pt",
+    )[9]
+    spec.checkpoint.touch()
+    hud_path = (
+        args.output_dir
+        / spec.configuration_id
+        / "videos"
+        / "cctv_cam_force_hud.mp4"
+    )
+    hud_path.parent.mkdir(parents=True)
+    hud_path.write_bytes(b"non-empty test artifact")
+    summary = {
+        "rollout_protocol_version": "paired_action_executor_rollout_v3",
+        "checkpoint": str(spec.checkpoint.resolve()),
+        "model_xml": str(args.model_xml.resolve()),
+        "rollout_mode": "execute",
+        "seed": 0,
+        "action_mode": "joint_pos",
+        "action_select_mode": "signed_temporal",
+        "policy_query_interval": 1,
+        "contact_latent_mode": "zero",
+        "policy_rate_hz": 30.0,
+        "max_rollout_steps": 600,
+        "ema_alpha": 1.0,
+        "max_delta_q": 0.02,
+        "force_stop_threshold": 100.0,
+        "safe_force_threshold": 40.0,
+        "hole_offset_x": 0.0,
+        "hole_offset_y": 0.0,
+        "hole_offset_z": 0.0,
+        "temporal_signed_decay_equivalent": 0.04,
+        "temporal_endpoint": None,
+        "force_hud_video_saved": True,
+        "force_hud_video_path": str(hud_path.resolve()),
+        "force_hud_video_frame_count": 600,
+        "force_hud_camera": "cctv_cam",
+        "force_hud_resolution": [1280, 720],
+        "force_hud_primary_wrench": "compensated",
+        "force_hud_interval_sampling": (
+            "current_policy_state_plus_every_executed_physics_step"
+        ),
+    }
+
+    assert validate_completed_summary(summary, args, spec) == []
+    args.output_dir = tmp_path / "missing_pilot"
+    summary["force_hud_video_path"] = str(
+        (
+            args.output_dir
+            / spec.configuration_id
+            / "videos"
+            / "cctv_cam_force_hud.mp4"
+        ).resolve()
+    )
+    assert any(
+        "force HUD video is missing" in error
+        for error in validate_completed_summary(summary, args, spec)
+    )
+
+
 def test_plan_only_main_writes_thirty_run_manifest_without_launching(tmp_path):
     official = tmp_path / "official.pt"
     contact = tmp_path / "contact.pt"
@@ -174,6 +267,7 @@ def test_plan_only_main_writes_thirty_run_manifest_without_launching(tmp_path):
     assert plan["pilot_version"] == PILOT_VERSION
     assert plan["execution_enabled"] is False
     assert plan["fairness_contract"]["policy_query_interval"] == 1
+    assert plan["fairness_contract"]["save_force_hud_videos"] is False
     assert len(plan["specifications"]) == 30
     assert not list(output_dir.glob("*/summary.json"))
 

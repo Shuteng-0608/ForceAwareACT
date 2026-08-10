@@ -16,8 +16,11 @@ from typing import Any, Optional, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT_SCRIPT = REPO_ROOT / "scripts" / "run_mujoco_policy_rollout.py"
-PILOT_VERSION = "paired50_q1_temporal_rollout_pilot_v3"
+PILOT_VERSION = "paired50_q1_temporal_rollout_pilot_v4"
 ROLLOUT_PROTOCOL_VERSION = "paired_action_executor_rollout_v3"
+DEFAULT_FORCE_HUD_CAMERA = "cctv_cam"
+DEFAULT_FORCE_HUD_WIDTH = 1280
+DEFAULT_FORCE_HUD_HEIGHT = 720
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "runs" / "paired50_q1_temporal_rollout_pilot_b1"
 DEFAULT_OFFICIAL_CHECKPOINT = (
     REPO_ROOT / "runs" / "paired50_official_act_formal_e2000_b8_seed0" / "best_policy.pt"
@@ -130,6 +133,20 @@ def build_rollout_command(args: argparse.Namespace, spec: PilotSpec) -> list[str
         command.extend(("--temporal-agg-decay", str(spec.signed_decay)))
     if args.save_videos:
         command.append("--save-videos")
+    if args.save_force_hud_videos:
+        command.extend(
+            (
+                "--save-force-hud-video",
+                "--force-hud-camera",
+                args.force_hud_camera,
+                "--force-hud-width",
+                str(args.force_hud_width),
+                "--force-hud-height",
+                str(args.force_hud_height),
+                "--force-hud-primary-wrench",
+                args.force_hud_primary_wrench,
+            )
+        )
     return command
 
 
@@ -180,6 +197,41 @@ def validate_completed_summary(
             f"temporal_endpoint: expected {expected_endpoint!r}, got "
             f"{summary.get('temporal_endpoint')!r}"
         )
+    if args.save_force_hud_videos:
+        expected_hud_path = (
+            args.output_dir
+            / spec.configuration_id
+            / "videos"
+            / f"{args.force_hud_camera}_force_hud.mp4"
+        ).resolve()
+        expected_hud = {
+            "force_hud_video_saved": True,
+            "force_hud_video_path": str(expected_hud_path),
+            "force_hud_camera": args.force_hud_camera,
+            "force_hud_resolution": [
+                args.force_hud_width,
+                args.force_hud_height,
+            ],
+            "force_hud_primary_wrench": args.force_hud_primary_wrench,
+            "force_hud_interval_sampling": (
+                "current_policy_state_plus_every_executed_physics_step"
+            ),
+        }
+        errors.extend(
+            f"{key}: expected {value!r}, got {summary.get(key)!r}"
+            for key, value in expected_hud.items()
+            if summary.get(key) != value
+        )
+        frame_count = summary.get("force_hud_video_frame_count")
+        if not isinstance(frame_count, int) or frame_count <= 0:
+            errors.append(
+                "force_hud_video_frame_count: expected a positive integer, "
+                f"got {frame_count!r}"
+            )
+        if not expected_hud_path.is_file():
+            errors.append(f"force HUD video is missing: {expected_hud_path}")
+        elif expected_hud_path.stat().st_size <= 0:
+            errors.append(f"force HUD video is empty: {expected_hud_path}")
     return errors
 
 
@@ -270,6 +322,13 @@ def _plan_payload(
             "success_distance_threshold": 0.003,
             "success_dwell_time": 0.1,
             "save_videos": args.save_videos,
+            "save_force_hud_videos": args.save_force_hud_videos,
+            "force_hud_camera": args.force_hud_camera,
+            "force_hud_resolution": [
+                args.force_hud_width,
+                args.force_hud_height,
+            ],
+            "force_hud_primary_wrench": args.force_hud_primary_wrench,
         },
         "specifications": [
             {
@@ -309,7 +368,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--no-save-videos", action="store_false", dest="save_videos")
-    parser.set_defaults(save_videos=True)
+    parser.add_argument("--save-force-hud-videos", action="store_true")
+    parser.add_argument("--force-hud-camera", default=DEFAULT_FORCE_HUD_CAMERA)
+    parser.add_argument(
+        "--force-hud-width",
+        type=int,
+        default=DEFAULT_FORCE_HUD_WIDTH,
+    )
+    parser.add_argument(
+        "--force-hud-height",
+        type=int,
+        default=DEFAULT_FORCE_HUD_HEIGHT,
+    )
+    parser.add_argument(
+        "--force-hud-primary-wrench",
+        choices=("raw", "compensated"),
+        default="compensated",
+    )
+    parser.set_defaults(save_videos=True, save_force_hud_videos=False)
     return parser.parse_args(argv)
 
 
@@ -317,6 +393,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     if args.max_rollout_steps <= 0:
         print("error: --max-rollout-steps must be positive", file=sys.stderr)
+        return 2
+    if args.force_hud_width <= 0 or args.force_hud_height <= 0:
+        print("error: force HUD dimensions must be positive", file=sys.stderr)
+        return 2
+    if args.save_force_hud_videos and not args.force_hud_camera:
+        print("error: --force-hud-camera must be non-empty", file=sys.stderr)
         return 2
     for path_name in ("official_checkpoint", "contact_checkpoint", "model_xml"):
         path = getattr(args, path_name).expanduser().resolve()
