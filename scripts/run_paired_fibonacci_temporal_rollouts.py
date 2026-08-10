@@ -8,8 +8,11 @@ import csv
 import hashlib
 import json
 import math
+import os
+import statistics
 import subprocess
 import sys
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +42,37 @@ EXPERIMENT_VERSION = "paired_fibonacci_temporal_rollouts_v1"
 DEFAULT_POINT_SET = REPO_ROOT / "configs/experiments/fibonacci_disk_100_r4mm.csv"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "runs/paired_fibonacci_r4mm_temporal_b1"
 DEFAULT_SIGNED_DECAYS = (0.01, 0.05, 0.071, 0.0735, 0.075)
+PER_ROLLOUT_COLUMNS = (
+    "configuration_id",
+    "model_id",
+    "executor_id",
+    "signed_decay",
+    "point_index",
+    "hole_offset_x",
+    "hole_offset_y",
+    "hole_offset_z",
+    "radius_mm",
+    "seed",
+    "task_success",
+    "safe_success_raw",
+    "safe_success_compensated",
+    "stop_reason",
+    "steps_executed",
+    "success_time",
+    "final_peg_to_hole_dist",
+    "raw_max_force_norm",
+    "compensated_max_force_norm",
+    "raw_above_40n_duration",
+    "compensated_above_40n_duration",
+    "raw_excess_force_exposure",
+    "compensated_excess_force_exposure",
+    "policy_inference_time_ms_p95",
+    "policy_step_compute_time_ms_p95",
+    "policy_deadline_miss_fraction",
+    "output_dir",
+    "summary_json",
+    "rollout_log_csv",
+)
 
 
 @dataclass(frozen=True)
@@ -237,6 +271,59 @@ def validate_run_summary(
         for key, value in expected_force_metrics.items()
         if summary.get(key) != value
     )
+    required_force_metric_keys = (
+        "task_success",
+        "safe_success_raw",
+        "safe_success_compensated",
+        "steps_executed",
+        "max_force_norm",
+        "force_metrics_interval_count",
+        "force_metrics_sample_count",
+        "force_metrics_raw_max_force_norm",
+        "force_metrics_compensated_max_force_norm",
+        "force_metrics_raw_above_threshold_duration",
+        "force_metrics_compensated_above_threshold_duration",
+        "force_metrics_raw_excess_force_exposure",
+        "force_metrics_compensated_excess_force_exposure",
+    )
+    missing = [key for key in required_force_metric_keys if key not in summary]
+    errors.extend(f"missing required force metric: {key}" for key in missing)
+    if not missing:
+        interval_count = int(summary["force_metrics_interval_count"])
+        steps_executed = int(summary["steps_executed"])
+        sample_count = int(summary["force_metrics_sample_count"])
+        if interval_count != steps_executed:
+            errors.append(
+                "force_metrics_interval_count must equal steps_executed: "
+                f"{interval_count} != {steps_executed}"
+            )
+        if sample_count < interval_count:
+            errors.append(
+                "force_metrics_sample_count must be at least the interval count"
+            )
+        raw_peak = float(summary["force_metrics_raw_max_force_norm"])
+        safety_peak = float(summary["max_force_norm"])
+        if not math.isclose(raw_peak, safety_peak, rel_tol=1.0e-6, abs_tol=1.0e-6):
+            errors.append(
+                "raw force metric peak must match the physics safety peak: "
+                f"{raw_peak} != {safety_peak}"
+            )
+        for key in required_force_metric_keys[8:]:
+            value = float(summary[key])
+            if not math.isfinite(value) or value < 0.0:
+                errors.append(f"{key} must be finite and non-negative")
+        compensated_peak = float(
+            summary["force_metrics_compensated_max_force_norm"]
+        )
+        expected_safe_compensated = bool(
+            summary["task_success"]
+            and compensated_peak <= float(summary["force_metrics_threshold"])
+        )
+        if summary["safe_success_compensated"] != expected_safe_compensated:
+            errors.append(
+                "safe_success_compensated is inconsistent with task success "
+                "and the compensated peak"
+            )
     expected_output = _resolved(run.output_dir)
     actual_output = summary.get("output_dir")
     if actual_output is not None and actual_output != expected_output:
@@ -331,6 +418,315 @@ def _spec_by_id(specs: Sequence[PilotSpec]) -> dict[str, PilotSpec]:
     return {spec.configuration_id: spec for spec in specs}
 
 
+def _bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes"}
+
+
+def _finite_float(value: Any) -> Optional[float]:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _wilson_interval(successes: int, total: int) -> tuple[Optional[float], Optional[float]]:
+    if total <= 0:
+        return None, None
+    z = 1.959963984540054
+    rate = successes / total
+    denominator = 1.0 + z * z / total
+    center = (rate + z * z / (2.0 * total)) / denominator
+    radius = (
+        z
+        * math.sqrt((rate * (1.0 - rate) + z * z / (4.0 * total)) / total)
+        / denominator
+    )
+    return max(0.0, center - radius), min(1.0, center + radius)
+
+
+def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    temporary.replace(path)
+
+
+def _atomic_csv(
+    path: Path,
+    fieldnames: Sequence[str],
+    rows: Sequence[dict[str, Any]],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(
+            {field: row.get(field, "") for field in fieldnames} for row in rows
+        )
+    temporary.replace(path)
+
+
+def _rollout_row(run: PlannedRun, summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "configuration_id": run.configuration_id,
+        "model_id": run.model_id,
+        "executor_id": run.executor_id,
+        "signed_decay": run.signed_decay,
+        "point_index": run.point_index,
+        "hole_offset_x": run.hole_offset_x,
+        "hole_offset_y": run.hole_offset_y,
+        "hole_offset_z": run.hole_offset_z,
+        "radius_mm": 1000.0 * math.hypot(run.hole_offset_x, run.hole_offset_z),
+        "seed": run.seed,
+        "task_success": summary["task_success"],
+        "safe_success_raw": summary["safe_success_raw"],
+        "safe_success_compensated": summary["safe_success_compensated"],
+        "stop_reason": summary["stop_reason"],
+        "steps_executed": summary["steps_executed"],
+        "success_time": summary.get("success_time"),
+        "final_peg_to_hole_dist": summary["final_peg_to_hole_dist"],
+        "raw_max_force_norm": summary["force_metrics_raw_max_force_norm"],
+        "compensated_max_force_norm": summary[
+            "force_metrics_compensated_max_force_norm"
+        ],
+        "raw_above_40n_duration": summary[
+            "force_metrics_raw_above_threshold_duration"
+        ],
+        "compensated_above_40n_duration": summary[
+            "force_metrics_compensated_above_threshold_duration"
+        ],
+        "raw_excess_force_exposure": summary[
+            "force_metrics_raw_excess_force_exposure"
+        ],
+        "compensated_excess_force_exposure": summary[
+            "force_metrics_compensated_excess_force_exposure"
+        ],
+        "policy_inference_time_ms_p95": summary[
+            "policy_inference_time_ms_p95"
+        ],
+        "policy_step_compute_time_ms_p95": summary[
+            "policy_step_compute_time_ms_p95"
+        ],
+        "policy_deadline_miss_fraction": summary[
+            "policy_deadline_miss_fraction"
+        ],
+        "output_dir": _resolved(run.output_dir),
+        "summary_json": _resolved(run.output_dir / "summary.json"),
+        "rollout_log_csv": summary["rollout_log_csv"],
+    }
+
+
+def collect_completed_rows(
+    args: argparse.Namespace,
+    specs: Sequence[PilotSpec],
+    runs: Sequence[PlannedRun],
+) -> list[dict[str, Any]]:
+    specs_by_id = _spec_by_id(specs)
+    rows = []
+    for run in runs:
+        summary_path = run.output_dir / "summary.json"
+        if not summary_path.is_file():
+            continue
+        try:
+            summary = json.loads(summary_path.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(f"invalid rollout summary: {summary_path}: {error}") from error
+        errors = validate_run_summary(
+            summary, args, specs_by_id[run.configuration_id], run
+        )
+        if errors:
+            raise ValueError(
+                f"completed run failed contract: {run.output_dir}: "
+                + "; ".join(errors)
+            )
+        rows.append(_rollout_row(run, summary))
+    return rows
+
+
+def _configuration_rows(
+    rows: Sequence[dict[str, Any]], specs: Sequence[PilotSpec], total_points: int
+) -> list[dict[str, Any]]:
+    output = []
+    for spec in specs:
+        group = [row for row in rows if row["configuration_id"] == spec.configuration_id]
+        task_successes = sum(_bool(row["task_success"]) for row in group)
+        safe_raw = sum(_bool(row["safe_success_raw"]) for row in group)
+        safe_comp = sum(_bool(row["safe_success_compensated"]) for row in group)
+        lower, upper = _wilson_interval(task_successes, len(group))
+        success_times = [
+            value
+            for row in group
+            if _bool(row["task_success"])
+            for value in [_finite_float(row["success_time"])]
+            if value is not None
+        ]
+        comp_peaks = [
+            value
+            for row in group
+            for value in [_finite_float(row["compensated_max_force_norm"])]
+            if value is not None
+        ]
+        comp_duration = [
+            value
+            for row in group
+            for value in [_finite_float(row["compensated_above_40n_duration"])]
+            if value is not None
+        ]
+        comp_exposure = [
+            value
+            for row in group
+            for value in [_finite_float(row["compensated_excess_force_exposure"])]
+            if value is not None
+        ]
+        output.append(
+            {
+                "configuration_id": spec.configuration_id,
+                "model_id": spec.model_id,
+                "executor_id": spec.executor_id,
+                "signed_decay": spec.signed_decay,
+                "planned_points": total_points,
+                "completed_points": len(group),
+                "completion_rate": len(group) / total_points if total_points else 0.0,
+                "task_successes": task_successes,
+                "task_success_rate": task_successes / len(group) if group else None,
+                "task_success_ci95_lower": lower,
+                "task_success_ci95_upper": upper,
+                "safe_successes_raw": safe_raw,
+                "safe_success_rate_raw": safe_raw / len(group) if group else None,
+                "safe_successes_compensated": safe_comp,
+                "safe_success_rate_compensated": safe_comp / len(group) if group else None,
+                "force_stop_count": sum(
+                    row["stop_reason"] == "force_stop_threshold" for row in group
+                ),
+                "mean_success_time": statistics.fmean(success_times) if success_times else None,
+                "median_success_time": statistics.median(success_times) if success_times else None,
+                "mean_compensated_max_force_norm": statistics.fmean(comp_peaks) if comp_peaks else None,
+                "max_compensated_max_force_norm": max(comp_peaks) if comp_peaks else None,
+                "mean_compensated_above_40n_duration": statistics.fmean(comp_duration) if comp_duration else None,
+                "mean_compensated_excess_force_exposure": statistics.fmean(comp_exposure) if comp_exposure else None,
+            }
+        )
+    return output
+
+
+def _point_rows(
+    rows: Sequence[dict[str, Any]], points: Sequence[TaskPoint], specs: Sequence[PilotSpec]
+) -> tuple[list[str], list[dict[str, Any]]]:
+    fields = [
+        "point_index",
+        "hole_offset_x",
+        "hole_offset_y",
+        "hole_offset_z",
+        "radius_mm",
+        "seed",
+    ]
+    metric_names = (
+        "task_success",
+        "safe_success_raw",
+        "safe_success_compensated",
+        "stop_reason",
+        "success_time",
+        "compensated_max_force_norm",
+        "compensated_above_40n_duration",
+        "compensated_excess_force_exposure",
+    )
+    for spec in specs:
+        fields.extend(f"{spec.configuration_id}__{metric}" for metric in metric_names)
+    by_key = {(row["configuration_id"], row["point_index"]): row for row in rows}
+    output = []
+    for point in points:
+        base = {
+            "point_index": point.point_index,
+            "hole_offset_x": point.hole_offset_x,
+            "hole_offset_y": point.hole_offset_y,
+            "hole_offset_z": point.hole_offset_z,
+            "radius_mm": point.radius_mm,
+            "seed": None,
+        }
+        for spec in specs:
+            row = by_key.get((spec.configuration_id, point.point_index))
+            if row is None:
+                continue
+            base["seed"] = row["seed"]
+            for metric in metric_names:
+                base[f"{spec.configuration_id}__{metric}"] = row[metric]
+        output.append(base)
+    return fields, output
+
+
+def write_aggregates(
+    output_dir: Path,
+    rows: Sequence[dict[str, Any]],
+    points: Sequence[TaskPoint],
+    specs: Sequence[PilotSpec],
+    planned_runs: int,
+) -> dict[str, Any]:
+    _atomic_csv(output_dir / "per_rollout.csv", PER_ROLLOUT_COLUMNS, rows)
+    configuration_rows = _configuration_rows(rows, specs, len(points))
+    configuration_fields = list(configuration_rows[0]) if configuration_rows else []
+    _atomic_csv(
+        output_dir / "per_configuration.csv",
+        configuration_fields,
+        configuration_rows,
+    )
+    point_fields, point_rows = _point_rows(rows, points, specs)
+    _atomic_csv(output_dir / "per_point.csv", point_fields, point_rows)
+    payload = {
+        "experiment_version": EXPERIMENT_VERSION,
+        "planned_rollouts": planned_runs,
+        "completed_rollouts": len(rows),
+        "completion_rate": len(rows) / planned_runs if planned_runs else 0.0,
+        "configuration_count": len(specs),
+        "point_count": len(points),
+        "configurations": configuration_rows,
+    }
+    _atomic_json(output_dir / "aggregate_summary.json", payload)
+    return payload
+
+
+def write_progress(
+    output_dir: Path,
+    *,
+    status: str,
+    completed_rollouts: int,
+    planned_rollouts: int,
+    failed_run_ids: Sequence[str],
+    current_run_id: Optional[str],
+    process_started_monotonic: float,
+    process_start_completed: int,
+) -> dict[str, Any]:
+    elapsed = max(0.0, time.monotonic() - process_started_monotonic)
+    newly_completed = max(0, completed_rollouts - process_start_completed)
+    seconds_per_rollout = elapsed / newly_completed if newly_completed else None
+    remaining = max(0, planned_rollouts - completed_rollouts)
+    eta_seconds = (
+        remaining * seconds_per_rollout if seconds_per_rollout is not None else None
+    )
+    payload = {
+        "experiment_version": EXPERIMENT_VERSION,
+        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "status": status,
+        "runner_pid": os.getpid(),
+        "current_run_id": current_run_id,
+        "planned_rollouts": planned_rollouts,
+        "completed_rollouts": completed_rollouts,
+        "remaining_rollouts": remaining,
+        "completion_rate": completed_rollouts / planned_rollouts if planned_rollouts else 0.0,
+        "failed_rollouts": len(failed_run_ids),
+        "failed_run_ids": list(failed_run_ids),
+        "process_elapsed_seconds": elapsed,
+        "process_newly_completed_rollouts": newly_completed,
+        "average_seconds_per_new_rollout": seconds_per_rollout,
+        "eta_seconds": eta_seconds,
+    }
+    _atomic_json(output_dir / "progress.json", payload)
+    return payload
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-points-csv", type=Path, default=DEFAULT_POINT_SET)
@@ -402,7 +798,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     specs_by_id = _spec_by_id(specs)
-    completed = 0
+    try:
+        completed_rows = collect_completed_rows(args, specs, runs)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    aggregate = write_aggregates(
+        args.output_dir, completed_rows, points, specs, len(runs)
+    )
+    completed = len(completed_rows)
+    process_started_monotonic = time.monotonic()
+    process_start_completed = completed
+    failed_run_ids: list[str] = []
+    write_progress(
+        args.output_dir,
+        status="RUNNING",
+        completed_rollouts=completed,
+        planned_rollouts=len(runs),
+        failed_run_ids=failed_run_ids,
+        current_run_id=None,
+        process_started_monotonic=process_started_monotonic,
+        process_start_completed=process_start_completed,
+    )
     failed = False
     for index, run in enumerate(runs, start=1):
         spec = specs_by_id[run.configuration_id]
@@ -417,7 +834,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     file=sys.stderr,
                 )
                 return 2
-            completed += 1
             print(f"skipped_complete={run.configuration_id}/point_{run.point_index:03d}")
             continue
         if run.output_dir.exists() and any(run.output_dir.iterdir()):
@@ -430,14 +846,36 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"running={index}/{len(runs)} {run.configuration_id}/point_{run.point_index:03d}",
             flush=True,
         )
+        run_id = f"{run.configuration_id}/point_{run.point_index:03d}"
+        write_progress(
+            args.output_dir,
+            status="RUNNING",
+            completed_rollouts=completed,
+            planned_rollouts=len(runs),
+            failed_run_ids=failed_run_ids,
+            current_run_id=run_id,
+            process_started_monotonic=process_started_monotonic,
+            process_start_completed=process_start_completed,
+        )
         result = subprocess.run(
             build_point_rollout_command(args, spec, run), check=False
         )
         if result.returncode != 0:
             failed = True
+            failed_run_ids.append(run_id)
             print(
                 f"error: rollout exited with {result.returncode}: {run.output_dir}",
                 file=sys.stderr,
+            )
+            write_progress(
+                args.output_dir,
+                status="RUNNING_WITH_ERRORS" if args.continue_on_error else "FAILED",
+                completed_rollouts=completed,
+                planned_rollouts=len(runs),
+                failed_run_ids=failed_run_ids,
+                current_run_id=None,
+                process_started_monotonic=process_started_monotonic,
+                process_start_completed=process_start_completed,
             )
             if not args.continue_on_error:
                 return result.returncode
@@ -454,9 +892,44 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        completed += 1
+        try:
+            completed_rows = collect_completed_rows(args, specs, runs)
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        aggregate = write_aggregates(
+            args.output_dir, completed_rows, points, specs, len(runs)
+        )
+        completed = len(completed_rows)
+        progress = write_progress(
+            args.output_dir,
+            status="RUNNING_WITH_ERRORS" if failed else "RUNNING",
+            completed_rollouts=completed,
+            planned_rollouts=len(runs),
+            failed_run_ids=failed_run_ids,
+            current_run_id=None,
+            process_started_monotonic=process_started_monotonic,
+            process_start_completed=process_start_completed,
+        )
         print(f"completed={run.configuration_id}/point_{run.point_index:03d}")
+        print(f"progress={completed}/{len(runs)} eta_seconds={progress['eta_seconds']}")
+    final_status = "COMPLETED" if completed == len(runs) and not failed else "COMPLETED_WITH_ERRORS"
+    write_progress(
+        args.output_dir,
+        status=final_status,
+        completed_rollouts=completed,
+        planned_rollouts=len(runs),
+        failed_run_ids=failed_run_ids,
+        current_run_id=None,
+        process_started_monotonic=process_started_monotonic,
+        process_start_completed=process_start_completed,
+    )
     print(f"completed_rollouts={completed}/{len(runs)}")
+    print(f"per_rollout={args.output_dir / 'per_rollout.csv'}")
+    print(f"per_point={args.output_dir / 'per_point.csv'}")
+    print(f"per_configuration={args.output_dir / 'per_configuration.csv'}")
+    print(f"aggregate_summary={args.output_dir / 'aggregate_summary.json'}")
+    print(f"completion_rate={aggregate['completion_rate']}")
     return 1 if failed else 0
 
 

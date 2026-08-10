@@ -72,6 +72,11 @@ shared force stop is an external safety mechanism, not an ACT policy input.
    success semantics, force metrics, and resume behavior.
 5. Obtain explicit approval before the full 1000-rollout execution.
 
+The batch runner writes contract-validated `per_rollout.csv`, `per_point.csv`,
+`per_configuration.csv`, `aggregate_summary.json`, and `progress.json` files.
+The progress file is updated atomically and can be watched with
+`scripts/monitor_paired_fibonacci_temporal_rollouts.py`.
+
 The preflight is an engineering check and must not be used to adaptively select
 k values. If k values are changed after observing Fibonacci performance, the
 100-point set becomes a development set and a separate holdout point set is
