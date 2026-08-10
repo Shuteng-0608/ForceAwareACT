@@ -3,11 +3,15 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.run_paired50_q1_temporal_rollout_pilot import (
     PILOT_VERSION,
     build_pilot_specs,
     build_rollout_command,
+    build_signed_decay_specs,
     main,
+    signed_decay_executor_id,
     validate_completed_summary,
     write_aggregate,
 )
@@ -90,6 +94,52 @@ def test_pilot_matrix_is_paired_and_interleaved_by_executor(tmp_path):
         "signed_kp0p3",
         "latest_only",
     }
+
+
+def test_dynamic_signed_decay_ids_are_stable_and_filesystem_safe():
+    assert signed_decay_executor_id(-0.01) == "signed_km0p01"
+    assert signed_decay_executor_id(-0.0) == "signed_k0p0"
+    assert signed_decay_executor_id(0.0625) == "signed_kp0p0625"
+    assert signed_decay_executor_id(0.09) == "signed_kp0p09"
+    assert signed_decay_executor_id(1.0) == "signed_kp1p0"
+
+
+def test_dynamic_contact_sweep_preserves_requested_k_order(tmp_path):
+    decays = (0.06, 0.0625, 0.065, 0.0675, 0.07)
+    specs = build_signed_decay_specs(
+        tmp_path / "official.pt",
+        tmp_path / "contact.pt",
+        decays,
+        model_ids=("highrate_contact_v3",),
+    )
+
+    assert [spec.signed_decay for spec in specs] == list(decays)
+    assert [spec.configuration_id for spec in specs] == [
+        "highrate_contact_v3__signed_kp0p06",
+        "highrate_contact_v3__signed_kp0p0625",
+        "highrate_contact_v3__signed_kp0p065",
+        "highrate_contact_v3__signed_kp0p0675",
+        "highrate_contact_v3__signed_kp0p07",
+    ]
+    assert all(spec.action_select_mode == "signed_temporal" for spec in specs)
+
+
+@pytest.mark.parametrize(
+    ("decays", "message"),
+    [
+        ((0.07, 0.07), "duplicates"),
+        ((0.07, float("nan")), "finite"),
+        ((), "must not be empty"),
+    ],
+)
+def test_dynamic_sweep_rejects_invalid_decay_grids(tmp_path, decays, message):
+    with pytest.raises(ValueError, match=message):
+        build_signed_decay_specs(
+            tmp_path / "official.pt",
+            tmp_path / "contact.pt",
+            decays,
+            model_ids=("highrate_contact_v3",),
+        )
 
 
 def test_rollout_command_locks_fairness_contract(tmp_path):
@@ -266,10 +316,77 @@ def test_plan_only_main_writes_thirty_run_manifest_without_launching(tmp_path):
     plan = json.loads((output_dir / "pilot_plan.json").read_text())
     assert plan["pilot_version"] == PILOT_VERSION
     assert plan["execution_enabled"] is False
+    assert plan["sweep_mode"] == "predefined_matrix"
+    assert plan["requested_signed_decays"] is None
+    assert plan["selected_model_ids"] == [
+        "official_act",
+        "highrate_contact_v3",
+    ]
     assert plan["fairness_contract"]["policy_query_interval"] == 1
     assert plan["fairness_contract"]["save_force_hud_videos"] is False
     assert len(plan["specifications"]) == 30
     assert not list(output_dir.glob("*/summary.json"))
+
+
+def test_plan_only_dynamic_contact_sweep_needs_no_hard_coded_configs(tmp_path):
+    official = tmp_path / "official.pt"
+    contact = tmp_path / "contact.pt"
+    model_xml = tmp_path / "model.xml"
+    for path in (contact, model_xml):
+        path.touch()
+    output_dir = tmp_path / "dynamic"
+    decays = ("0.06", "0.0625", "0.065", "0.0675", "0.07")
+    argv = [
+        "--official-checkpoint",
+        str(official),
+        "--contact-checkpoint",
+        str(contact),
+        "--model-xml",
+        str(model_xml),
+        "--output-dir",
+        str(output_dir),
+        "--model-id",
+        "highrate_contact_v3",
+    ]
+    for decay in decays:
+        argv.extend(("--signed-decay", decay))
+
+    assert main(argv) == 0
+    plan = json.loads((output_dir / "pilot_plan.json").read_text())
+    assert plan["sweep_mode"] == "dynamic_signed_decay"
+    assert plan["requested_signed_decays"] == [float(x) for x in decays]
+    assert plan["selected_model_ids"] == ["highrate_contact_v3"]
+    assert len(plan["selected_configuration_ids"]) == len(decays)
+    assert len(plan["specifications"]) == len(decays)
+    assert all(
+        spec["model_id"] == "highrate_contact_v3"
+        for spec in plan["specifications"]
+    )
+
+
+def test_dynamic_and_predefined_selection_modes_cannot_be_mixed(tmp_path):
+    official = tmp_path / "official.pt"
+    contact = tmp_path / "contact.pt"
+    model_xml = tmp_path / "model.xml"
+    for path in (official, contact, model_xml):
+        path.touch()
+
+    assert main(
+        [
+            "--official-checkpoint",
+            str(official),
+            "--contact-checkpoint",
+            str(contact),
+            "--model-xml",
+            str(model_xml),
+            "--output-dir",
+            str(tmp_path / "invalid"),
+            "--signed-decay",
+            "0.07",
+            "--configuration",
+            "highrate_contact_v3__signed_kp0p07",
+        ]
+    ) == 2
 
 
 def test_aggregate_writer_has_one_row_per_completed_configuration(tmp_path):

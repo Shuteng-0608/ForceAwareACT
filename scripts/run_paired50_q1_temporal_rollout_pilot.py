@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Run the paired fixed-point Q=1 temporal-executor rollout pilot."""
+"""Run predefined or dynamic fixed-point Q=1 temporal-executor sweeps."""
 
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import math
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
+from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -16,11 +18,12 @@ from typing import Any, Optional, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT_SCRIPT = REPO_ROOT / "scripts" / "run_mujoco_policy_rollout.py"
-PILOT_VERSION = "paired50_q1_temporal_rollout_pilot_v4"
+PILOT_VERSION = "paired50_q1_temporal_rollout_pilot_v5"
 ROLLOUT_PROTOCOL_VERSION = "paired_action_executor_rollout_v3"
 DEFAULT_FORCE_HUD_CAMERA = "cctv_cam"
 DEFAULT_FORCE_HUD_WIDTH = 1280
 DEFAULT_FORCE_HUD_HEIGHT = 720
+MODEL_IDS = ("official_act", "highrate_contact_v3")
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "runs" / "paired50_q1_temporal_rollout_pilot_b1"
 DEFAULT_OFFICIAL_CHECKPOINT = (
     REPO_ROOT / "runs" / "paired50_official_act_formal_e2000_b8_seed0" / "best_policy.pt"
@@ -42,6 +45,70 @@ class PilotSpec:
     executor_id: str
     action_select_mode: str
     signed_decay: Optional[float]
+
+
+def signed_decay_executor_id(signed_decay: float) -> str:
+    """Return a stable filesystem-safe identifier for an arbitrary finite k."""
+
+    signed_decay = float(signed_decay)
+    if not math.isfinite(signed_decay):
+        raise ValueError("signed decay must be finite")
+    if signed_decay == 0.0:
+        return "signed_k0p0"
+    sign = "m" if signed_decay < 0.0 else "p"
+    magnitude = format(Decimal(str(abs(signed_decay))).normalize(), "f")
+    if "." not in magnitude:
+        magnitude += ".0"
+    return f"signed_k{sign}{magnitude.replace('.', 'p')}"
+
+
+def build_signed_decay_specs(
+    official_checkpoint: Path,
+    contact_checkpoint: Path,
+    signed_decays: Sequence[float],
+    model_ids: Sequence[str] = MODEL_IDS,
+) -> tuple[PilotSpec, ...]:
+    """Build an ordered dynamic sweep without a hard-coded k grid."""
+
+    signed_decays = tuple(float(value) for value in signed_decays)
+    if not signed_decays:
+        raise ValueError("dynamic signed-decay sweep must not be empty")
+    if any(not math.isfinite(value) for value in signed_decays):
+        raise ValueError("signed decays must be finite")
+    if len(set(signed_decays)) != len(signed_decays):
+        raise ValueError("signed decays must not contain duplicates")
+
+    model_ids = tuple(model_ids)
+    if not model_ids:
+        raise ValueError("dynamic sweep model ids must not be empty")
+    if len(set(model_ids)) != len(model_ids):
+        raise ValueError("dynamic sweep model ids must not contain duplicates")
+    unknown_models = sorted(set(model_ids) - set(MODEL_IDS))
+    if unknown_models:
+        raise ValueError(f"unknown model ids: {', '.join(unknown_models)}")
+
+    checkpoint_by_model = {
+        "official_act": official_checkpoint,
+        "highrate_contact_v3": contact_checkpoint,
+    }
+    specs = []
+    for signed_decay in signed_decays:
+        executor_id = signed_decay_executor_id(signed_decay)
+        for model_id in model_ids:
+            specs.append(
+                PilotSpec(
+                    configuration_id=f"{model_id}__{executor_id}",
+                    model_id=model_id,
+                    checkpoint=checkpoint_by_model[model_id],
+                    executor_id=executor_id,
+                    action_select_mode="signed_temporal",
+                    signed_decay=signed_decay,
+                )
+            )
+    configuration_ids = [spec.configuration_id for spec in specs]
+    if len(set(configuration_ids)) != len(configuration_ids):
+        raise ValueError("dynamic sweep produced duplicate configuration ids")
+    return tuple(specs)
 
 
 def build_pilot_specs(
@@ -302,6 +369,9 @@ def _plan_payload(
         "pilot_version": PILOT_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "execution_enabled": bool(args.execute_rollouts),
+        "sweep_mode": args.sweep_mode,
+        "requested_signed_decays": args.signed_decays,
+        "selected_model_ids": list(args.selected_model_ids),
         "selected_configuration_ids": list(selected_configuration_ids),
         "fairness_contract": {
             "fixed_hole_offset": [
@@ -361,6 +431,26 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Run only this configuration id; repeat to select multiple.",
     )
     parser.add_argument(
+        "--signed-decay",
+        action="append",
+        type=float,
+        dest="signed_decays",
+        help=(
+            "Build a dynamic signed-temporal sweep at this k; repeat in the "
+            "desired execution order. Cannot be combined with --configuration."
+        ),
+    )
+    parser.add_argument(
+        "--model-id",
+        action="append",
+        choices=MODEL_IDS,
+        dest="model_ids",
+        help=(
+            "Model to include in the sweep; repeat for a paired sweep. "
+            "Defaults to both models."
+        ),
+    )
+    parser.add_argument(
         "--execute-rollouts",
         action="store_true",
         help="Actually execute policy actions; without this flag only write the plan.",
@@ -400,14 +490,61 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.save_force_hud_videos and not args.force_hud_camera:
         print("error: --force-hud-camera must be non-empty", file=sys.stderr)
         return 2
+    if args.signed_decays and args.configurations:
+        print(
+            "error: --signed-decay cannot be combined with --configuration",
+            file=sys.stderr,
+        )
+        return 2
+    if args.signed_decays and any(
+        not math.isfinite(value) for value in args.signed_decays
+    ):
+        print("error: signed decays must be finite", file=sys.stderr)
+        return 2
+    if args.signed_decays and len(set(args.signed_decays)) != len(
+        args.signed_decays
+    ):
+        print("error: signed decays must not contain duplicates", file=sys.stderr)
+        return 2
+    if args.model_ids and len(set(args.model_ids)) != len(args.model_ids):
+        print("error: model ids must not contain duplicates", file=sys.stderr)
+        return 2
+    args.selected_model_ids = tuple(args.model_ids or MODEL_IDS)
+    required_paths = {"model_xml"}
+    if "official_act" in args.selected_model_ids:
+        required_paths.add("official_checkpoint")
+    if "highrate_contact_v3" in args.selected_model_ids:
+        required_paths.add("contact_checkpoint")
     for path_name in ("official_checkpoint", "contact_checkpoint", "model_xml"):
         path = getattr(args, path_name).expanduser().resolve()
         setattr(args, path_name, path)
-        if not path.is_file():
+        if path_name in required_paths and not path.is_file():
             print(f"error: {path_name} does not exist: {path}", file=sys.stderr)
             return 2
     args.output_dir = args.output_dir.expanduser().resolve()
-    all_specs = build_pilot_specs(args.official_checkpoint, args.contact_checkpoint)
+    if args.signed_decays:
+        args.sweep_mode = "dynamic_signed_decay"
+        try:
+            all_specs = build_signed_decay_specs(
+                args.official_checkpoint,
+                args.contact_checkpoint,
+                args.signed_decays,
+                args.selected_model_ids,
+            )
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+    else:
+        args.sweep_mode = "predefined_matrix"
+        args.signed_decays = None
+        all_specs = tuple(
+            spec
+            for spec in build_pilot_specs(
+                args.official_checkpoint,
+                args.contact_checkpoint,
+            )
+            if spec.model_id in args.selected_model_ids
+        )
     known_ids = {spec.configuration_id for spec in all_specs}
     requested = set(args.configurations or known_ids)
     unknown = sorted(requested - known_ids)
