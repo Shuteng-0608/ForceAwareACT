@@ -57,6 +57,7 @@ identical across all configurations at that point.
 - success dwell: 0.1 s
 - axial push: disabled
 - ordinary and HUD videos: disabled during the full numerical batch
+- raw and gravity-compensated force metrics: recorded every physics step
 
 ACT does not receive force as policy input. Contact-CVAE receives only its
 causal 500 Hz force-history contract and uses a zero deployment latent. The

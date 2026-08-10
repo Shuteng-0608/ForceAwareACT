@@ -142,6 +142,7 @@ def test_point_command_locks_current_fairness_protocol(tmp_path):
     assert value("--contact-latent-mode") == "zero"
     assert "--save-videos" not in command
     assert "--save-force-hud-video" not in command
+    assert "--record-force-metrics" in command
     assert "--execute-actions" in command
 
 

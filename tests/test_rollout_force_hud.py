@@ -231,6 +231,31 @@ def test_interval_peak_tracks_direct_raw_and_compensated_samples() -> None:
         tracker.observe(data, np.zeros(6), timestamp=1.004)
 
 
+def test_interval_peak_integrates_threshold_duration_and_exposure() -> None:
+    model, data = _model_and_data()
+    adapter = RolloutForceHUDAdapter(
+        model,
+        _feedback_config(),
+        RolloutForceHUDConfig(gravity_world=(0.0, 0.0, 0.0)),
+    )
+    snapshot = adapter.update(data, [6, 0, 0, 0, 0, 0], timestamp=1.0)
+    tracker = RolloutForceHUDIntervalPeakTracker(adapter, snapshot, threshold=5.0)
+
+    tracker.observe(data, [4, 0, 0, 0, 0, 0], timestamp=1.002)
+    tracker.observe(data, [7, 0, 0, 0, 0, 0], timestamp=1.005)
+    tracker.observe(data, [0, 0, 0, 0, 0, 0], timestamp=1.006)
+    result = tracker.result()
+
+    # Piecewise-constant integration uses the previous physical observation
+    # over each strictly increasing timestamp interval.
+    assert result.raw_above_threshold_duration == pytest.approx(0.003)
+    assert result.compensated_above_threshold_duration == pytest.approx(0.003)
+    assert result.raw_excess_force_exposure == pytest.approx(0.004)
+    assert result.compensated_excess_force_exposure == pytest.approx(0.004)
+    with pytest.raises(ValueError, match="positive and finite"):
+        RolloutForceHUDIntervalPeakTracker(adapter, snapshot, threshold=0.0)
+
+
 def test_draw_rollout_force_hud_returns_rgb_without_mutating_input() -> None:
     model, data = _model_and_data()
     feedback_config = _feedback_config(enable_task_force_guidance_hud=True)

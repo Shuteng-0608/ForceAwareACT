@@ -929,6 +929,19 @@ def _force_hud_row_values(snapshot, peak) -> dict[str, object]:
         ),
         "force_hud_interval_peak_primary_force_norm": peak.primary_force_norm,
         "force_hud_interval_peak_primary_time": peak.primary_timestamp,
+        "force_metric_threshold": peak.threshold,
+        "force_metric_raw_above_threshold_duration": (
+            peak.raw_above_threshold_duration
+        ),
+        "force_metric_compensated_above_threshold_duration": (
+            peak.compensated_above_threshold_duration
+        ),
+        "force_metric_raw_excess_force_exposure": (
+            peak.raw_excess_force_exposure
+        ),
+        "force_metric_compensated_excess_force_exposure": (
+            peak.compensated_excess_force_exposure
+        ),
     }
 
 
@@ -1242,6 +1255,11 @@ def _fieldnames(include_force_hud: bool = False) -> list[str]:
             "force_hud_interval_peak_compensated_time",
             "force_hud_interval_peak_primary_force_norm",
             "force_hud_interval_peak_primary_time",
+            "force_metric_threshold",
+            "force_metric_raw_above_threshold_duration",
+            "force_metric_compensated_above_threshold_duration",
+            "force_metric_raw_excess_force_exposure",
+            "force_metric_compensated_excess_force_exposure",
         ]
     return fields
 
@@ -1633,12 +1651,15 @@ def run_rollout(args: argparse.Namespace) -> int:
         height=args.image_height,
         width=args.image_width,
     )
+    force_metrics_enabled = bool(
+        args.record_force_metrics or args.save_force_hud_video
+    )
     force_hud_feedback_config = (
         _force_hud_feedback_config(args)
-        if args.save_force_hud_video
+        if force_metrics_enabled
         else None
     )
-    if args.save_force_hud_video:
+    if force_metrics_enabled:
         from force_aware_act.visualization.rollout_force_hud import (
             RolloutForceHUDAdapter,
             RolloutForceHUDConfig,
@@ -1728,6 +1749,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     force_hud_video_path = video_dir / f"{args.force_hud_camera}_force_hud.mp4"
     force_hud_video_writer = None
     force_hud_video_frame_count = 0
+    force_metric_interval_peaks = []
 
     try:
         if args.save_videos:
@@ -1757,17 +1779,18 @@ def run_rollout(args: argparse.Namespace) -> int:
                     wrench,
                     timestamp=float(data.time),
                 )
-                if step % args.video_every == 0:
+                force_hud_peak_tracker = RolloutForceHUDIntervalPeakTracker(
+                    force_hud_adapter,
+                    force_hud_snapshot,
+                    threshold=args.safe_force_threshold,
+                )
+                if args.save_force_hud_video and step % args.video_every == 0:
                     if force_hud_camera_id is None:
                         raise RuntimeError("force HUD camera was not initialized")
                     force_hud_frame_rgb = _render_camera_rgb(
                         renderer,
                         data,
                         force_hud_camera_id,
-                    )
-                    force_hud_peak_tracker = RolloutForceHUDIntervalPeakTracker(
-                        force_hud_adapter,
-                        force_hud_snapshot,
                     )
             if not force_norm_history:
                 force_norm_history.append(force_norm)
@@ -2483,30 +2506,32 @@ def run_rollout(args: argparse.Namespace) -> int:
 
             if row_stop_reason:
                 if force_hud_peak_tracker is not None:
-                    if (
-                        force_hud_video_writer is None
-                        or force_hud_frame_rgb is None
-                        or force_hud_snapshot is None
-                        or force_hud_feedback_config is None
-                    ):
-                        raise RuntimeError("force HUD frame state is incomplete")
-                    force_hud_peak = _write_force_hud_interval_frame(
-                        force_hud_video_writer,
-                        force_hud_video_path,
-                        force_hud_frame_rgb,
-                        force_hud_snapshot,
-                        force_hud_peak_tracker,
-                        force_hud_feedback_config,
-                        args.force_hud_width,
-                        args.force_hud_height,
-                    )
+                    force_hud_peak = force_hud_peak_tracker.result()
                     row.update(
                         _force_hud_row_values(
                             force_hud_snapshot,
                             force_hud_peak,
                         )
                     )
-                    force_hud_video_frame_count += 1
+                    force_metric_interval_peaks.append(force_hud_peak)
+                    if force_hud_frame_rgb is not None:
+                        if (
+                            force_hud_video_writer is None
+                            or force_hud_snapshot is None
+                            or force_hud_feedback_config is None
+                        ):
+                            raise RuntimeError("force HUD frame state is incomplete")
+                        _write_force_hud_interval_frame(
+                            force_hud_video_writer,
+                            force_hud_video_path,
+                            force_hud_frame_rgb,
+                            force_hud_snapshot,
+                            force_hud_peak_tracker,
+                            force_hud_feedback_config,
+                            args.force_hud_width,
+                            args.force_hud_height,
+                        )
+                        force_hud_video_frame_count += 1
                 scheduled_physics_steps_per_policy_values.append(0)
                 physics_steps_per_policy_values.append(0)
                 stop_reason = row_stop_reason
@@ -2572,30 +2597,32 @@ def run_rollout(args: argparse.Namespace) -> int:
             )
             physics_steps_per_policy_values.append(executed_physics_steps)
             if force_hud_peak_tracker is not None:
-                if (
-                    force_hud_video_writer is None
-                    or force_hud_frame_rgb is None
-                    or force_hud_snapshot is None
-                    or force_hud_feedback_config is None
-                ):
-                    raise RuntimeError("force HUD frame state is incomplete")
-                force_hud_peak = _write_force_hud_interval_frame(
-                    force_hud_video_writer,
-                    force_hud_video_path,
-                    force_hud_frame_rgb,
-                    force_hud_snapshot,
-                    force_hud_peak_tracker,
-                    force_hud_feedback_config,
-                    args.force_hud_width,
-                    args.force_hud_height,
-                )
+                force_hud_peak = force_hud_peak_tracker.result()
                 row.update(
                     _force_hud_row_values(
                         force_hud_snapshot,
                         force_hud_peak,
                     )
                 )
-                force_hud_video_frame_count += 1
+                force_metric_interval_peaks.append(force_hud_peak)
+                if force_hud_frame_rgb is not None:
+                    if (
+                        force_hud_video_writer is None
+                        or force_hud_snapshot is None
+                        or force_hud_feedback_config is None
+                    ):
+                        raise RuntimeError("force HUD frame state is incomplete")
+                    _write_force_hud_interval_frame(
+                        force_hud_video_writer,
+                        force_hud_video_path,
+                        force_hud_frame_rgb,
+                        force_hud_snapshot,
+                        force_hud_peak_tracker,
+                        force_hud_feedback_config,
+                        args.force_hud_width,
+                        args.force_hud_height,
+                    )
+                    force_hud_video_frame_count += 1
             if physics_force_stop:
                 final_qcmd = np.asarray(
                     data.ctrl[actuator_ids],
@@ -2629,7 +2656,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     _write_csv(
         log_path,
         rows,
-        include_force_hud=args.save_force_hud_video,
+        include_force_hud=force_metrics_enabled,
     )
 
     min_dist_step, min_dist = _finite_min_step(distance_history)
@@ -2673,6 +2700,14 @@ def run_rollout(args: argparse.Namespace) -> int:
         success
         and np.isfinite(max_force_norm)
         and max_force_norm <= args.safe_force_threshold
+    )
+    compensated_max_force_norm = _finite_max(
+        [peak.compensated_force_norm for peak in force_metric_interval_peaks]
+    )
+    safe_success_compensated = bool(
+        success
+        and np.isfinite(compensated_max_force_norm)
+        and compensated_max_force_norm <= args.safe_force_threshold
     )
     nominal_success_hold_steps = (
         math.ceil(args.success_dwell_time * args.policy_rate_hz) + 1
@@ -2858,6 +2893,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         "success": success,
         "task_success": success,
         "safe_success": safe_success,
+        "safe_success_raw": safe_success,
         "safe_force_threshold": args.safe_force_threshold,
         "success_step": success_step,
         "success_time": success_time,
@@ -2921,6 +2957,47 @@ def run_rollout(args: argparse.Namespace) -> int:
         "nominal_hole_body_local_position": hole_offset_metadata["nominal_hole_body_local_position"],
         "actual_hole_body_local_position": hole_offset_metadata["actual_hole_body_local_position"],
     }
+    if force_metrics_enabled:
+        summary.update(
+            {
+                "force_metrics_recorded": True,
+                "force_metrics_version": (
+                    "raw_gravity_compensated_physics_interval_v1"
+                ),
+                "force_metrics_interval_sampling": (
+                    "policy_state_plus_every_executed_physics_step"
+                ),
+                "force_metrics_primary_wrench": args.force_hud_primary_wrench,
+                "force_metrics_threshold": args.safe_force_threshold,
+                "force_metrics_interval_count": len(force_metric_interval_peaks),
+                "force_metrics_sample_count": sum(
+                    peak.sample_count for peak in force_metric_interval_peaks
+                ),
+                "force_metrics_raw_max_force_norm": _finite_max(
+                    [peak.raw_force_norm for peak in force_metric_interval_peaks]
+                ),
+                "force_metrics_compensated_max_force_norm": (
+                    compensated_max_force_norm
+                ),
+                "force_metrics_raw_above_threshold_duration": sum(
+                    peak.raw_above_threshold_duration
+                    for peak in force_metric_interval_peaks
+                ),
+                "force_metrics_compensated_above_threshold_duration": sum(
+                    peak.compensated_above_threshold_duration
+                    for peak in force_metric_interval_peaks
+                ),
+                "force_metrics_raw_excess_force_exposure": sum(
+                    peak.raw_excess_force_exposure
+                    for peak in force_metric_interval_peaks
+                ),
+                "force_metrics_compensated_excess_force_exposure": sum(
+                    peak.compensated_excess_force_exposure
+                    for peak in force_metric_interval_peaks
+                ),
+                "safe_success_compensated": safe_success_compensated,
+            }
+        )
     if args.save_force_hud_video:
         summary.update(
             {
@@ -3278,6 +3355,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--save-videos", action="store_true")
     parser.add_argument("--video-fps", type=int, default=30)
     parser.add_argument("--video-every", type=int, default=1)
+    parser.add_argument(
+        "--record-force-metrics",
+        action="store_true",
+        help=(
+            "Record raw and gravity-compensated force metrics at every physics "
+            "step without requiring HUD video rendering."
+        ),
+    )
     parser.add_argument(
         "--save-force-hud-video",
         action="store_true",

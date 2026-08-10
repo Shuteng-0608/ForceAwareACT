@@ -194,6 +194,7 @@ def _point_args(args: argparse.Namespace, run: PlannedRun) -> argparse.Namespace
         force_hud_width=DEFAULT_FORCE_HUD_WIDTH,
         force_hud_height=DEFAULT_FORCE_HUD_HEIGHT,
         force_hud_primary_wrench="compensated",
+        record_force_metrics=True,
     )
     return argparse.Namespace(**values)
 
@@ -214,6 +215,7 @@ def build_point_rollout_command(
     point_args = _point_args(args, run)
     command = build_rollout_command(point_args, spec)
     _replace_option(command, "--output-dir", str(run.output_dir))
+    command.append("--record-force-metrics")
     return command
 
 
@@ -224,6 +226,17 @@ def validate_run_summary(
     run: PlannedRun,
 ) -> list[str]:
     errors = validate_completed_summary(summary, _point_args(args, run), spec)
+    expected_force_metrics = {
+        "force_metrics_recorded": True,
+        "force_metrics_version": "raw_gravity_compensated_physics_interval_v1",
+        "force_metrics_primary_wrench": "compensated",
+        "force_metrics_threshold": 40.0,
+    }
+    errors.extend(
+        f"{key}: expected {value!r}, got {summary.get(key)!r}"
+        for key, value in expected_force_metrics.items()
+        if summary.get(key) != value
+    )
     expected_output = _resolved(run.output_dir)
     actual_output = summary.get("output_dir")
     if actual_output is not None and actual_output != expected_output:
@@ -276,6 +289,8 @@ def _protocol_payload(
             "contact_latent_mode": "zero",
             "axial_push_enabled": False,
             "videos_saved": False,
+            "force_metrics_recorded": True,
+            "force_metrics_primary_wrench": "compensated",
         },
     }
 

@@ -167,6 +167,7 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.success_hold_steps is None
     assert args.receding_query_interval is None
     assert args.save_force_hud_video is False
+    assert args.record_force_metrics is False
     assert args.force_hud_camera == "cctv_cam"
     assert args.force_hud_width == 1280
     assert args.force_hud_height == 720

@@ -120,6 +120,11 @@ class RolloutForceHUDIntervalPeak:
     primary_force_norm: float
     primary_timestamp: float
     primary_source_label: str
+    threshold: float
+    raw_above_threshold_duration: float
+    compensated_above_threshold_duration: float
+    raw_excess_force_exposure: float
+    compensated_excess_force_exposure: float
 
 
 class RolloutForceHUDAdapter:
@@ -362,8 +367,13 @@ class RolloutForceHUDIntervalPeakTracker:
         self,
         adapter: RolloutForceHUDAdapter,
         snapshot: RolloutForceHUDSnapshot,
+        threshold: float = 40.0,
     ) -> None:
+        threshold = float(threshold)
+        if not np.isfinite(threshold) or threshold <= 0.0:
+            raise ValueError("interval force threshold must be positive and finite")
         self._adapter = adapter
+        self._threshold = threshold
         self._start_timestamp = float(snapshot.timestamp)
         self._end_timestamp = float(snapshot.timestamp)
         self._sample_count = 0
@@ -371,6 +381,12 @@ class RolloutForceHUDIntervalPeakTracker:
         self._compensated_peak = (-np.inf, self._start_timestamp)
         self._primary_peak = (-np.inf, self._start_timestamp)
         self._source_label = snapshot.primary_source_label
+        self._raw_above_threshold_duration = 0.0
+        self._compensated_above_threshold_duration = 0.0
+        self._raw_excess_force_exposure = 0.0
+        self._compensated_excess_force_exposure = 0.0
+        self._previous_raw_norm: Optional[float] = None
+        self._previous_compensated_norm: Optional[float] = None
         self._observe_wrenches(
             RolloutForceHUDWrenches(
                 raw=snapshot.raw_wrench,
@@ -406,6 +422,15 @@ class RolloutForceHUDIntervalPeakTracker:
             primary_force_norm=self._primary_peak[0],
             primary_timestamp=self._primary_peak[1],
             primary_source_label=self._source_label,
+            threshold=self._threshold,
+            raw_above_threshold_duration=self._raw_above_threshold_duration,
+            compensated_above_threshold_duration=(
+                self._compensated_above_threshold_duration
+            ),
+            raw_excess_force_exposure=self._raw_excess_force_exposure,
+            compensated_excess_force_exposure=(
+                self._compensated_excess_force_exposure
+            ),
         )
 
     def _observe_wrenches(
@@ -418,6 +443,18 @@ class RolloutForceHUDIntervalPeakTracker:
         raw_norm = float(np.linalg.norm(wrenches.raw[:3]))
         compensated_norm = float(np.linalg.norm(wrenches.compensated[:3]))
         primary_norm = float(np.linalg.norm(wrenches.primary[:3]))
+        elapsed = float(timestamp) - self._end_timestamp
+        if self._previous_raw_norm is not None and elapsed > 0.0:
+            if self._previous_raw_norm > self._threshold:
+                self._raw_above_threshold_duration += elapsed
+                self._raw_excess_force_exposure += (
+                    self._previous_raw_norm - self._threshold
+                ) * elapsed
+            if self._previous_compensated_norm > self._threshold:
+                self._compensated_above_threshold_duration += elapsed
+                self._compensated_excess_force_exposure += (
+                    self._previous_compensated_norm - self._threshold
+                ) * elapsed
         self._raw_peak = _updated_peak(self._raw_peak, raw_norm, timestamp)
         self._compensated_peak = _updated_peak(
             self._compensated_peak,
@@ -430,6 +467,8 @@ class RolloutForceHUDIntervalPeakTracker:
             timestamp,
         )
         self._end_timestamp = float(timestamp)
+        self._previous_raw_norm = raw_norm
+        self._previous_compensated_norm = compensated_norm
         self._sample_count += 1
 
 
