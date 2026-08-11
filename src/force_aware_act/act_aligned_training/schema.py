@@ -19,6 +19,7 @@ class EpisodeSchema:
     path: str
     num_steps: int
     num_force_samples: int
+    num_image_samples: int
     camera_names: Tuple[str, ...]
     image_height: int
     image_width: int
@@ -48,14 +49,24 @@ def inspect_episode(path: Path) -> EpisodeSchema:
             if key not in handle:
                 raise KeyError(f"{path} is missing HDF5 dataset {key!r}")
 
-        num_steps = int(handle["timestamps/state"].shape[0])
+        state_timestamps = handle["timestamps/state"][...]
+        force_timestamps = handle["timestamps/force"][...]
+        image_timestamps = handle["timestamps/image"][...]
+        if state_timestamps.ndim != 1 or state_timestamps.size == 0:
+            raise ValueError(f"{path} state timestamps must have shape [N_state]")
+        if force_timestamps.ndim != 1 or force_timestamps.size == 0:
+            raise ValueError(f"{path} force timestamps must have shape [N_force]")
+        if image_timestamps.ndim != 1 or image_timestamps.size == 0:
+            raise ValueError(f"{path} image timestamps must have shape [N_image]")
+
+        num_steps = int(state_timestamps.shape[0])
+        num_force_samples = int(force_timestamps.shape[0])
+        num_image_samples = int(image_timestamps.shape[0])
         if handle["action"].shape != (num_steps, 7):
             raise ValueError(f"{path} action must have shape [N, 7]")
         if handle["observations/joint_pos"].shape != (num_steps, 7):
             raise ValueError(f"{path} joint_pos must have shape [N, 7]")
-        if handle["timestamps/image"].shape != (num_steps,):
-            raise ValueError(f"{path} image timestamps must have shape [N]")
-        if handle["observations/ft_wrench"].shape[1:] != (6,):
+        if handle["observations/ft_wrench"].shape != (num_force_samples, 6):
             raise ValueError(f"{path} ft_wrench must have shape [N_force, 6]")
 
         camera_names = tuple(
@@ -70,22 +81,24 @@ def inspect_episode(path: Path) -> EpisodeSchema:
             if key not in handle:
                 raise KeyError(f"{path} is missing camera dataset {key!r}")
             shape = handle[key].shape
-            if len(shape) != 4 or shape[0] != num_steps or shape[-1] != 3:
+            if (
+                len(shape) != 4
+                or shape[0] != num_image_samples
+                or shape[-1] != 3
+            ):
                 raise ValueError(f"{path} camera {camera_name!r} has invalid shape")
             if image_shape is None:
                 image_shape = shape[1:3]
             elif shape[1:3] != image_shape:
                 raise ValueError(f"{path} camera resolutions must match")
 
-        state_timestamps = handle["timestamps/state"][...]
-        force_timestamps = handle["timestamps/force"][...]
-        image_timestamps = handle["timestamps/image"][...]
         causal_alignment_indices(state_timestamps, force_timestamps)
         causal_alignment_indices(state_timestamps, image_timestamps)
         return EpisodeSchema(
             path=str(path),
             num_steps=num_steps,
-            num_force_samples=int(force_timestamps.shape[0]),
+            num_force_samples=num_force_samples,
+            num_image_samples=num_image_samples,
             camera_names=camera_names,
             image_height=int(image_shape[0]),
             image_width=int(image_shape[1]),

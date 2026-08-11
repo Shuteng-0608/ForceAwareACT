@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import h5py
 import numpy as np
+import pytest
 import torch
 
 from force_aware_act.act_aligned_training import (
@@ -18,7 +19,10 @@ from force_aware_act.act_aligned_training import (
 from force_aware_act.act_aligned_training.checkpoint import (
     CHECKPOINT_FORMAT_VERSION,
 )
-from force_aware_act.act_aligned_training.schema import load_state_aligned_force
+from force_aware_act.act_aligned_training.schema import (
+    inspect_episode,
+    load_state_aligned_force,
+)
 from force_aware_act.inference import RolloutPolicyAdapter
 from force_aware_act.models.act_aligned import (
     ACTAlignedConfig,
@@ -80,6 +84,33 @@ def _write_episode(root: Path, name: str, offset: float) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _replace_with_async_images(root: Path, name: str) -> None:
+    path = root / name / "episode.hdf5"
+    image_time = np.asarray([0.0, 1.0, 3.0], dtype=np.float64)
+    with h5py.File(path, "a") as handle:
+        del handle["timestamps/image"]
+        handle["timestamps"].create_dataset("image", data=image_time)
+        for camera_index, camera_name in enumerate(
+            ("ee_cam", "base_top_cam")
+        ):
+            key = f"observations/images/{camera_name}"
+            del handle[key]
+            frames = np.stack(
+                [
+                    np.full(
+                        (6, 8, 3),
+                        10 * image_index + 20 + camera_index * 30,
+                        dtype=np.uint8,
+                    )
+                    for image_index in range(len(image_time))
+                ]
+            )
+            handle["observations/images"].create_dataset(
+                camera_name,
+                data=frames,
+            )
 
 
 def _config(**overrides):
@@ -186,6 +217,51 @@ def test_discovery_validates_all_episode_records(tmp_path):
     assert len(records) == 2
     assert records[0].num_steps == 4
     assert records[0].camera_names == ("ee_cam", "base_top_cam")
+
+
+def test_async_image_count_is_validated_and_causally_aligned(tmp_path):
+    _write_episode(tmp_path, "episode_async", 0.0)
+    _write_episode(tmp_path, "episode_sync", 100.0)
+    _replace_with_async_images(tmp_path, "episode_async")
+
+    schema = inspect_episode(tmp_path / "episode_async" / "episode.hdf5")
+    assert schema.num_steps == 4
+    assert schema.num_image_samples == 3
+    records = discover_episodes(tmp_path)
+    async_record = next(
+        record for record in records if record.episode_id == "episode_async"
+    )
+    stats = compute_normalization_stats(tmp_path, (async_record,))
+    dataset = ACTAlignedHDF5Dataset(
+        tmp_path,
+        (async_record,),
+        stats,
+        _config(),
+    )
+
+    sample = dataset[2]
+
+    assert sample.timestep == 2
+    torch.testing.assert_close(
+        sample.images[0],
+        torch.full_like(sample.images[0], 30.0 / 255.0),
+    )
+    dataset.close()
+
+
+def test_async_image_timestamp_count_must_match_every_camera(tmp_path):
+    _write_episode(tmp_path, "episode_bad", 0.0)
+    _replace_with_async_images(tmp_path, "episode_bad")
+    path = tmp_path / "episode_bad" / "episode.hdf5"
+    with h5py.File(path, "a") as handle:
+        del handle["observations/images/ee_cam"]
+        handle["observations/images"].create_dataset(
+            "ee_cam",
+            data=np.zeros((2, 6, 8, 3), dtype=np.uint8),
+        )
+
+    with pytest.raises(ValueError, match="camera 'ee_cam' has invalid shape"):
+        inspect_episode(path)
 
 
 def test_dataset_preserves_native_images_without_interpolation(tmp_path):
