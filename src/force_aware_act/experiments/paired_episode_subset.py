@@ -25,6 +25,12 @@ from force_aware_act.act_aligned_training.split import (
 
 PAIRED_EPISODE_SUBSET_VERSION = "paired_episode_subset_v1"
 SELECTION_ALGORITHM = "chronological_strata_distribution_match_v1"
+SCRIPTED_FIXED50_SELECTION_ALGORITHM = (
+    "chronological_stratified_validation_all50_v1"
+)
+DEFAULT_SUCCESS_STATUS = "auto_stop_task_success"
+SCRIPTED_REPLAY_SUCCESS_STATUS = "scripted_replay_success"
+SCRIPTED_COLLECTION_METHOD = "scripted_two_stage_replay"
 SELECTION_FEATURE_NAMES = (
     "num_steps",
     "duration_sim",
@@ -78,9 +84,11 @@ class LoadedPairedEpisodeSubset:
     train_episodes: tuple[EpisodeRecord, ...]
     validation_episodes: tuple[EpisodeRecord, ...]
     holdout_episodes: tuple[EpisodeRecord, ...]
+    success_status: str | None = None
+    collection_method: str | None = None
 
     def checkpoint_provenance(self) -> dict[str, Any]:
-        return {
+        provenance = {
             "format_version": PAIRED_EPISODE_SUBSET_VERSION,
             "path": str(self.path),
             "dataset_fingerprint": self.dataset_fingerprint,
@@ -96,23 +104,47 @@ class LoadedPairedEpisodeSubset:
                 record.episode_id for record in self.holdout_episodes
             ],
         }
+        if self.success_status is not None:
+            provenance["success_status"] = self.success_status
+        if self.collection_method is not None:
+            provenance["collection_method"] = self.collection_method
+        return provenance
 
 
 def extract_episode_selection_features(
     data_root: Path,
     episodes: Sequence[EpisodeRecord],
+    *,
+    expected_success_status: str = DEFAULT_SUCCESS_STATUS,
+    expected_collection_method: str | None = None,
 ) -> tuple[EpisodeSelectionFeatures, ...]:
     """Read non-image trajectory statistics for every validated episode."""
 
+    if not expected_success_status:
+        raise ValueError("expected_success_status must not be empty")
+    if expected_collection_method == "":
+        raise ValueError("expected_collection_method must not be empty")
     data_root = Path(data_root).resolve()
     features = []
     for record in episodes:
         metadata_path = record.resolve(data_root).parent / "metadata.json"
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if metadata.get("status") != "auto_stop_task_success":
+        actual_status = metadata.get("status")
+        if actual_status != expected_success_status:
             raise ValueError(
-                f"episode {record.episode_id} is not a successful demonstration"
+                f"episode {record.episode_id} status mismatch: expected "
+                f"{expected_success_status!r}, got {actual_status!r}"
             )
+        if expected_collection_method is not None:
+            actual_collection_method = metadata.get("episode_context", {}).get(
+                "collection_method"
+            )
+            if actual_collection_method != expected_collection_method:
+                raise ValueError(
+                    f"episode {record.episode_id} collection method mismatch: "
+                    f"expected {expected_collection_method!r}, got "
+                    f"{actual_collection_method!r}"
+                )
         with h5py.File(record.resolve(data_root), "r") as handle:
             action = np.asarray(handle["action"][...], dtype=np.float64)
             wrench = np.asarray(
@@ -281,6 +313,111 @@ def select_paired_episode_subset(
     return selection
 
 
+def select_all_episode_train_validation_split(
+    episodes: Sequence[EpisodeRecord],
+    features: Sequence[EpisodeSelectionFeatures],
+    *,
+    temporal_strata: int = 10,
+    validation_per_stratum: int = 1,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Use every episode while selecting representative validation strata.
+
+    Episode identifiers define chronological order. Each stratum contributes
+    exactly one validation episode, and deterministic local search minimizes
+    the feature-moment distance between validation and the complete dataset.
+    No demonstration is assigned to a holdout group.
+    """
+
+    if not isinstance(seed, int) or isinstance(seed, bool):
+        raise ValueError("seed must be an integer")
+    if temporal_strata <= 0 or validation_per_stratum <= 0:
+        raise ValueError("strata and validation count must be positive")
+    if len(episodes) != len(features):
+        raise ValueError("episodes and features must have the same length")
+    if len(episodes) % temporal_strata != 0:
+        raise ValueError("episode count must be divisible by temporal_strata")
+    stratum_size = len(episodes) // temporal_strata
+    if validation_per_stratum >= stratum_size:
+        raise ValueError(
+            "validation_per_stratum must be smaller than stratum size"
+        )
+
+    records_by_id = {record.episode_id: record for record in episodes}
+    features_by_id = {item.episode_id: item for item in features}
+    if len(records_by_id) != len(episodes) or len(features_by_id) != len(features):
+        raise ValueError("episode identifiers must be unique")
+    if set(records_by_id) != set(features_by_id):
+        raise ValueError("episode and feature identifiers must match")
+
+    ordered_ids = sorted(records_by_id)
+    matrix = np.stack([features_by_id[item].vector() for item in ordered_ids])
+    standardized, center, scale = _robust_standardize(matrix)
+    standardized_by_id = {
+        episode_id: standardized[index]
+        for index, episode_id in enumerate(ordered_ids)
+    }
+    strata = []
+    for stratum_index in range(temporal_strata):
+        start = stratum_index * stratum_size
+        episode_ids = ordered_ids[start : start + stratum_size]
+        strata.append(
+            {
+                "stratum_index": stratum_index,
+                "all_episode_ids": episode_ids,
+                "selected_episode_ids": episode_ids,
+                "holdout_episode_ids": [],
+            }
+        )
+
+    validation_ids = _select_validation_ids(
+        strata,
+        ordered_ids,
+        standardized_by_id,
+        validation_per_stratum=validation_per_stratum,
+        seed=seed,
+    )
+    train_ids = sorted(set(ordered_ids) - set(validation_ids))
+    for stratum in strata:
+        validation_in_stratum = sorted(
+            set(stratum["selected_episode_ids"]) & set(validation_ids)
+        )
+        stratum["validation_episode_ids"] = validation_in_stratum
+        stratum["train_episode_ids"] = sorted(
+            set(stratum["selected_episode_ids"])
+            - set(validation_in_stratum)
+        )
+
+    groups = {
+        "all": ordered_ids,
+        "selected": ordered_ids,
+        "train": train_ids,
+        "validation": validation_ids,
+        "holdout": [],
+    }
+    selection = {
+        "format_version": PAIRED_EPISODE_SUBSET_VERSION,
+        "algorithm": SCRIPTED_FIXED50_SELECTION_ALGORITHM,
+        "seed": seed,
+        "feature_names": list(SELECTION_FEATURE_NAMES),
+        "robust_center": center.tolist(),
+        "robust_scale": scale.tolist(),
+        "temporal_strata": temporal_strata,
+        "stratum_size": stratum_size,
+        "selected_per_stratum": stratum_size,
+        "validation_per_stratum": validation_per_stratum,
+        "groups": groups,
+        "strata": strata,
+        "audit": _selection_audit(
+            groups,
+            features_by_id,
+            standardized_by_id,
+        ),
+    }
+    _validate_selection(selection, expected_ids=set(ordered_ids))
+    return selection
+
+
 def build_paired_episode_subset_manifest(
     data_root: Path,
     *,
@@ -297,6 +434,64 @@ def build_paired_episode_subset_manifest(
         )
     features = extract_episode_selection_features(data_root, episodes)
     selection = select_paired_episode_subset(episodes, features, seed=seed)
+    records_by_id = {record.episode_id: record for record in episodes}
+    groups = selection["groups"]
+    manifest = {
+        "format_version": PAIRED_EPISODE_SUBSET_VERSION,
+        "data_root_hint": str(data_root),
+        "dataset_fingerprint": _dataset_fingerprint(episodes),
+        "selection": {
+            key: value
+            for key, value in selection.items()
+            if key not in {"format_version", "groups"}
+        },
+        "all_episode_count": len(episodes),
+        "selected_episode_count": len(groups["selected"]),
+        "train_episode_count": len(groups["train"]),
+        "validation_episode_count": len(groups["validation"]),
+        "holdout_episode_count": len(groups["holdout"]),
+        "train_episodes": _records(groups["train"], records_by_id),
+        "validation_episodes": _records(
+            groups["validation"],
+            records_by_id,
+        ),
+        "holdout_episodes": _records(groups["holdout"], records_by_id),
+        "selected_episodes": _records(groups["selected"], records_by_id),
+        "episode_features": {
+            item.episode_id: item.to_dict() for item in features
+        },
+    }
+    validate_paired_episode_subset_manifest(
+        manifest,
+        data_root=data_root,
+    )
+    return manifest
+
+
+def build_scripted50_train_validation_manifest(
+    data_root: Path,
+    *,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Build the fixed all-50 scripted split: 40 train and 10 validation."""
+
+    data_root = Path(data_root)
+    episodes = discover_episodes(data_root)
+    if len(episodes) != 50:
+        raise ValueError(f"expected 50 episodes, found {len(episodes)}")
+    features = extract_episode_selection_features(
+        data_root,
+        episodes,
+        expected_success_status=SCRIPTED_REPLAY_SUCCESS_STATUS,
+        expected_collection_method=SCRIPTED_COLLECTION_METHOD,
+    )
+    selection = select_all_episode_train_validation_split(
+        episodes,
+        features,
+        seed=seed,
+    )
+    selection["success_status"] = SCRIPTED_REPLAY_SUCCESS_STATUS
+    selection["collection_method"] = SCRIPTED_COLLECTION_METHOD
     records_by_id = {record.episode_id: record for record in episodes}
     groups = selection["groups"]
     manifest = {
@@ -357,6 +552,8 @@ def load_paired_episode_subset_manifest(
             manifest["validation_episodes"]
         ),
         holdout_episodes=_episode_records(manifest["holdout_episodes"]),
+        success_status=selection.get("success_status"),
+        collection_method=selection.get("collection_method"),
     )
 
 
@@ -372,7 +569,7 @@ def validate_checkpoint_experiment_provenance(
             "without --experiment-manifest or use a matching experiment checkpoint"
         )
     expected = subset.checkpoint_provenance()
-    for key in (
+    keys = [
         "format_version",
         "dataset_fingerprint",
         "algorithm",
@@ -380,7 +577,12 @@ def validate_checkpoint_experiment_provenance(
         "train_episode_ids",
         "validation_episode_ids",
         "holdout_episode_ids",
-    ):
+    ]
+    if subset.success_status is not None:
+        keys.append("success_status")
+    if subset.collection_method is not None:
+        keys.append("collection_method")
+    for key in keys:
         if checkpoint_provenance.get(key) != expected[key]:
             raise ValueError(
                 f"checkpoint experiment manifest mismatch for {key}"
@@ -413,12 +615,47 @@ def validate_paired_episode_subset_manifest(
 
     if manifest.get("format_version") != PAIRED_EPISODE_SUBSET_VERSION:
         raise ValueError("unsupported paired episode subset format")
-    expected_counts = {
-        "selected_episodes": 50,
-        "train_episodes": 40,
-        "validation_episodes": 10,
-        "holdout_episodes": 50,
-    }
+    selection = manifest.get("selection")
+    if not isinstance(selection, Mapping):
+        raise ValueError("manifest selection must be an object")
+    algorithm = selection.get("algorithm")
+    if algorithm == SELECTION_ALGORITHM:
+        expected_total = 100
+        expected_counts = {
+            "selected_episodes": 50,
+            "train_episodes": 40,
+            "validation_episodes": 10,
+            "holdout_episodes": 50,
+        }
+        stratum_size = 10
+        selected_per_stratum = 5
+        train_per_stratum = 4
+        holdout_per_stratum = 5
+    elif algorithm == SCRIPTED_FIXED50_SELECTION_ALGORITHM:
+        expected_total = 50
+        expected_counts = {
+            "selected_episodes": 50,
+            "train_episodes": 40,
+            "validation_episodes": 10,
+            "holdout_episodes": 0,
+        }
+        stratum_size = 5
+        selected_per_stratum = 5
+        train_per_stratum = 4
+        holdout_per_stratum = 0
+        if selection.get("success_status") != SCRIPTED_REPLAY_SUCCESS_STATUS:
+            raise ValueError(
+                "scripted50 manifest success_status must be "
+                f"{SCRIPTED_REPLAY_SUCCESS_STATUS!r}"
+            )
+        if selection.get("collection_method") != SCRIPTED_COLLECTION_METHOD:
+            raise ValueError(
+                "scripted50 manifest collection_method must be "
+                f"{SCRIPTED_COLLECTION_METHOD!r}"
+            )
+    else:
+        raise ValueError(f"unsupported selection algorithm: {algorithm!r}")
+
     id_sets = {}
     for key, expected_count in expected_counts.items():
         records = manifest.get(key)
@@ -437,21 +674,68 @@ def validate_paired_episode_subset_manifest(
         raise ValueError("train and validation must partition selected episodes")
     if id_sets["selected_episodes"] & id_sets["holdout_episodes"]:
         raise ValueError("selected and holdout episodes must be disjoint")
-    if len(id_sets["selected_episodes"] | id_sets["holdout_episodes"]) != 100:
-        raise ValueError("selected and holdout must partition 100 episodes")
+    all_ids = id_sets["selected_episodes"] | id_sets["holdout_episodes"]
+    if len(all_ids) != expected_total:
+        raise ValueError(
+            f"selected and holdout must partition {expected_total} episodes"
+        )
 
-    strata = manifest.get("selection", {}).get("strata")
+    count_fields = {
+        "all_episode_count": expected_total,
+        "selected_episode_count": expected_counts["selected_episodes"],
+        "train_episode_count": expected_counts["train_episodes"],
+        "validation_episode_count": expected_counts["validation_episodes"],
+        "holdout_episode_count": expected_counts["holdout_episodes"],
+    }
+    for key, expected in count_fields.items():
+        if manifest.get(key) != expected:
+            raise ValueError(f"{key} must equal {expected}")
+
+    strata = selection.get("strata")
     if not isinstance(strata, list) or len(strata) != 10:
         raise ValueError("manifest must contain ten chronological strata")
+    stratified_ids = []
     for stratum in strata:
-        if len(stratum.get("all_episode_ids", [])) != 10:
-            raise ValueError("each stratum must contain ten episodes")
-        if len(stratum.get("selected_episode_ids", [])) != 5:
-            raise ValueError("each stratum must select five episodes")
-        if len(stratum.get("train_episode_ids", [])) != 4:
-            raise ValueError("each stratum must contain four train episodes")
+        stratum_all = stratum.get("all_episode_ids", [])
+        stratum_selected = stratum.get("selected_episode_ids", [])
+        stratum_train = stratum.get("train_episode_ids", [])
+        stratum_validation = stratum.get("validation_episode_ids", [])
+        stratum_holdout = stratum.get("holdout_episode_ids", [])
+        if len(stratum_all) != stratum_size:
+            raise ValueError(
+                f"each stratum must contain {stratum_size} episodes"
+            )
+        if len(stratum_selected) != selected_per_stratum:
+            raise ValueError(
+                "each stratum must select "
+                f"{selected_per_stratum} episodes"
+            )
+        if len(stratum_train) != train_per_stratum:
+            raise ValueError(
+                f"each stratum must contain {train_per_stratum} train episodes"
+            )
         if len(stratum.get("validation_episode_ids", [])) != 1:
             raise ValueError("each stratum must contain one validation episode")
+        if len(stratum_holdout) != holdout_per_stratum:
+            raise ValueError(
+                "each stratum must contain "
+                f"{holdout_per_stratum} holdout episodes"
+            )
+        if set(stratum_train) | set(stratum_validation) != set(
+            stratum_selected
+        ):
+            raise ValueError(
+                "stratum train and validation must partition selected episodes"
+            )
+        if set(stratum_selected) | set(stratum_holdout) != set(stratum_all):
+            raise ValueError(
+                "stratum selected and holdout must partition all episodes"
+            )
+        stratified_ids.extend(stratum_all)
+    if len(stratified_ids) != len(set(stratified_ids)) or set(
+        stratified_ids
+    ) != all_ids:
+        raise ValueError("chronological strata must partition all episodes")
 
     if data_root is not None:
         discovered = discover_episodes(data_root)
@@ -459,6 +743,27 @@ def validate_paired_episode_subset_manifest(
             "dataset_fingerprint"
         ):
             raise ValueError("manifest dataset fingerprint mismatch")
+        expected_status = selection.get("success_status")
+        expected_method = selection.get("collection_method")
+        if expected_status is not None or expected_method is not None:
+            resolved_root = Path(data_root).resolve()
+            for record in discovered:
+                metadata_path = record.resolve(resolved_root).parent / "metadata.json"
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if (
+                    expected_status is not None
+                    and metadata.get("status") != expected_status
+                ):
+                    raise ValueError(
+                        f"episode {record.episode_id} status does not match manifest"
+                    )
+                if expected_method is not None and metadata.get(
+                    "episode_context", {}
+                ).get("collection_method") != expected_method:
+                    raise ValueError(
+                        f"episode {record.episode_id} collection method does not "
+                        "match manifest"
+                    )
 
 
 def _best_matched_subset(
@@ -578,6 +883,13 @@ def _selection_audit(
 ) -> dict[str, Any]:
     summaries = {}
     for group_name, identifiers in groups.items():
+        if not identifiers:
+            summaries[group_name] = {
+                "episode_count": 0,
+                "total_timesteps": 0,
+                "features": {},
+            }
+            continue
         raw = np.stack([features_by_id[item].vector() for item in identifiers])
         summaries[group_name] = {
             "episode_count": len(identifiers),
@@ -598,7 +910,12 @@ def _selection_audit(
             },
         }
 
-    def standardized_mean_distance(left: str, right: str) -> float:
+    def standardized_mean_distance(
+        left: str,
+        right: str,
+    ) -> float | None:
+        if not groups[left] or not groups[right]:
+            return None
         left_values = np.stack(
             [standardized_by_id[item] for item in groups[left]]
         )
