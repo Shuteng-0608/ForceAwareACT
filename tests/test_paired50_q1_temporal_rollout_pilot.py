@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.run_mujoco_policy_rollout import parse_args as parse_rollout_args
 from scripts.run_paired50_q1_temporal_rollout_pilot import (
     PILOT_VERSION,
     build_pilot_specs,
@@ -148,7 +149,10 @@ def test_rollout_command_locks_fairness_contract(tmp_path):
     command = build_rollout_command(args, spec)
 
     assert command[command.index("--action-select-mode") + 1] == "signed_temporal"
-    assert command[command.index("--temporal-agg-decay") + 1] == "-0.01"
+    assert "--temporal-agg-decay=-0.01" in command
+    assert "--hole-offset-x=0.0" in command
+    assert "--hole-offset-y=0.0" in command
+    assert "--hole-offset-z=0.0" in command
     assert command[command.index("--policy-rate-hz") + 1] == "30"
     assert command[command.index("--max-rollout-steps") + 1] == "600"
     assert command[command.index("--force-stop-threshold") + 1] == "100"
@@ -187,7 +191,26 @@ def test_latest_only_command_does_not_inject_irrelevant_decay(tmp_path):
     command = build_rollout_command(args, spec)
 
     assert command[command.index("--action-select-mode") + 1] == "latest_only"
-    assert "--temporal-agg-decay" not in command
+    assert not any(token.startswith("--temporal-agg-decay=") for token in command)
+
+
+def test_rollout_command_preserves_negative_scientific_notation(tmp_path):
+    args = _args(tmp_path)
+    args.hole_offset_x = -8.159036092303978e-05
+    args.hole_offset_z = -3.3229231251716794e-05
+    spec = build_signed_decay_specs(
+        tmp_path / "official.pt",
+        tmp_path / "contact.pt",
+        (-1e-05,),
+        model_ids=("official_act",),
+    )[0]
+
+    command = build_rollout_command(args, spec)
+    parsed = parse_rollout_args(command[2:])
+
+    assert parsed.hole_offset_x == pytest.approx(args.hole_offset_x)
+    assert parsed.hole_offset_z == pytest.approx(args.hole_offset_z)
+    assert parsed.temporal_agg_decay == pytest.approx(spec.signed_decay)
 
 
 def test_completed_summary_contract_accepts_matching_q1_run(tmp_path):

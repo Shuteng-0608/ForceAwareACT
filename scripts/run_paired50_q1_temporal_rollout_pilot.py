@@ -186,18 +186,15 @@ def build_rollout_command(args: argparse.Namespace, spec: PilotSpec) -> list[str
         "0.003",
         "--success-dwell-time",
         "0.1",
-        "--hole-offset-x",
-        str(args.hole_offset_x),
-        "--hole-offset-y",
-        str(args.hole_offset_y),
-        "--hole-offset-z",
-        str(args.hole_offset_z),
+        f"--hole-offset-x={float(args.hole_offset_x)!r}",
+        f"--hole-offset-y={float(args.hole_offset_y)!r}",
+        f"--hole-offset-z={float(args.hole_offset_z)!r}",
         "--seed",
         str(args.seed),
         "--execute-actions",
     ]
     if spec.signed_decay is not None:
-        command.extend(("--temporal-agg-decay", str(spec.signed_decay)))
+        command.append(f"--temporal-agg-decay={float(spec.signed_decay)!r}")
     if args.save_videos:
         command.append("--save-videos")
     if args.save_force_hud_videos:

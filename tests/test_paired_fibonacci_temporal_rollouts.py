@@ -131,6 +131,10 @@ def test_point_command_locks_current_fairness_protocol(tmp_path):
     command = build_point_rollout_command(args, specs[0], run)
 
     def value(option: str) -> str:
+        prefix = f"{option}="
+        for token in command:
+            if token.startswith(prefix):
+                return token[len(prefix) :]
         return command[command.index(option) + 1]
 
     assert value("--output-dir") == str(run.output_dir)
