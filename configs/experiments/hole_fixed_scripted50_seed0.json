@@ -1,0 +1,2375 @@
+{
+  "all_episode_count": 50,
+  "data_root_hint": "/home/stw/work/stw/hole_fixed_scripted",
+  "dataset_fingerprint": "8092674aadc32ed27104184cc173b61ade066d15d0934d5aa8612eab36111f8d",
+  "episode_features": {
+    "20260811_190219_scripted": {
+      "action_range_norm": 0.8281114262278917,
+      "action_step_delta_mean": 0.0013196289510798273,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05201560468140442,
+      "contact_onset_fraction_5n": 0.6106770833333334,
+      "duration_sim": 25.645000000017966,
+      "episode_id": "20260811_190219_scripted",
+      "force_norm_max": 18.639887364113488,
+      "force_norm_mean": 0.6856441457281438,
+      "force_norm_p95": 7.698316392873179,
+      "num_steps": 769,
+      "torque_norm_p95": 0.37265071363336266
+    },
+    "20260811_190315_scripted": {
+      "action_range_norm": 0.8285931379065529,
+      "action_step_delta_mean": 0.00132245193207125,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.059782608695652176,
+      "contact_onset_fraction_5n": 0.5891156462585034,
+      "duration_sim": 24.53900000011717,
+      "episode_id": "20260811_190315_scripted",
+      "force_norm_max": 19.806396660037606,
+      "force_norm_mean": 0.7555267221742755,
+      "force_norm_p95": 8.117995877962052,
+      "num_steps": 736,
+      "torque_norm_p95": 0.42517203835615874
+    },
+    "20260811_190410_scripted": {
+      "action_range_norm": 0.8286503541053741,
+      "action_step_delta_mean": 0.0013215367970795453,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05622489959839357,
+      "contact_onset_fraction_5n": 0.5951742627345844,
+      "duration_sim": 24.888000000118836,
+      "episode_id": "20260811_190410_scripted",
+      "force_norm_max": 19.71154706496198,
+      "force_norm_mean": 0.7108630910521343,
+      "force_norm_p95": 6.158440993916792,
+      "num_steps": 747,
+      "torque_norm_p95": 0.35498017118681674
+    },
+    "20260811_190546_scripted": {
+      "action_range_norm": 0.8284901718094781,
+      "action_step_delta_mean": 0.0013433857629860204,
+      "contact_fraction_20n": 0.0013315579227696406,
+      "contact_fraction_5n": 0.05992010652463382,
+      "contact_onset_fraction_5n": 0.5933333333333334,
+      "duration_sim": 25.01499999994272,
+      "episode_id": "20260811_190546_scripted",
+      "force_norm_max": 24.273056131492375,
+      "force_norm_mean": 0.7998879376641023,
+      "force_norm_p95": 8.954079286928991,
+      "num_steps": 751,
+      "torque_norm_p95": 0.42764829693090833
+    },
+    "20260811_193810_scripted": {
+      "action_range_norm": 0.8273872589415765,
+      "action_step_delta_mean": 0.0014352809911067326,
+      "contact_fraction_20n": 0.0013458950201884253,
+      "contact_fraction_5n": 0.05114401076716016,
+      "contact_onset_fraction_5n": 0.5997304582210242,
+      "duration_sim": 24.761999999956387,
+      "episode_id": "20260811_193810_scripted",
+      "force_norm_max": 20.158033877855456,
+      "force_norm_mean": 0.6750401503501775,
+      "force_norm_p95": 6.94236431453472,
+      "num_steps": 743,
+      "torque_norm_p95": 0.29213170309848635
+    },
+    "20260811_194001_scripted": {
+      "action_range_norm": 0.8273043484291819,
+      "action_step_delta_mean": 0.0013668558782840728,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.04861111111111111,
+      "contact_onset_fraction_5n": 0.5924895688456189,
+      "duration_sim": 23.983000000114515,
+      "episode_id": "20260811_194001_scripted",
+      "force_norm_max": 13.664570104379669,
+      "force_norm_mean": 0.639182674138219,
+      "force_norm_p95": 4.48021314687494,
+      "num_steps": 720,
+      "torque_norm_p95": 0.2943251347015411
+    },
+    "20260811_194101_scripted": {
+      "action_range_norm": 0.8275748203848539,
+      "action_step_delta_mean": 0.0013756362638953714,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05668016194331984,
+      "contact_onset_fraction_5n": 0.5932432432432433,
+      "duration_sim": 24.689000000117886,
+      "episode_id": "20260811_194101_scripted",
+      "force_norm_max": 19.577187254657204,
+      "force_norm_mean": 0.7120758026291576,
+      "force_norm_p95": 6.746705280881541,
+      "num_steps": 741,
+      "torque_norm_p95": 0.35315852717922364
+    },
+    "20260811_194154_scripted": {
+      "action_range_norm": 0.8274753820108474,
+      "action_step_delta_mean": 0.0013279020684731724,
+      "contact_fraction_20n": 0.008275862068965517,
+      "contact_fraction_5n": 0.060689655172413794,
+      "contact_onset_fraction_5n": 0.580110497237569,
+      "duration_sim": 24.152999999552634,
+      "episode_id": "20260811_194154_scripted",
+      "force_norm_max": 25.065793626093924,
+      "force_norm_mean": 0.8035553358761915,
+      "force_norm_p95": 6.989978549054127,
+      "num_steps": 725,
+      "torque_norm_p95": 0.41802402238043845
+    },
+    "20260811_194252_scripted": {
+      "action_range_norm": 0.826686422262344,
+      "action_step_delta_mean": 0.0014354213593530132,
+      "contact_fraction_20n": 0.006765899864682003,
+      "contact_fraction_5n": 0.06495263870094722,
+      "contact_onset_fraction_5n": 0.5853658536585366,
+      "duration_sim": 24.614999999417932,
+      "episode_id": "20260811_194252_scripted",
+      "force_norm_max": 23.990411021444643,
+      "force_norm_mean": 0.8521517740626828,
+      "force_norm_p95": 7.694819237268824,
+      "num_steps": 739,
+      "torque_norm_p95": 0.44852333608917244
+    },
+    "20260811_194344_scripted": {
+      "action_range_norm": 0.8273440765139966,
+      "action_step_delta_mean": 0.0014193556462268168,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05040871934604905,
+      "contact_onset_fraction_5n": 0.5961800818553888,
+      "duration_sim": 24.468999999421385,
+      "episode_id": "20260811_194344_scripted",
+      "force_norm_max": 17.75557551420532,
+      "force_norm_mean": 0.6093374402752068,
+      "force_norm_p95": 5.593152932657643,
+      "num_steps": 734,
+      "torque_norm_p95": 0.3110256533139441
+    },
+    "20260811_194442_scripted": {
+      "action_range_norm": 0.8280715555856712,
+      "action_step_delta_mean": 0.0014042872358456802,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05970149253731343,
+      "contact_onset_fraction_5n": 0.5910326086956522,
+      "duration_sim": 24.57199999941895,
+      "episode_id": "20260811_194442_scripted",
+      "force_norm_max": 18.924960276222027,
+      "force_norm_mean": 0.7615199816983708,
+      "force_norm_p95": 8.081895754728484,
+      "num_steps": 737,
+      "torque_norm_p95": 0.40922633232563255
+    },
+    "20260811_194601_scripted": {
+      "action_range_norm": 0.8272920159523869,
+      "action_step_delta_mean": 0.0014295765918043676,
+      "contact_fraction_20n": 0.0068212824010914054,
+      "contact_fraction_5n": 0.0572987721691678,
+      "contact_onset_fraction_5n": 0.5887978142076503,
+      "duration_sim": 24.413999999422742,
+      "episode_id": "20260811_194601_scripted",
+      "force_norm_max": 22.261587479472677,
+      "force_norm_mean": 0.8267069066358818,
+      "force_norm_p95": 7.998349628178629,
+      "num_steps": 733,
+      "torque_norm_p95": 0.4486324022058282
+    },
+    "20260811_194711_scripted": {
+      "action_range_norm": 0.8275067131055189,
+      "action_step_delta_mean": 0.0013278956871016969,
+      "contact_fraction_20n": 0.0068775790921595595,
+      "contact_fraction_5n": 0.06052269601100413,
+      "contact_onset_fraction_5n": 0.5826446280991735,
+      "duration_sim": 24.216999999427344,
+      "episode_id": "20260811_194711_scripted",
+      "force_norm_max": 21.861163346519675,
+      "force_norm_mean": 0.8533198352337243,
+      "force_norm_p95": 8.787353642767934,
+      "num_steps": 727,
+      "torque_norm_p95": 0.4982687230500036
+    },
+    "20260811_194802_scripted": {
+      "action_range_norm": 0.8262902103395645,
+      "action_step_delta_mean": 0.0013473862844534579,
+      "contact_fraction_20n": 0.006802721088435374,
+      "contact_fraction_5n": 0.058503401360544216,
+      "contact_onset_fraction_5n": 0.5899182561307902,
+      "duration_sim": 24.477999999421172,
+      "episode_id": "20260811_194802_scripted",
+      "force_norm_max": 26.88833048351444,
+      "force_norm_mean": 0.8368043550688737,
+      "force_norm_p95": 8.528372510323292,
+      "num_steps": 735,
+      "torque_norm_p95": 0.45936989937790235
+    },
+    "20260811_194854_scripted": {
+      "action_range_norm": 0.8285729858589744,
+      "action_step_delta_mean": 0.0013371649406411347,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05563093622795115,
+      "contact_onset_fraction_5n": 0.59375,
+      "duration_sim": 24.553999999419375,
+      "episode_id": "20260811_194854_scripted",
+      "force_norm_max": 19.165451413905448,
+      "force_norm_mean": 0.715378372151033,
+      "force_norm_p95": 5.771484165284079,
+      "num_steps": 737,
+      "torque_norm_p95": 0.36798052615429155
+    },
+    "20260811_194945_scripted": {
+      "action_range_norm": 0.8275146169929786,
+      "action_step_delta_mean": 0.0014411727069203162,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.04807692307692308,
+      "contact_onset_fraction_5n": 0.5997248968363136,
+      "duration_sim": 24.25399999942647,
+      "episode_id": "20260811_194945_scripted",
+      "force_norm_max": 12.766665564828083,
+      "force_norm_mean": 0.6048666721485235,
+      "force_norm_p95": 4.242914205260195,
+      "num_steps": 728,
+      "torque_norm_p95": 0.29935689972178164
+    },
+    "20260811_195042_scripted": {
+      "action_range_norm": 0.8274460022664802,
+      "action_step_delta_mean": 0.0012989085283729893,
+      "contact_fraction_20n": 0.013513513513513514,
+      "contact_fraction_5n": 0.06621621621621622,
+      "contact_onset_fraction_5n": 0.5805142083897158,
+      "duration_sim": 24.67599999941649,
+      "episode_id": "20260811_195042_scripted",
+      "force_norm_max": 31.853408491711555,
+      "force_norm_mean": 1.072459910341436,
+      "force_norm_p95": 9.03200964097807,
+      "num_steps": 740,
+      "torque_norm_p95": 0.51556859773961
+    },
+    "20260811_195133_scripted": {
+      "action_range_norm": 0.826062458491081,
+      "action_step_delta_mean": 0.0013317149076923689,
+      "contact_fraction_20n": 0.001402524544179523,
+      "contact_fraction_5n": 0.05750350631136045,
+      "contact_onset_fraction_5n": 0.5786516853932584,
+      "duration_sim": 23.755999999438245,
+      "episode_id": "20260811_195133_scripted",
+      "force_norm_max": 23.54291766372411,
+      "force_norm_mean": 0.73553704491667,
+      "force_norm_p95": 7.828317695385301,
+      "num_steps": 713,
+      "torque_norm_p95": 0.3841608458955649
+    },
+    "20260811_195230_scripted": {
+      "action_range_norm": 0.8270022476430822,
+      "action_step_delta_mean": 0.0013537176270754128,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.044382801664355064,
+      "contact_onset_fraction_5n": 0.5944444444444444,
+      "duration_sim": 24.015999999432097,
+      "episode_id": "20260811_195230_scripted",
+      "force_norm_max": 12.970794587975345,
+      "force_norm_mean": 0.534104460744452,
+      "force_norm_p95": 3.835826221457025,
+      "num_steps": 721,
+      "torque_norm_p95": 0.2669541313585847
+    },
+    "20260811_195322_scripted": {
+      "action_range_norm": 0.8238926226934984,
+      "action_step_delta_mean": 0.0014195151070873122,
+      "contact_fraction_20n": 0.00546448087431694,
+      "contact_fraction_5n": 0.05737704918032787,
+      "contact_onset_fraction_5n": 0.5882352941176471,
+      "duration_sim": 24.427999999422354,
+      "episode_id": "20260811_195322_scripted",
+      "force_norm_max": 25.132251324766667,
+      "force_norm_mean": 0.7443906217837435,
+      "force_norm_p95": 6.676866979011808,
+      "num_steps": 732,
+      "torque_norm_p95": 0.4088034968433752
+    },
+    "20260811_195415_scripted": {
+      "action_range_norm": 0.8275873140333088,
+      "action_step_delta_mean": 0.0013493145164216948,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.04781420765027322,
+      "contact_onset_fraction_5n": 0.5978112175102599,
+      "duration_sim": 24.38299999942342,
+      "episode_id": "20260811_195415_scripted",
+      "force_norm_max": 13.772704094888699,
+      "force_norm_mean": 0.6130143779503809,
+      "force_norm_p95": 4.490824552548409,
+      "num_steps": 732,
+      "torque_norm_p95": 0.2786334923370236
+    },
+    "20260811_195506_scripted": {
+      "action_range_norm": 0.8278223254708157,
+      "action_step_delta_mean": 0.0012909060092293945,
+      "contact_fraction_20n": 0.006756756756756757,
+      "contact_fraction_5n": 0.060810810810810814,
+      "contact_onset_fraction_5n": 0.5886332882273342,
+      "duration_sim": 24.662999999416797,
+      "episode_id": "20260811_195506_scripted",
+      "force_norm_max": 23.382911091648513,
+      "force_norm_mean": 0.8416528233596972,
+      "force_norm_p95": 8.580322794082665,
+      "num_steps": 740,
+      "torque_norm_p95": 0.40511796180035076
+    },
+    "20260811_195605_scripted": {
+      "action_range_norm": 0.8251420170108639,
+      "action_step_delta_mean": 0.0012903436007312577,
+      "contact_fraction_20n": 0.00684931506849315,
+      "contact_fraction_5n": 0.0589041095890411,
+      "contact_onset_fraction_5n": 0.5857338820301783,
+      "duration_sim": 24.32799999942472,
+      "episode_id": "20260811_195605_scripted",
+      "force_norm_max": 20.741199577618364,
+      "force_norm_mean": 0.7644409768192628,
+      "force_norm_p95": 6.96176549881401,
+      "num_steps": 730,
+      "torque_norm_p95": 0.426214189638007
+    },
+    "20260811_195708_scripted": {
+      "action_range_norm": 0.8284724190294799,
+      "action_step_delta_mean": 0.0013611997897826876,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.04632152588555858,
+      "contact_onset_fraction_5n": 0.6016371077762619,
+      "duration_sim": 24.444999999421952,
+      "episode_id": "20260811_195708_scripted",
+      "force_norm_max": 14.03219741826028,
+      "force_norm_mean": 0.6435957813200439,
+      "force_norm_p95": 4.538014788606919,
+      "num_steps": 734,
+      "torque_norm_p95": 0.32338363907466233
+    },
+    "20260811_195807_scripted": {
+      "action_range_norm": 0.8286577741849289,
+      "action_step_delta_mean": 0.0013134426779676154,
+      "contact_fraction_20n": 0.006648936170212766,
+      "contact_fraction_5n": 0.05851063829787234,
+      "contact_onset_fraction_5n": 0.5952063914780293,
+      "duration_sim": 25.071999999407126,
+      "episode_id": "20260811_195807_scripted",
+      "force_norm_max": 23.80029666441093,
+      "force_norm_mean": 0.787217820163129,
+      "force_norm_p95": 7.386455706787073,
+      "num_steps": 752,
+      "torque_norm_p95": 0.42271955568081643
+    },
+    "20260811_195921_scripted": {
+      "action_range_norm": 0.8267778682194346,
+      "action_step_delta_mean": 0.0013454537378332992,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05198358413132695,
+      "contact_onset_fraction_5n": 0.5931506849315068,
+      "duration_sim": 24.35799999942401,
+      "episode_id": "20260811_195921_scripted",
+      "force_norm_max": 18.474913373061455,
+      "force_norm_mean": 0.6552340057272249,
+      "force_norm_p95": 6.920031961485211,
+      "num_steps": 731,
+      "torque_norm_p95": 0.3698106532810635
+    },
+    "20260811_200012_scripted": {
+      "action_range_norm": 0.8272734974072701,
+      "action_step_delta_mean": 0.0013686529915234143,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.052486187845303865,
+      "contact_onset_fraction_5n": 0.5905947441217151,
+      "duration_sim": 24.12499999942952,
+      "episode_id": "20260811_200012_scripted",
+      "force_norm_max": 16.76474159901057,
+      "force_norm_mean": 0.6752725924232051,
+      "force_norm_p95": 7.344458060432284,
+      "num_steps": 724,
+      "torque_norm_p95": 0.30064745480838556
+    },
+    "20260811_200106_scripted": {
+      "action_range_norm": 0.8273014537511207,
+      "action_step_delta_mean": 0.0014177833149566221,
+      "contact_fraction_20n": 0.0013513513513513514,
+      "contact_fraction_5n": 0.051351351351351354,
+      "contact_onset_fraction_5n": 0.5994587280108254,
+      "duration_sim": 24.65399999941701,
+      "episode_id": "20260811_200106_scripted",
+      "force_norm_max": 20.332561455755606,
+      "force_norm_mean": 0.6519711380174215,
+      "force_norm_p95": 5.418507227932959,
+      "num_steps": 740,
+      "torque_norm_p95": 0.32556831148496496
+    },
+    "20260811_200157_scripted": {
+      "action_range_norm": 0.8270377810545667,
+      "action_step_delta_mean": 0.0014274411341465574,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.054945054945054944,
+      "contact_onset_fraction_5n": 0.5900962861072903,
+      "duration_sim": 24.25899999942635,
+      "episode_id": "20260811_200157_scripted",
+      "force_norm_max": 18.100156155386724,
+      "force_norm_mean": 0.7448789026916436,
+      "force_norm_p95": 8.741053175069817,
+      "num_steps": 728,
+      "torque_norm_p95": 0.3737255794370177
+    },
+    "20260811_200248_scripted": {
+      "action_range_norm": 0.8287379749938306,
+      "action_step_delta_mean": 0.0013308232205481072,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.050824175824175824,
+      "contact_onset_fraction_5n": 0.5914718019257221,
+      "duration_sim": 24.262999999426256,
+      "episode_id": "20260811_200248_scripted",
+      "force_norm_max": 18.24702689445677,
+      "force_norm_mean": 0.7173900742889525,
+      "force_norm_p95": 5.891635467582995,
+      "num_steps": 728,
+      "torque_norm_p95": 0.3577942425241714
+    },
+    "20260811_200339_scripted": {
+      "action_range_norm": 0.8270415352838716,
+      "action_step_delta_mean": 0.0013374364000937854,
+      "contact_fraction_20n": 0.012145748987854251,
+      "contact_fraction_5n": 0.0620782726045884,
+      "contact_onset_fraction_5n": 0.5864864864864865,
+      "duration_sim": 24.70599999941578,
+      "episode_id": "20260811_200339_scripted",
+      "force_norm_max": 25.747746317616524,
+      "force_norm_mean": 0.9232318259754995,
+      "force_norm_p95": 8.694882458258066,
+      "num_steps": 741,
+      "torque_norm_p95": 0.4869560925053924
+    },
+    "20260811_200437_scripted": {
+      "action_range_norm": 0.8269026062681122,
+      "action_step_delta_mean": 0.0013277423848345724,
+      "contact_fraction_20n": 0.010869565217391304,
+      "contact_fraction_5n": 0.06385869565217392,
+      "contact_onset_fraction_5n": 0.5850340136054422,
+      "duration_sim": 24.534999999419824,
+      "episode_id": "20260811_200437_scripted",
+      "force_norm_max": 26.841162600404292,
+      "force_norm_mean": 0.9817138804180182,
+      "force_norm_p95": 8.974748254771061,
+      "num_steps": 736,
+      "torque_norm_p95": 0.5190736935594644
+    },
+    "20260811_200527_scripted": {
+      "action_range_norm": 0.8270808264789908,
+      "action_step_delta_mean": 0.001444161383194708,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.046413502109704644,
+      "contact_onset_fraction_5n": 0.5887323943661972,
+      "duration_sim": 23.681999999439995,
+      "episode_id": "20260811_200527_scripted",
+      "force_norm_max": 12.955165340215052,
+      "force_norm_mean": 0.6165217894653624,
+      "force_norm_p95": 4.247140152728601,
+      "num_steps": 711,
+      "torque_norm_p95": 0.31197704964253214
+    },
+    "20260811_200618_scripted": {
+      "action_range_norm": 0.828746799074582,
+      "action_step_delta_mean": 0.0013169976167973932,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.0577716643741403,
+      "contact_onset_fraction_5n": 0.5867768595041323,
+      "duration_sim": 24.218999999427297,
+      "episode_id": "20260811_200618_scripted",
+      "force_norm_max": 19.16105859569656,
+      "force_norm_mean": 0.7175470481928338,
+      "force_norm_p95": 6.469132836304113,
+      "num_steps": 727,
+      "torque_norm_p95": 0.39186184304943367
+    },
+    "20260811_200709_scripted": {
+      "action_range_norm": 0.8276534754821844,
+      "action_step_delta_mean": 0.0014101396655165873,
+      "contact_fraction_20n": 0.006747638326585695,
+      "contact_fraction_5n": 0.05263157894736842,
+      "contact_onset_fraction_5n": 0.5932432432432433,
+      "duration_sim": 24.729999999415213,
+      "episode_id": "20260811_200709_scripted",
+      "force_norm_max": 23.310614540780094,
+      "force_norm_mean": 0.8210873638375402,
+      "force_norm_p95": 8.03644695620115,
+      "num_steps": 741,
+      "torque_norm_p95": 0.3525270174619036
+    },
+    "20260811_200803_scripted": {
+      "action_range_norm": 0.8281972824283752,
+      "action_step_delta_mean": 0.0013707548458592837,
+      "contact_fraction_20n": 0.0079155672823219,
+      "contact_fraction_5n": 0.0633245382585752,
+      "contact_onset_fraction_5n": 0.5944517833553501,
+      "duration_sim": 25.250999999402893,
+      "episode_id": "20260811_200803_scripted",
+      "force_norm_max": 24.562844321179558,
+      "force_norm_mean": 0.9116351260718728,
+      "force_norm_p95": 9.253501896838635,
+      "num_steps": 758,
+      "torque_norm_p95": 0.5035823139645142
+    },
+    "20260811_200855_scripted": {
+      "action_range_norm": 0.8293332451462898,
+      "action_step_delta_mean": 0.0013181874098081498,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05929919137466307,
+      "contact_onset_fraction_5n": 0.5964912280701754,
+      "duration_sim": 24.731999999415166,
+      "episode_id": "20260811_200855_scripted",
+      "force_norm_max": 19.663095675737047,
+      "force_norm_mean": 0.7271825838537842,
+      "force_norm_p95": 7.150570116680635,
+      "num_steps": 742,
+      "torque_norm_p95": 0.39789156075656745
+    },
+    "20260811_200946_scripted": {
+      "action_range_norm": 0.8268879995280208,
+      "action_step_delta_mean": 0.0014452472934349462,
+      "contact_fraction_20n": 0.006793478260869565,
+      "contact_fraction_5n": 0.058423913043478264,
+      "contact_onset_fraction_5n": 0.5891156462585034,
+      "duration_sim": 24.53299999941987,
+      "episode_id": "20260811_200946_scripted",
+      "force_norm_max": 23.502755374311153,
+      "force_norm_mean": 0.7993578092770544,
+      "force_norm_p95": 7.85981768298061,
+      "num_steps": 736,
+      "torque_norm_p95": 0.37653437234516923
+    },
+    "20260811_201038_scripted": {
+      "action_range_norm": 0.8274548165119562,
+      "action_step_delta_mean": 0.001427613538711759,
+      "contact_fraction_20n": 0.006693440428380187,
+      "contact_fraction_5n": 0.058902275769745646,
+      "contact_onset_fraction_5n": 0.596514745308311,
+      "duration_sim": 24.890999999411406,
+      "episode_id": "20260811_201038_scripted",
+      "force_norm_max": 26.255252648920496,
+      "force_norm_mean": 0.8455181432594432,
+      "force_norm_p95": 8.644340079279237,
+      "num_steps": 747,
+      "torque_norm_p95": 0.4541548814700827
+    },
+    "20260811_201141_scripted": {
+      "action_range_norm": 0.8266013193175944,
+      "action_step_delta_mean": 0.001322997871729443,
+      "contact_fraction_20n": 0.006729475100942127,
+      "contact_fraction_5n": 0.06460296096904442,
+      "contact_onset_fraction_5n": 0.5835579514824798,
+      "duration_sim": 24.77500000304758,
+      "episode_id": "20260811_201141_scripted",
+      "force_norm_max": 24.064165378326678,
+      "force_norm_mean": 0.8962332041644417,
+      "force_norm_p95": 8.209423692856896,
+      "num_steps": 743,
+      "torque_norm_p95": 0.46118862523546594
+    },
+    "20260811_201343_scripted": {
+      "action_range_norm": 0.8270878087915929,
+      "action_step_delta_mean": 0.0013455421776351478,
+      "contact_fraction_20n": 0.005449591280653951,
+      "contact_fraction_5n": 0.05994550408719346,
+      "contact_onset_fraction_5n": 0.5879945429740792,
+      "duration_sim": 24.4710000049854,
+      "episode_id": "20260811_201343_scripted",
+      "force_norm_max": 21.759751833273665,
+      "force_norm_mean": 0.8398462408413256,
+      "force_norm_p95": 8.098896010212464,
+      "num_steps": 734,
+      "torque_norm_p95": 0.5006372713058145
+    },
+    "20260811_201439_scripted": {
+      "action_range_norm": 0.827513141014869,
+      "action_step_delta_mean": 0.0014161162629076727,
+      "contact_fraction_20n": 0.011968085106382979,
+      "contact_fraction_5n": 0.057180851063829786,
+      "contact_onset_fraction_5n": 0.5952063914780293,
+      "duration_sim": 25.0620000051058,
+      "episode_id": "20260811_201439_scripted",
+      "force_norm_max": 25.28602599520756,
+      "force_norm_mean": 0.8901661995746838,
+      "force_norm_p95": 7.782989050902811,
+      "num_steps": 752,
+      "torque_norm_p95": 0.4479608706958048
+    },
+    "20260811_201532_scripted": {
+      "action_range_norm": 0.8273401925664274,
+      "action_step_delta_mean": 0.0013636162720294302,
+      "contact_fraction_20n": 0.006963788300835654,
+      "contact_fraction_5n": 0.05988857938718663,
+      "contact_onset_fraction_5n": 0.5801952580195258,
+      "duration_sim": 23.918000004872738,
+      "episode_id": "20260811_201532_scripted",
+      "force_norm_max": 26.498110735705964,
+      "force_norm_mean": 0.8907327420141213,
+      "force_norm_p95": 9.170427088415135,
+      "num_steps": 718,
+      "torque_norm_p95": 0.5221994433403442
+    },
+    "20260811_201626_scripted": {
+      "action_range_norm": 0.8272666357495948,
+      "action_step_delta_mean": 0.0013643277879960703,
+      "contact_fraction_20n": 0.006887052341597796,
+      "contact_fraction_5n": 0.06473829201101929,
+      "contact_onset_fraction_5n": 0.5793103448275863,
+      "duration_sim": 24.18400000492693,
+      "episode_id": "20260811_201626_scripted",
+      "force_norm_max": 23.400255691527914,
+      "force_norm_mean": 0.8514251525262402,
+      "force_norm_p95": 7.946523329237952,
+      "num_steps": 726,
+      "torque_norm_p95": 0.45259931138891485
+    },
+    "20260811_201719_scripted": {
+      "action_range_norm": 0.8275934540003366,
+      "action_step_delta_mean": 0.0013160575690999757,
+      "contact_fraction_20n": 0.008298755186721992,
+      "contact_fraction_5n": 0.0677731673582296,
+      "contact_onset_fraction_5n": 0.5761772853185596,
+      "duration_sim": 24.10900000491165,
+      "episode_id": "20260811_201719_scripted",
+      "force_norm_max": 24.658849222546706,
+      "force_norm_mean": 0.9624723141210502,
+      "force_norm_p95": 9.391000484160648,
+      "num_steps": 723,
+      "torque_norm_p95": 0.508158702386228
+    },
+    "20260811_201812_scripted": {
+      "action_range_norm": 0.8276383325219251,
+      "action_step_delta_mean": 0.001390083102052718,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.05241935483870968,
+      "contact_onset_fraction_5n": 0.6016150740242261,
+      "duration_sim": 24.792000005050795,
+      "episode_id": "20260811_201812_scripted",
+      "force_norm_max": 17.550736396716665,
+      "force_norm_mean": 0.7081272123934997,
+      "force_norm_p95": 7.492176879224912,
+      "num_steps": 744,
+      "torque_norm_p95": 0.3287713046835609
+    },
+    "20260811_201907_scripted": {
+      "action_range_norm": 0.8274580932891016,
+      "action_step_delta_mean": 0.0014044346830705857,
+      "contact_fraction_20n": 0.005398110661268556,
+      "contact_fraction_5n": 0.059379217273954114,
+      "contact_onset_fraction_5n": 0.5918918918918918,
+      "duration_sim": 25.922000005281006,
+      "episode_id": "20260811_201907_scripted",
+      "force_norm_max": 25.059799374884754,
+      "force_norm_mean": 0.813544367826713,
+      "force_norm_p95": 8.824282486161145,
+      "num_steps": 741,
+      "torque_norm_p95": 0.418188557144968
+    },
+    "20260811_202006_scripted": {
+      "action_range_norm": 0.8269627526337479,
+      "action_step_delta_mean": 0.0014062476803072892,
+      "contact_fraction_20n": 0.0013850415512465374,
+      "contact_fraction_5n": 0.054016620498614956,
+      "contact_onset_fraction_5n": 0.5866851595006934,
+      "duration_sim": 24.052000004900037,
+      "episode_id": "20260811_202006_scripted",
+      "force_norm_max": 21.121702802615623,
+      "force_norm_mean": 0.6756538005542296,
+      "force_norm_p95": 7.238907108699113,
+      "num_steps": 722,
+      "torque_norm_p95": 0.3218070824193016
+    },
+    "20260811_202102_scripted": {
+      "action_range_norm": 0.8284846972671954,
+      "action_step_delta_mean": 0.001297069390699931,
+      "contact_fraction_20n": 0.008,
+      "contact_fraction_5n": 0.064,
+      "contact_onset_fraction_5n": 0.5901201602136181,
+      "duration_sim": 24.98400000508991,
+      "episode_id": "20260811_202102_scripted",
+      "force_norm_max": 28.10903574635177,
+      "force_norm_mean": 0.8425050316935775,
+      "force_norm_p95": 8.079837990343202,
+      "num_steps": 750,
+      "torque_norm_p95": 0.42306590789349485
+    },
+    "20260811_212516_scripted": {
+      "action_range_norm": 0.827373125752426,
+      "action_step_delta_mean": 0.001297421859812782,
+      "contact_fraction_20n": 0.0,
+      "contact_fraction_5n": 0.19148936170212766,
+      "contact_onset_fraction_5n": 0.46870838881491345,
+      "duration_sim": 25.05999999940741,
+      "episode_id": "20260811_212516_scripted",
+      "force_norm_max": 19.41436694849462,
+      "force_norm_mean": 1.7892798433280053,
+      "force_norm_p95": 10.382387665502621,
+      "num_steps": 752,
+      "torque_norm_p95": 0.6098195583350098
+    }
+  },
+  "format_version": "paired_episode_subset_v1",
+  "holdout_episode_count": 0,
+  "holdout_episodes": [],
+  "selected_episode_count": 50,
+  "selected_episodes": [
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190219_scripted",
+      "num_steps": 769,
+      "relative_hdf5_path": "20260811_190219_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190315_scripted",
+      "num_steps": 736,
+      "relative_hdf5_path": "20260811_190315_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190410_scripted",
+      "num_steps": 747,
+      "relative_hdf5_path": "20260811_190410_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190546_scripted",
+      "num_steps": 751,
+      "relative_hdf5_path": "20260811_190546_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_193810_scripted",
+      "num_steps": 743,
+      "relative_hdf5_path": "20260811_193810_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194001_scripted",
+      "num_steps": 720,
+      "relative_hdf5_path": "20260811_194001_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194101_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_194101_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194154_scripted",
+      "num_steps": 725,
+      "relative_hdf5_path": "20260811_194154_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194252_scripted",
+      "num_steps": 739,
+      "relative_hdf5_path": "20260811_194252_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194344_scripted",
+      "num_steps": 734,
+      "relative_hdf5_path": "20260811_194344_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194442_scripted",
+      "num_steps": 737,
+      "relative_hdf5_path": "20260811_194442_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194601_scripted",
+      "num_steps": 733,
+      "relative_hdf5_path": "20260811_194601_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194711_scripted",
+      "num_steps": 727,
+      "relative_hdf5_path": "20260811_194711_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194802_scripted",
+      "num_steps": 735,
+      "relative_hdf5_path": "20260811_194802_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194854_scripted",
+      "num_steps": 737,
+      "relative_hdf5_path": "20260811_194854_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194945_scripted",
+      "num_steps": 728,
+      "relative_hdf5_path": "20260811_194945_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195042_scripted",
+      "num_steps": 740,
+      "relative_hdf5_path": "20260811_195042_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195133_scripted",
+      "num_steps": 713,
+      "relative_hdf5_path": "20260811_195133_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195230_scripted",
+      "num_steps": 721,
+      "relative_hdf5_path": "20260811_195230_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195322_scripted",
+      "num_steps": 732,
+      "relative_hdf5_path": "20260811_195322_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195415_scripted",
+      "num_steps": 732,
+      "relative_hdf5_path": "20260811_195415_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195506_scripted",
+      "num_steps": 740,
+      "relative_hdf5_path": "20260811_195506_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195605_scripted",
+      "num_steps": 730,
+      "relative_hdf5_path": "20260811_195605_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195708_scripted",
+      "num_steps": 734,
+      "relative_hdf5_path": "20260811_195708_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195807_scripted",
+      "num_steps": 752,
+      "relative_hdf5_path": "20260811_195807_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195921_scripted",
+      "num_steps": 731,
+      "relative_hdf5_path": "20260811_195921_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200012_scripted",
+      "num_steps": 724,
+      "relative_hdf5_path": "20260811_200012_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200106_scripted",
+      "num_steps": 740,
+      "relative_hdf5_path": "20260811_200106_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200157_scripted",
+      "num_steps": 728,
+      "relative_hdf5_path": "20260811_200157_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200248_scripted",
+      "num_steps": 728,
+      "relative_hdf5_path": "20260811_200248_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200339_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_200339_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200437_scripted",
+      "num_steps": 736,
+      "relative_hdf5_path": "20260811_200437_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200527_scripted",
+      "num_steps": 711,
+      "relative_hdf5_path": "20260811_200527_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200618_scripted",
+      "num_steps": 727,
+      "relative_hdf5_path": "20260811_200618_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200709_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_200709_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200803_scripted",
+      "num_steps": 758,
+      "relative_hdf5_path": "20260811_200803_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200855_scripted",
+      "num_steps": 742,
+      "relative_hdf5_path": "20260811_200855_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200946_scripted",
+      "num_steps": 736,
+      "relative_hdf5_path": "20260811_200946_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201038_scripted",
+      "num_steps": 747,
+      "relative_hdf5_path": "20260811_201038_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201141_scripted",
+      "num_steps": 743,
+      "relative_hdf5_path": "20260811_201141_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201343_scripted",
+      "num_steps": 734,
+      "relative_hdf5_path": "20260811_201343_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201439_scripted",
+      "num_steps": 752,
+      "relative_hdf5_path": "20260811_201439_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201532_scripted",
+      "num_steps": 718,
+      "relative_hdf5_path": "20260811_201532_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201626_scripted",
+      "num_steps": 726,
+      "relative_hdf5_path": "20260811_201626_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201719_scripted",
+      "num_steps": 723,
+      "relative_hdf5_path": "20260811_201719_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201812_scripted",
+      "num_steps": 744,
+      "relative_hdf5_path": "20260811_201812_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201907_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_201907_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_202006_scripted",
+      "num_steps": 722,
+      "relative_hdf5_path": "20260811_202006_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_202102_scripted",
+      "num_steps": 750,
+      "relative_hdf5_path": "20260811_202102_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_212516_scripted",
+      "num_steps": 752,
+      "relative_hdf5_path": "20260811_212516_scripted/episode.hdf5"
+    }
+  ],
+  "selection": {
+    "algorithm": "chronological_stratified_validation_all50_v1",
+    "audit": {
+      "standardized_mean_rms": {
+        "holdout_vs_all": null,
+        "selected_vs_all": 0.0,
+        "train_vs_selected": 0.02986768932974452,
+        "validation_vs_selected": 0.11947075731897806
+      },
+      "summaries": {
+        "all": {
+          "episode_count": 50,
+          "features": {
+            "action_range_norm": {
+              "max": 0.8293332451462898,
+              "mean": 0.8274539478356828,
+              "median": 0.8274504093892182,
+              "min": 0.8238926226934984,
+              "q25": 0.8270513580826514,
+              "q75": 0.8280092480569574,
+              "std": 0.0009170337089849155
+            },
+            "action_step_delta_mean": {
+              "max": 0.0014452472934349462,
+              "mean": 0.0013635270291256687,
+              "median": 0.0013515160717485538,
+              "min": 0.0012903436007312577,
+              "q25": 0.0013241840000057254,
+              "q75": 0.0014091666692142629,
+              "std": 4.707593679029802e-05
+            },
+            "contact_fraction_20n": {
+              "max": 0.013513513513513514,
+              "mean": 0.0038490602754033686,
+              "median": 0.0013937830477130301,
+              "min": 0.0,
+              "q25": 0.0,
+              "q75": 0.006816642072927398,
+              "std": 0.004032665676010255
+            },
+            "contact_fraction_5n": {
+              "max": 0.19148936170212766,
+              "mean": 0.059554649979027305,
+              "median": 0.058097788708809286,
+              "min": 0.044382801664355064,
+              "q25": 0.052436063090358226,
+              "q75": 0.06037839803005146,
+              "std": 0.019649656736824395
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.6106770833333334,
+              "mean": 0.588304736917967,
+              "median": 0.5903574521676667,
+              "min": 0.46870838881491345,
+              "q25": 0.5865361547400383,
+              "q75": 0.5949936428897759,
+              "std": 0.01835415306550836
+            },
+            "duration_sim": {
+              "max": 25.922000005281006,
+              "mean": 24.545620000591736,
+              "median": 24.533999999419848,
+              "min": 23.681999999439995,
+              "q25": 24.25524999942644,
+              "q75": 24.754499999821082,
+              "std": 0.43048734688021334
+            },
+            "force_norm_max": {
+              "max": 31.853408491711555,
+              "mean": 21.29162386233785,
+              "median": 21.440727317944642,
+              "min": 12.766665564828083,
+              "q25": 18.71115559214062,
+              "q75": 24.49039727375776,
+              "std": 4.286420232273971
+            },
+            "force_norm_mean": {
+              "max": 1.7892798433280053,
+              "mean": 0.7905360681364652,
+              "median": 0.7629804792588168,
+              "min": 0.534104460744452,
+              "q25": 0.6912649123944827,
+              "q75": 0.8447648653679768,
+              "std": 0.17951465044221265
+            },
+            "force_norm_p95": {
+              "max": 10.382387665502621,
+              "mean": 7.36759915818858,
+              "median": 7.740652721887995,
+              "min": 3.835826221457025,
+              "q25": 6.694326554479241,
+              "q75": 8.567335223142821,
+              "std": 1.5304225566962322
+            },
+            "num_steps": {
+              "max": 769.0,
+              "mean": 735.82,
+              "median": 736.0,
+              "min": 711.0,
+              "q25": 728.0,
+              "q75": 741.75,
+              "std": 11.416987343428213
+            },
+            "torque_norm_p95": {
+              "max": 0.6098195583350098,
+              "mean": 0.4025706398238611,
+              "median": 0.406960729321863,
+              "min": 0.2669541313585847,
+              "q25": 0.3526848948912336,
+              "q75": 0.45160758409314317,
+              "std": 0.07561745274741584
+            }
+          },
+          "total_timesteps": 36791
+        },
+        "holdout": {
+          "episode_count": 0,
+          "features": {},
+          "total_timesteps": 0
+        },
+        "selected": {
+          "episode_count": 50,
+          "features": {
+            "action_range_norm": {
+              "max": 0.8293332451462898,
+              "mean": 0.8274539478356828,
+              "median": 0.8274504093892182,
+              "min": 0.8238926226934984,
+              "q25": 0.8270513580826514,
+              "q75": 0.8280092480569574,
+              "std": 0.0009170337089849155
+            },
+            "action_step_delta_mean": {
+              "max": 0.0014452472934349462,
+              "mean": 0.0013635270291256687,
+              "median": 0.0013515160717485538,
+              "min": 0.0012903436007312577,
+              "q25": 0.0013241840000057254,
+              "q75": 0.0014091666692142629,
+              "std": 4.707593679029802e-05
+            },
+            "contact_fraction_20n": {
+              "max": 0.013513513513513514,
+              "mean": 0.0038490602754033686,
+              "median": 0.0013937830477130301,
+              "min": 0.0,
+              "q25": 0.0,
+              "q75": 0.006816642072927398,
+              "std": 0.004032665676010255
+            },
+            "contact_fraction_5n": {
+              "max": 0.19148936170212766,
+              "mean": 0.059554649979027305,
+              "median": 0.058097788708809286,
+              "min": 0.044382801664355064,
+              "q25": 0.052436063090358226,
+              "q75": 0.06037839803005146,
+              "std": 0.019649656736824395
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.6106770833333334,
+              "mean": 0.588304736917967,
+              "median": 0.5903574521676667,
+              "min": 0.46870838881491345,
+              "q25": 0.5865361547400383,
+              "q75": 0.5949936428897759,
+              "std": 0.01835415306550836
+            },
+            "duration_sim": {
+              "max": 25.922000005281006,
+              "mean": 24.545620000591736,
+              "median": 24.533999999419848,
+              "min": 23.681999999439995,
+              "q25": 24.25524999942644,
+              "q75": 24.754499999821082,
+              "std": 0.43048734688021334
+            },
+            "force_norm_max": {
+              "max": 31.853408491711555,
+              "mean": 21.29162386233785,
+              "median": 21.440727317944642,
+              "min": 12.766665564828083,
+              "q25": 18.71115559214062,
+              "q75": 24.49039727375776,
+              "std": 4.286420232273971
+            },
+            "force_norm_mean": {
+              "max": 1.7892798433280053,
+              "mean": 0.7905360681364652,
+              "median": 0.7629804792588168,
+              "min": 0.534104460744452,
+              "q25": 0.6912649123944827,
+              "q75": 0.8447648653679768,
+              "std": 0.17951465044221265
+            },
+            "force_norm_p95": {
+              "max": 10.382387665502621,
+              "mean": 7.36759915818858,
+              "median": 7.740652721887995,
+              "min": 3.835826221457025,
+              "q25": 6.694326554479241,
+              "q75": 8.567335223142821,
+              "std": 1.5304225566962322
+            },
+            "num_steps": {
+              "max": 769.0,
+              "mean": 735.82,
+              "median": 736.0,
+              "min": 711.0,
+              "q25": 728.0,
+              "q75": 741.75,
+              "std": 11.416987343428213
+            },
+            "torque_norm_p95": {
+              "max": 0.6098195583350098,
+              "mean": 0.4025706398238611,
+              "median": 0.406960729321863,
+              "min": 0.2669541313585847,
+              "q25": 0.3526848948912336,
+              "q75": 0.45160758409314317,
+              "std": 0.07561745274741584
+            }
+          },
+          "total_timesteps": 36791
+        },
+        "train": {
+          "episode_count": 40,
+          "features": {
+            "action_range_norm": {
+              "max": 0.8293332451462898,
+              "mean": 0.8274639855327202,
+              "median": 0.8274564549005289,
+              "min": 0.8238926226934984,
+              "q25": 0.827071003680211,
+              "q75": 0.8278846329995295,
+              "std": 0.0009546464224714628
+            },
+            "action_step_delta_mean": {
+              "max": 0.0014452472934349462,
+              "mean": 0.0013670588840452508,
+              "median": 0.0013586669495524216,
+              "min": 0.0012903436007312577,
+              "q25": 0.0013279004731303035,
+              "q75": 0.0014116338148643585,
+              "std": 4.75039439109007e-05
+            },
+            "contact_fraction_20n": {
+              "max": 0.013513513513513514,
+              "mean": 0.0037582852829960516,
+              "median": 0.0013681964512989443,
+              "min": 0.0,
+              "q25": 0.0,
+              "q75": 0.006795788967761018,
+              "std": 0.004012776322827043
+            },
+            "contact_fraction_5n": {
+              "max": 0.19148936170212766,
+              "mean": 0.060036583968326826,
+              "median": 0.05846365720201124,
+              "min": 0.044382801664355064,
+              "q25": 0.052578522920203735,
+              "q75": 0.059926455915273735,
+              "std": 0.021673707865077992
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.6016150740242261,
+              "mean": 0.587845222964766,
+              "median": 0.5912522053106872,
+              "min": 0.46870838881491345,
+              "q25": 0.5867539345032726,
+              "q75": 0.5946324032001586,
+              "std": 0.01988261580566104
+            },
+            "duration_sim": {
+              "max": 25.922000005281006,
+              "mean": 24.550600000499145,
+              "median": 24.546499999768272,
+              "min": 23.681999999439995,
+              "q25": 24.25774999942638,
+              "q75": 24.73949999955047,
+              "std": 0.4119180017810547
+            },
+            "force_norm_max": {
+              "max": 31.853408491711555,
+              "mean": 21.197776828261908,
+              "median": 20.931451190116995,
+              "min": 12.766665564828083,
+              "q25": 19.102034015827925,
+              "q75": 24.34550317891417,
+              "std": 4.252297963355248
+            },
+            "force_norm_mean": {
+              "max": 1.7892798433280053,
+              "mean": 0.7916946266281755,
+              "median": 0.7629804792588168,
+              "min": 0.534104460744452,
+              "q25": 0.7101791213874756,
+              "q75": 0.8426191533346337,
+              "std": 0.1902756232789161
+            },
+            "force_norm_p95": {
+              "max": 10.382387665502621,
+              "mean": 7.318108449729081,
+              "median": 7.593498058246868,
+              "min": 3.835826221457025,
+              "q25": 6.624933443334884,
+              "q75": 8.596327115381808,
+              "std": 1.5591939328542073
+            },
+            "num_steps": {
+              "max": 758.0,
+              "mean": 735.8,
+              "median": 736.5,
+              "min": 711.0,
+              "q25": 728.0,
+              "q75": 741.25,
+              "std": 10.39759587597056
+            },
+            "torque_norm_p95": {
+              "max": 0.6098195583350098,
+              "mean": 0.40191360882966637,
+              "median": 0.406960729321863,
+              "min": 0.2669541313585847,
+              "q25": 0.35300064974989365,
+              "q75": 0.44954232991410803,
+              "std": 0.07564878650101076
+            }
+          },
+          "total_timesteps": 29432
+        },
+        "validation": {
+          "episode_count": 10,
+          "features": {
+            "action_range_norm": {
+              "max": 0.8284846972671954,
+              "mean": 0.8274137970475344,
+              "median": 0.8273180462331917,
+              "min": 0.826062458491081,
+              "q25": 0.8269953290529016,
+              "q75": 0.8279819331710029,
+              "std": 0.0007465519687782772
+            },
+            "action_step_delta_mean": {
+              "max": 0.0014295765918043676,
+              "mean": 0.0013493996094473405,
+              "median": 0.0013297286462634708,
+              "min": 0.001297069390699931,
+              "q25": 0.0013204711812422312,
+              "q75": 0.0013667896910882326,
+              "std": 4.248223618880191e-05
+            },
+            "contact_fraction_20n": {
+              "max": 0.010869565217391304,
+              "mean": 0.004212160245032635,
+              "median": 0.004065999822560825,
+              "min": 0.0,
+              "q25": 0.0,
+              "q75": 0.007705320600272851,
+              "std": 0.004091169150653631
+            },
+            "contact_fraction_5n": {
+              "max": 0.0677731673582296,
+              "mean": 0.0576269140218292,
+              "median": 0.057401139240264125,
+              "min": 0.04632152588555858,
+              "q25": 0.05213325047237928,
+              "q75": 0.06396467391304347,
+              "std": 0.006848459059622375
+            },
+            "contact_onset_fraction_5n": {
+              "max": 0.6106770833333334,
+              "mean": 0.5901427927307707,
+              "median": 0.5894589872106342,
+              "min": 0.5761772853185596,
+              "q25": 0.5839269670132203,
+              "q75": 0.5947837474219704,
+              "std": 0.00994374010092447
+            },
+            "duration_sim": {
+              "max": 25.645000000017966,
+              "mean": 24.52570000096208,
+              "median": 24.45699999942167,
+              "min": 23.755999999438245,
+              "q25": 24.197249999427825,
+              "q75": 24.71500000214064,
+              "std": 0.49738818881541735
+            },
+            "force_norm_max": {
+              "max": 28.10903574635177,
+              "mean": 21.667011998641588,
+              "median": 22.902252571598396,
+              "min": 14.03219741826028,
+              "q25": 17.976653476682362,
+              "q75": 24.5101782614917,
+              "std": 4.400306221789626
+            },
+            "force_norm_mean": {
+              "max": 0.9817138804180182,
+              "mean": 0.7859018341696239,
+              "median": 0.781121975776276,
+              "min": 0.6093374402752068,
+              "q25": 0.6778654807494398,
+              "q75": 0.8828011610467257,
+              "std": 0.1275987938996867
+            },
+            "force_norm_p95": {
+              "max": 9.391000484160648,
+              "mean": 7.565561992026576,
+              "median": 7.913333661781965,
+              "min": 4.538014788606919,
+              "q25": 7.432922643542508,
+              "q75": 8.177027267228473,
+              "std": 1.3919901309812581
+            },
+            "num_steps": {
+              "max": 769.0,
+              "mean": 735.9,
+              "median": 734.0,
+              "min": 713.0,
+              "q25": 726.25,
+              "q75": 741.25,
+              "std": 14.808443537387715
+            },
+            "torque_norm_p95": {
+              "max": 0.5190736935594644,
+              "mean": 0.4051987638006401,
+              "median": 0.40361337689452986,
+              "min": 0.30064745480838556,
+              "q25": 0.3357004077143374,
+              "q75": 0.45804956947805653,
+              "std": 0.07543478248917841
+            }
+          },
+          "total_timesteps": 7359
+        }
+      }
+    },
+    "collection_method": "scripted_two_stage_replay",
+    "feature_names": [
+      "num_steps",
+      "duration_sim",
+      "action_step_delta_mean",
+      "action_range_norm",
+      "force_norm_mean",
+      "force_norm_p95",
+      "force_norm_max",
+      "torque_norm_p95",
+      "contact_onset_fraction_5n",
+      "contact_fraction_5n",
+      "contact_fraction_20n"
+    ],
+    "robust_center": [
+      736.0,
+      24.533999999419848,
+      0.0013515160717485538,
+      0.8274504093892182,
+      0.7629804792588168,
+      7.740652721887995,
+      21.440727317944642,
+      0.406960729321863,
+      0.5903574521676667,
+      0.058097788708809286,
+      0.0013937830477130301
+    ],
+    "robust_scale": [
+      13.75,
+      0.4992500003946425,
+      8.498266920853748e-05,
+      0.0009578899743060143,
+      0.15349995297349406,
+      1.87300866866358,
+      5.77924168161714,
+      0.09892268920190955,
+      0.008457488149737569,
+      0.007942334939693235,
+      0.006816642072927398
+    ],
+    "seed": 0,
+    "selected_per_stratum": 5,
+    "strata": [
+      {
+        "all_episode_ids": [
+          "20260811_190219_scripted",
+          "20260811_190315_scripted",
+          "20260811_190410_scripted",
+          "20260811_190546_scripted",
+          "20260811_193810_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_190219_scripted",
+          "20260811_190315_scripted",
+          "20260811_190410_scripted",
+          "20260811_190546_scripted",
+          "20260811_193810_scripted"
+        ],
+        "stratum_index": 0,
+        "train_episode_ids": [
+          "20260811_190315_scripted",
+          "20260811_190410_scripted",
+          "20260811_190546_scripted",
+          "20260811_193810_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_190219_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_194001_scripted",
+          "20260811_194101_scripted",
+          "20260811_194154_scripted",
+          "20260811_194252_scripted",
+          "20260811_194344_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_194001_scripted",
+          "20260811_194101_scripted",
+          "20260811_194154_scripted",
+          "20260811_194252_scripted",
+          "20260811_194344_scripted"
+        ],
+        "stratum_index": 1,
+        "train_episode_ids": [
+          "20260811_194001_scripted",
+          "20260811_194101_scripted",
+          "20260811_194154_scripted",
+          "20260811_194252_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_194344_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_194442_scripted",
+          "20260811_194601_scripted",
+          "20260811_194711_scripted",
+          "20260811_194802_scripted",
+          "20260811_194854_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_194442_scripted",
+          "20260811_194601_scripted",
+          "20260811_194711_scripted",
+          "20260811_194802_scripted",
+          "20260811_194854_scripted"
+        ],
+        "stratum_index": 2,
+        "train_episode_ids": [
+          "20260811_194442_scripted",
+          "20260811_194711_scripted",
+          "20260811_194802_scripted",
+          "20260811_194854_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_194601_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_194945_scripted",
+          "20260811_195042_scripted",
+          "20260811_195133_scripted",
+          "20260811_195230_scripted",
+          "20260811_195322_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_194945_scripted",
+          "20260811_195042_scripted",
+          "20260811_195133_scripted",
+          "20260811_195230_scripted",
+          "20260811_195322_scripted"
+        ],
+        "stratum_index": 3,
+        "train_episode_ids": [
+          "20260811_194945_scripted",
+          "20260811_195042_scripted",
+          "20260811_195230_scripted",
+          "20260811_195322_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_195133_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_195415_scripted",
+          "20260811_195506_scripted",
+          "20260811_195605_scripted",
+          "20260811_195708_scripted",
+          "20260811_195807_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_195415_scripted",
+          "20260811_195506_scripted",
+          "20260811_195605_scripted",
+          "20260811_195708_scripted",
+          "20260811_195807_scripted"
+        ],
+        "stratum_index": 4,
+        "train_episode_ids": [
+          "20260811_195415_scripted",
+          "20260811_195506_scripted",
+          "20260811_195605_scripted",
+          "20260811_195807_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_195708_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_195921_scripted",
+          "20260811_200012_scripted",
+          "20260811_200106_scripted",
+          "20260811_200157_scripted",
+          "20260811_200248_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_195921_scripted",
+          "20260811_200012_scripted",
+          "20260811_200106_scripted",
+          "20260811_200157_scripted",
+          "20260811_200248_scripted"
+        ],
+        "stratum_index": 5,
+        "train_episode_ids": [
+          "20260811_195921_scripted",
+          "20260811_200106_scripted",
+          "20260811_200157_scripted",
+          "20260811_200248_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_200012_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_200339_scripted",
+          "20260811_200437_scripted",
+          "20260811_200527_scripted",
+          "20260811_200618_scripted",
+          "20260811_200709_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_200339_scripted",
+          "20260811_200437_scripted",
+          "20260811_200527_scripted",
+          "20260811_200618_scripted",
+          "20260811_200709_scripted"
+        ],
+        "stratum_index": 6,
+        "train_episode_ids": [
+          "20260811_200339_scripted",
+          "20260811_200527_scripted",
+          "20260811_200618_scripted",
+          "20260811_200709_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_200437_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_200803_scripted",
+          "20260811_200855_scripted",
+          "20260811_200946_scripted",
+          "20260811_201038_scripted",
+          "20260811_201141_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_200803_scripted",
+          "20260811_200855_scripted",
+          "20260811_200946_scripted",
+          "20260811_201038_scripted",
+          "20260811_201141_scripted"
+        ],
+        "stratum_index": 7,
+        "train_episode_ids": [
+          "20260811_200803_scripted",
+          "20260811_200855_scripted",
+          "20260811_200946_scripted",
+          "20260811_201038_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_201141_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_201343_scripted",
+          "20260811_201439_scripted",
+          "20260811_201532_scripted",
+          "20260811_201626_scripted",
+          "20260811_201719_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_201343_scripted",
+          "20260811_201439_scripted",
+          "20260811_201532_scripted",
+          "20260811_201626_scripted",
+          "20260811_201719_scripted"
+        ],
+        "stratum_index": 8,
+        "train_episode_ids": [
+          "20260811_201343_scripted",
+          "20260811_201439_scripted",
+          "20260811_201532_scripted",
+          "20260811_201626_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_201719_scripted"
+        ]
+      },
+      {
+        "all_episode_ids": [
+          "20260811_201812_scripted",
+          "20260811_201907_scripted",
+          "20260811_202006_scripted",
+          "20260811_202102_scripted",
+          "20260811_212516_scripted"
+        ],
+        "holdout_episode_ids": [],
+        "selected_episode_ids": [
+          "20260811_201812_scripted",
+          "20260811_201907_scripted",
+          "20260811_202006_scripted",
+          "20260811_202102_scripted",
+          "20260811_212516_scripted"
+        ],
+        "stratum_index": 9,
+        "train_episode_ids": [
+          "20260811_201812_scripted",
+          "20260811_201907_scripted",
+          "20260811_202006_scripted",
+          "20260811_212516_scripted"
+        ],
+        "validation_episode_ids": [
+          "20260811_202102_scripted"
+        ]
+      }
+    ],
+    "stratum_size": 5,
+    "success_status": "scripted_replay_success",
+    "temporal_strata": 10,
+    "validation_per_stratum": 1
+  },
+  "train_episode_count": 40,
+  "train_episodes": [
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190315_scripted",
+      "num_steps": 736,
+      "relative_hdf5_path": "20260811_190315_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190410_scripted",
+      "num_steps": 747,
+      "relative_hdf5_path": "20260811_190410_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190546_scripted",
+      "num_steps": 751,
+      "relative_hdf5_path": "20260811_190546_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_193810_scripted",
+      "num_steps": 743,
+      "relative_hdf5_path": "20260811_193810_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194001_scripted",
+      "num_steps": 720,
+      "relative_hdf5_path": "20260811_194001_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194101_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_194101_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194154_scripted",
+      "num_steps": 725,
+      "relative_hdf5_path": "20260811_194154_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194252_scripted",
+      "num_steps": 739,
+      "relative_hdf5_path": "20260811_194252_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194442_scripted",
+      "num_steps": 737,
+      "relative_hdf5_path": "20260811_194442_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194711_scripted",
+      "num_steps": 727,
+      "relative_hdf5_path": "20260811_194711_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194802_scripted",
+      "num_steps": 735,
+      "relative_hdf5_path": "20260811_194802_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194854_scripted",
+      "num_steps": 737,
+      "relative_hdf5_path": "20260811_194854_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194945_scripted",
+      "num_steps": 728,
+      "relative_hdf5_path": "20260811_194945_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195042_scripted",
+      "num_steps": 740,
+      "relative_hdf5_path": "20260811_195042_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195230_scripted",
+      "num_steps": 721,
+      "relative_hdf5_path": "20260811_195230_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195322_scripted",
+      "num_steps": 732,
+      "relative_hdf5_path": "20260811_195322_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195415_scripted",
+      "num_steps": 732,
+      "relative_hdf5_path": "20260811_195415_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195506_scripted",
+      "num_steps": 740,
+      "relative_hdf5_path": "20260811_195506_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195605_scripted",
+      "num_steps": 730,
+      "relative_hdf5_path": "20260811_195605_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195807_scripted",
+      "num_steps": 752,
+      "relative_hdf5_path": "20260811_195807_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195921_scripted",
+      "num_steps": 731,
+      "relative_hdf5_path": "20260811_195921_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200106_scripted",
+      "num_steps": 740,
+      "relative_hdf5_path": "20260811_200106_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200157_scripted",
+      "num_steps": 728,
+      "relative_hdf5_path": "20260811_200157_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200248_scripted",
+      "num_steps": 728,
+      "relative_hdf5_path": "20260811_200248_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200339_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_200339_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200527_scripted",
+      "num_steps": 711,
+      "relative_hdf5_path": "20260811_200527_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200618_scripted",
+      "num_steps": 727,
+      "relative_hdf5_path": "20260811_200618_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200709_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_200709_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200803_scripted",
+      "num_steps": 758,
+      "relative_hdf5_path": "20260811_200803_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200855_scripted",
+      "num_steps": 742,
+      "relative_hdf5_path": "20260811_200855_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200946_scripted",
+      "num_steps": 736,
+      "relative_hdf5_path": "20260811_200946_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201038_scripted",
+      "num_steps": 747,
+      "relative_hdf5_path": "20260811_201038_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201343_scripted",
+      "num_steps": 734,
+      "relative_hdf5_path": "20260811_201343_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201439_scripted",
+      "num_steps": 752,
+      "relative_hdf5_path": "20260811_201439_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201532_scripted",
+      "num_steps": 718,
+      "relative_hdf5_path": "20260811_201532_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201626_scripted",
+      "num_steps": 726,
+      "relative_hdf5_path": "20260811_201626_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201812_scripted",
+      "num_steps": 744,
+      "relative_hdf5_path": "20260811_201812_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201907_scripted",
+      "num_steps": 741,
+      "relative_hdf5_path": "20260811_201907_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_202006_scripted",
+      "num_steps": 722,
+      "relative_hdf5_path": "20260811_202006_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_212516_scripted",
+      "num_steps": 752,
+      "relative_hdf5_path": "20260811_212516_scripted/episode.hdf5"
+    }
+  ],
+  "validation_episode_count": 10,
+  "validation_episodes": [
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_190219_scripted",
+      "num_steps": 769,
+      "relative_hdf5_path": "20260811_190219_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194344_scripted",
+      "num_steps": 734,
+      "relative_hdf5_path": "20260811_194344_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_194601_scripted",
+      "num_steps": 733,
+      "relative_hdf5_path": "20260811_194601_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195133_scripted",
+      "num_steps": 713,
+      "relative_hdf5_path": "20260811_195133_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_195708_scripted",
+      "num_steps": 734,
+      "relative_hdf5_path": "20260811_195708_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200012_scripted",
+      "num_steps": 724,
+      "relative_hdf5_path": "20260811_200012_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_200437_scripted",
+      "num_steps": 736,
+      "relative_hdf5_path": "20260811_200437_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201141_scripted",
+      "num_steps": 743,
+      "relative_hdf5_path": "20260811_201141_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_201719_scripted",
+      "num_steps": 723,
+      "relative_hdf5_path": "20260811_201719_scripted/episode.hdf5"
+    },
+    {
+      "camera_names": [
+        "ee_cam",
+        "base_top_cam"
+      ],
+      "episode_id": "20260811_202102_scripted",
+      "num_steps": 750,
+      "relative_hdf5_path": "20260811_202102_scripted/episode.hdf5"
+    }
+  ]
+}
