@@ -67,6 +67,11 @@ class ACTAlignedMotionCVAEControlPolicy(nn.Module):
                 "motion-control architecture version"
             )
 
+        self._initialize_common_modules(config)
+
+    def _initialize_common_modules(self, config: ACTAlignedConfig) -> None:
+        """Build modules shared by state-rate and native-rate motion controls."""
+
         self.vision_backbone = ACTAlignedResNet18Backbone(config)
         self.qpos_adapter = QposTokenAdapter(config.q_dim, config.d_model)
         self.online_force_encoder = ACTAlignedOnlineForceEncoder(config)

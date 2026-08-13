@@ -19,6 +19,11 @@ MOTION_POLICY_SPECIAL_TOKEN_NAMES = (
     "z_F_online",
     "z_VF",
 )
+DUAL_ZERO_POLICY_SPECIAL_TOKEN_NAMES = (
+    "qpos",
+    "z_F_online",
+    "z_VF",
+)
 
 
 @dataclass(frozen=True)

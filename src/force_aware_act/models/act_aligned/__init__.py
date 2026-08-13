@@ -6,7 +6,9 @@ from force_aware_act.models.act_aligned.backbone import (
 )
 from force_aware_act.models.act_aligned.config import (
     ACT_ALIGNED_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
     ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
     ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
     ACTAlignedConfig,
     ACTAlignedHighRateConfig,
@@ -19,6 +21,7 @@ from force_aware_act.models.act_aligned.contact_latent import (
 )
 from force_aware_act.models.act_aligned.contracts import (
     CONTACT_POSTERIOR_TOKEN_GROUPS,
+    DUAL_ZERO_POLICY_SPECIAL_TOKEN_NAMES,
     MOTION_POLICY_SPECIAL_TOKEN_NAMES,
     MOTION_POSTERIOR_TOKEN_GROUPS,
     POLICY_SPECIAL_TOKEN_NAMES,
@@ -42,6 +45,12 @@ from force_aware_act.models.act_aligned.high_rate_force import (
 )
 from force_aware_act.models.act_aligned.high_rate_policy import (
     ACTAlignedHighRateContactCVAEPolicy,
+)
+from force_aware_act.models.act_aligned.high_rate_motion_policy import (
+    ACTAlignedHighRateMotionCVAEPolicy,
+)
+from force_aware_act.models.act_aligned.high_rate_dual_zero_policy import (
+    ACTAlignedHighRateDualZeroPolicy,
 )
 from force_aware_act.models.act_aligned.policy import (
     ACTAlignedContactCVAEPolicy,
@@ -71,7 +80,9 @@ from force_aware_act.models.act_aligned.transformer import (
 
 __all__ = [
     "ACT_ALIGNED_ARCHITECTURE_VERSION",
+    "ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION",
     "ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION",
+    "ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION",
     "ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION",
     "ACTAlignedResNet18Backbone",
     "ACTAlignedContactPosterior",
@@ -80,6 +91,8 @@ __all__ = [
     "ACTAlignedConfig",
     "ACTAlignedHighRateConfig",
     "ACTAlignedHighRateContactCVAEPolicy",
+    "ACTAlignedHighRateDualZeroPolicy",
+    "ACTAlignedHighRateMotionCVAEPolicy",
     "ACTAlignedHighRateContactPosterior",
     "ACTAlignedHighRateForceEncoder",
     "ACTAlignedMotionCVAEControlPolicy",
@@ -96,6 +109,7 @@ __all__ = [
     "ActionTokenAdapter",
     "CameraPositionEmbedding",
     "CONTACT_POSTERIOR_TOKEN_GROUPS",
+    "DUAL_ZERO_POLICY_SPECIAL_TOKEN_NAMES",
     "ForceTokenAdapter",
     "FrozenBatchNorm2d",
     "LatentTokenAdapter",

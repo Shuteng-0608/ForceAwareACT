@@ -8,6 +8,7 @@ import torch
 from torch import nn
 
 from force_aware_act.models.act_aligned.config import (
+    ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
     ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
     ACTAlignedConfig,
 )
@@ -43,10 +44,10 @@ class ACTAlignedMotionPosterior(nn.Module):
 
     def __init__(self, config: ACTAlignedConfig) -> None:
         super().__init__()
-        if (
-            config.architecture_version
-            != ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION
-        ):
+        if config.architecture_version not in {
+            ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
+        }:
             raise ValueError(
                 "ACTAlignedMotionPosterior requires the motion-control "
                 "architecture version"

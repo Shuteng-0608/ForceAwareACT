@@ -16,6 +16,20 @@ ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION = (
 ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION = (
     "act_aligned_contact_cvae_highrate_force_v2"
 )
+ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION = (
+    "act_aligned_motion_cvae_highrate_force_v2"
+)
+ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION = (
+    "act_aligned_dual_zero_highrate_force_v1"
+)
+
+_MOTION_ARCHITECTURE_VERSIONS = {
+    ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
+}
+_DUAL_ZERO_ARCHITECTURE_VERSIONS = {
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
+}
 
 
 @dataclass(frozen=True)
@@ -92,6 +106,8 @@ class ACTAlignedConfig:
             ACT_ALIGNED_ARCHITECTURE_VERSION,
             ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION,
             ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
         }
         if self.architecture_version not in supported_versions:
             raise ValueError(
@@ -186,7 +202,10 @@ class ACTAlignedConfig:
 
     @property
     def policy_memory_token_count(self) -> int:
-        # [z_contact, qpos, z_F_online, z_VF, visual tokens]
+        if self.architecture_version in _DUAL_ZERO_ARCHITECTURE_VERSIONS:
+            # [qpos, z_F_online, z_VF, visual tokens]
+            return self.visual_token_count + 3
+        # [z, qpos, z_F_online, z_VF, visual tokens]
         return self.visual_token_count + 4
 
     def checkpoint_metadata(self) -> dict[str, Any]:
@@ -209,10 +228,7 @@ class ACTAlignedConfig:
             "policy_memory_token_count": self.policy_memory_token_count,
         }
         metadata.update(shared_metadata)
-        if (
-            self.architecture_version
-            == ACT_ALIGNED_MOTION_CONTROL_ARCHITECTURE_VERSION
-        ):
+        if self.architecture_version in _MOTION_ARCHITECTURE_VERSIONS:
             metadata.update(
                 {
                     "motion_posterior_encoder_layers": self.encoder_layers,
@@ -226,6 +242,17 @@ class ACTAlignedConfig:
                     "motion_posterior_token_count": (
                         self.motion_posterior_token_count
                     ),
+                }
+            )
+            return metadata
+
+        if self.architecture_version in _DUAL_ZERO_ARCHITECTURE_VERSIONS:
+            metadata.update(
+                {
+                    "latent_mechanism": "none",
+                    "uses_motion_latent": False,
+                    "uses_contact_latent": False,
+                    "deployment_latent_modes": (),
                 }
             )
             return metadata
@@ -268,8 +295,13 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if self.architecture_version != ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION:
-            raise ValueError("high-rate config requires the v2 architecture version")
+        high_rate_versions = {
+            ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
+        }
+        if self.architecture_version not in high_rate_versions:
+            raise ValueError("high-rate config requires a high-rate architecture version")
         for field_name in ("force_sample_rate_hz", "policy_sample_rate_hz"):
             value = getattr(self, field_name)
             if not math.isfinite(value) or value <= 0:
@@ -295,6 +327,26 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
     def force_encoder_token_count(self) -> int:
         return self.max_online_force_intervals + 1
 
+    @classmethod
+    def motion_control(cls, **overrides: Any) -> "ACTAlignedHighRateConfig":
+        values: dict[str, Any] = {
+            "architecture_version": (
+                ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION
+            )
+        }
+        values.update(overrides)
+        return cls(**values)
+
+    @classmethod
+    def dual_zero(cls, **overrides: Any) -> "ACTAlignedHighRateConfig":
+        values: dict[str, Any] = {
+            "architecture_version": (
+                ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION
+            )
+        }
+        values.update(overrides)
+        return cls(**values)
+
     def checkpoint_metadata(self) -> dict[str, Any]:
         metadata = super().checkpoint_metadata()
         metadata.update(
@@ -319,4 +371,18 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
                 "legacy_force_window_len_role": "unused_by_v2",
             }
         )
+        if (
+            self.architecture_version
+            == ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION
+        ):
+            metadata["motion_posterior_layout"] = "official_action_only"
+        elif (
+            self.architecture_version
+            == ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION
+        ):
+            metadata["policy_special_tokens"] = (
+                "qpos",
+                "z_F_online",
+                "z_VF",
+            )
         return metadata
