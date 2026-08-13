@@ -10,6 +10,8 @@ from force_aware_act.act_aligned_training.checkpoint import (
     CHECKPOINT_FORMAT_VERSION,
 )
 from force_aware_act.inference import (
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
+    ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
     ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     ACT_ALIGNED_ROLLOUT_KIND,
     HighRateForceRingBuffer,
@@ -23,6 +25,8 @@ from force_aware_act.models.act_aligned import (
     ACTAlignedContactCVAEPolicy,
     ACTAlignedHighRateConfig,
     ACTAlignedHighRateContactCVAEPolicy,
+    ACTAlignedHighRateDualZeroPolicy,
+    ACTAlignedHighRateMotionCVAEPolicy,
 )
 from force_aware_act.models.official_act import (
     OfficialACTConfig,
@@ -108,6 +112,38 @@ def _high_rate_checkpoint() -> dict:
         "architecture_version": config.architecture_version,
         "model_config": asdict(config),
         "model_state": ACTAlignedHighRateContactCVAEPolicy(config).state_dict(),
+        "normalization": _normalization(include_force=True),
+    }
+
+
+def _high_rate_control_checkpoint(kind: str) -> dict:
+    factory, policy_type = {
+        "motion": (
+            ACTAlignedHighRateConfig.motion_control,
+            ACTAlignedHighRateMotionCVAEPolicy,
+        ),
+        "dual_zero": (
+            ACTAlignedHighRateConfig.dual_zero,
+            ACTAlignedHighRateDualZeroPolicy,
+        ),
+    }[kind]
+    config = factory(
+        d_model=32,
+        nhead=4,
+        dim_feedforward=64,
+        local_force_dim=16,
+        dropout=0.0,
+        chunk_len=3,
+        image_height=32,
+        image_width=48,
+        pretrained_backbone=False,
+        imagenet_normalize=False,
+    )
+    return {
+        "format_version": CHECKPOINT_FORMAT_VERSION,
+        "architecture_version": config.architecture_version,
+        "model_config": asdict(config),
+        "model_state": policy_type(config).state_dict(),
         "normalization": _normalization(include_force=True),
     }
 
@@ -255,6 +291,93 @@ def test_high_rate_adapter_uses_continuous_500hz_ring_and_training_packer():
     assert output["pred_action"].shape == (1, 3, 7)
 
 
+@pytest.mark.parametrize(
+    ("kind", "expected_kind", "latent_name"),
+    (
+        (
+            "motion",
+            ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
+            "z_motion",
+        ),
+        (
+            "dual_zero",
+            ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
+            "none",
+        ),
+    ),
+)
+def test_high_rate_control_adapters_use_native_force_and_zero_only_mode(
+    kind,
+    expected_kind,
+    latent_name,
+):
+    adapter = RolloutPolicyAdapter.from_checkpoint(
+        _high_rate_control_checkpoint(kind),
+        device=torch.device("cpu"),
+    )
+    assert adapter.kind == expected_kind
+    assert adapter.uses_high_rate_force_history
+    assert not adapter.has_contact_prior
+    online_force, relative_time, sample_mask, interval_mask = (
+        _interval_tensors_for_adapter(adapter)
+    )
+    images = adapter.prepare_images(torch.rand(2, 3, 32, 48))
+    qpos = adapter.prepare_qpos(np.arange(7, dtype=np.float32))
+
+    output = adapter.forward(
+        images,
+        qpos,
+        online_force_intervals=online_force,
+        online_force_relative_time=relative_time,
+        online_force_sample_padding_mask=sample_mask,
+        online_force_interval_padding_mask=interval_mask,
+    )
+    diagnostics = adapter.deployment_diagnostics(
+        output,
+        force_padding_mask=sample_mask.flatten(1),
+        requested_latent_mode="zero",
+    )
+
+    assert diagnostics["latent_name"] == latent_name
+    assert diagnostics["latent_source"] in {"zero", "none"}
+    assert diagnostics["latent_max_abs"] == 0.0
+    assert diagnostics["force_history_valid_samples"] == int(
+        (~sample_mask).sum().item()
+    )
+    with pytest.raises(ValueError, match="require zero latent mode"):
+        adapter.forward(
+            images,
+            qpos,
+            online_force_intervals=online_force,
+            online_force_relative_time=relative_time,
+            online_force_sample_padding_mask=sample_mask,
+            online_force_interval_padding_mask=interval_mask,
+            contact_latent_mode="prior",
+        )
+
+
+def _interval_tensors_for_adapter(adapter):
+    config = adapter.config
+    interval_count = config.max_online_force_intervals
+    sample_count = config.max_force_samples_per_interval
+    force = torch.randn(1, interval_count, sample_count, config.force_dim)
+    relative_time = (
+        torch.arange(sample_count, dtype=torch.float32)
+        .div(config.force_sample_rate_hz)
+        .view(1, 1, sample_count)
+        .expand(1, interval_count, sample_count)
+        .clone()
+    )
+    sample_mask = torch.zeros(
+        1,
+        interval_count,
+        sample_count,
+        dtype=torch.bool,
+    )
+    interval_mask = sample_mask.all(dim=-1)
+    return force, relative_time, sample_mask, interval_mask
+
+
 def test_high_rate_ring_rejects_a_missed_500hz_sampling_deadline():
     buffer = HighRateForceRingBuffer(0.0, np.zeros(6, dtype=np.float32))
 
@@ -346,6 +469,18 @@ def test_high_rate_checkpoint_contract_uses_500hz_window_duration():
     assert stats is None
     assert args.force_window_len == 100
     assert args.force_window_duration == pytest.approx(99.0 / 500.0)
+
+
+@pytest.mark.parametrize("kind", ("motion", "dual_zero"))
+def test_high_rate_control_checkpoint_contract_rejects_prior_mode(kind):
+    args = _rollout_args(contact_latent_mode="prior")
+
+    with pytest.raises(ValueError, match="has no contact prior"):
+        _resolve_checkpoint_contract(
+            args,
+            _high_rate_control_checkpoint(kind),
+            torch.device("cpu"),
+        )
 
 
 def test_high_rate_checkpoint_rejects_policy_rate_different_from_training():

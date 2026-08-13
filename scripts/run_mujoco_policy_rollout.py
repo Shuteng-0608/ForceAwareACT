@@ -25,6 +25,8 @@ if str(SRC_ROOT) not in sys.path:
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
 from force_aware_act.high_rate_force import HighRateForceContract  # noqa: E402
 from force_aware_act.inference import (  # noqa: E402
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
+    ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
     ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     ACT_ALIGNED_ROLLOUT_KIND,
     CONTROL_POSTPROCESS_VERSION,
@@ -393,6 +395,10 @@ def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
         return ACT_ALIGNED_ROLLOUT_KIND
     if architecture == "act_aligned_contact_cvae_highrate_force_v2":
         return ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
+    if architecture == "act_aligned_motion_cvae_highrate_force_v2":
+        return ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND
+    if architecture == "act_aligned_dual_zero_highrate_force_v1":
+        return ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND
     config = checkpoint.get("config", {})
     if not isinstance(config, dict):
         return "force_aware_act"
@@ -1378,6 +1384,11 @@ def _resolve_checkpoint_contract(
         args.chunk_len = adapter.chunk_len
         args.image_height = adapter.image_height
         args.image_width = adapter.image_width
+        if args.contact_latent_mode != "zero" and not adapter.has_contact_prior:
+            raise ValueError(
+                "this checkpoint has no contact prior and requires "
+                "--contact-latent-mode=zero"
+            )
 
         if adapter.uses_force_history:
             expected_force_len = int(adapter.force_window_len)

@@ -55,6 +55,9 @@ from force_aware_act.act_aligned_training.high_rate_data import (
 from force_aware_act.act_aligned_training.high_rate_diagnostics import (
     run_high_rate_training_preflight,
 )
+from force_aware_act.act_aligned_training.high_rate_control_diagnostics import (
+    run_high_rate_control_preflight,
+)
 from force_aware_act.act_aligned_training.high_rate_losses import (
     ACTAlignedHighRateCriterion,
     masked_interval_balanced_high_rate_l1_loss,
@@ -177,6 +180,7 @@ __all__ = [
     "read_act_aligned_checkpoint",
     "run_training_epoch",
     "run_high_rate_training_epoch",
+    "run_high_rate_control_preflight",
     "run_high_rate_dual_zero_training_epoch",
     "run_high_rate_dual_zero_validation_epoch",
     "run_high_rate_motion_training_epoch",

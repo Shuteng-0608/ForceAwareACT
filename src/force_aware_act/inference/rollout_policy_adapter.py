@@ -23,11 +23,15 @@ from force_aware_act.high_rate_force import (
 )
 from force_aware_act.models.act_aligned import (
     ACT_ALIGNED_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
     ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
+    ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
     ACTAlignedHighRateConfig,
     ACTAlignedHighRateContactCVAEPolicy,
+    ACTAlignedHighRateDualZeroPolicy,
+    ACTAlignedHighRateMotionCVAEPolicy,
 )
 from force_aware_act.models.official_act import (
     OFFICIAL_ACT_ARCHITECTURE_VERSION,
@@ -42,6 +46,8 @@ from force_aware_act.official_act_training.checkpoint import (
 OFFICIAL_ACT_ROLLOUT_KIND = "official_act"
 ACT_ALIGNED_ROLLOUT_KIND = "act_aligned_contact_cvae"
 ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND = "act_aligned_high_rate_contact_cvae"
+ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND = "act_aligned_high_rate_motion_cvae"
+ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND = "act_aligned_high_rate_dual_zero"
 NO_FORCE_HISTORY_CONTRACT = "not_used"
 
 
@@ -56,6 +62,8 @@ def checkpoint_uses_rollout_adapter(checkpoint: Mapping[str, Any]) -> bool:
             OFFICIAL_ACT_ARCHITECTURE_VERSION,
             ACT_ALIGNED_ARCHITECTURE_VERSION,
             ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
+            ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
         }
     )
 
@@ -105,6 +113,16 @@ class RolloutPolicyAdapter:
                 ACTAlignedHighRateConfig(**dict(model_config))
             )
             kind = ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
+        elif architecture == ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION:
+            model = ACTAlignedHighRateMotionCVAEPolicy(
+                ACTAlignedHighRateConfig(**dict(model_config))
+            )
+            kind = ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND
+        elif architecture == ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION:
+            model = ACTAlignedHighRateDualZeroPolicy(
+                ACTAlignedHighRateConfig(**dict(model_config))
+            )
+            kind = ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND
         else:
             raise ValueError(
                 f"unsupported rollout architecture: {architecture!r}"
@@ -147,7 +165,11 @@ class RolloutPolicyAdapter:
 
     @property
     def uses_high_rate_force_history(self) -> bool:
-        return self.kind == ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND
+        return self.kind in {
+            ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
+            ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
+            ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
+        }
 
     @property
     def force_window_len(self) -> Optional[int]:
@@ -200,6 +222,8 @@ class RolloutPolicyAdapter:
             self.kind in {
                 ACT_ALIGNED_ROLLOUT_KIND,
                 ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
+                ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
+                ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
             }
             and self.config.imagenet_normalize
         ):
@@ -317,16 +341,31 @@ class RolloutPolicyAdapter:
                     online_force_interval_padding_mask,
                 )
                 if any(value is None for value in high_rate_inputs):
-                    raise ValueError("high-rate Contact-CVAE requires all online interval tensors")
-                output = self.model(
-                    images, qpos,
-                    online_force_intervals,
-                    online_force_relative_time,
-                    online_force_sample_padding_mask,
-                    online_force_interval_padding_mask,
-                    contact_latent_mode=contact_latent_mode,
-                    deterministic_prior=True,
-                )
+                    raise ValueError(
+                        "high-rate policy requires all online interval tensors"
+                    )
+                if self.kind == ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND:
+                    output = self.model(
+                        images, qpos,
+                        online_force_intervals,
+                        online_force_relative_time,
+                        online_force_sample_padding_mask,
+                        online_force_interval_padding_mask,
+                        contact_latent_mode=contact_latent_mode,
+                        deterministic_prior=True,
+                    )
+                else:
+                    if contact_latent_mode != "zero":
+                        raise ValueError(
+                            "motion and dual-zero controls require zero latent mode"
+                        )
+                    output = self.model(
+                        images, qpos,
+                        online_force_intervals,
+                        online_force_relative_time,
+                        online_force_sample_padding_mask,
+                        online_force_interval_padding_mask,
+                    )
                 self.deployment_diagnostics(
                     output,
                     force_padding_mask=online_force_sample_padding_mask.flatten(1),
@@ -361,24 +400,44 @@ class RolloutPolicyAdapter:
     ) -> dict[str, Any]:
         """Validate and summarize the deployment-only latent/input contract."""
 
-        if self.kind == OFFICIAL_ACT_ROLLOUT_KIND:
+        if self.kind in {
+            OFFICIAL_ACT_ROLLOUT_KIND,
+            ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
+        }:
             latent_name = "z_motion"
             source_name = "motion_latent_source"
             expected_source = "zero"
-            valid_force_samples = 0
-            padding_samples = 0
+            if self.kind == OFFICIAL_ACT_ROLLOUT_KIND:
+                valid_force_samples = 0
+                padding_samples = 0
+            else:
+                valid_force_samples, padding_samples = self._force_mask_counts(
+                    force_padding_mask
+                )
+        elif self.kind == ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND:
+            if output.get("latent_mechanism") != "none":
+                raise RuntimeError(
+                    "dual-zero output must declare no latent mechanism"
+                )
+            valid_force_samples, padding_samples = self._force_mask_counts(
+                force_padding_mask
+            )
+            return {
+                "latent_name": "none",
+                "latent_source": "none",
+                "latent_max_abs": 0.0,
+                "force_history_valid_samples": valid_force_samples,
+                "force_history_padding_samples": padding_samples,
+            }
         else:
             latent_name = "z_contact"
             source_name = "contact_latent_source"
             expected_source = (
                 "zero" if requested_latent_mode == "zero" else "prior_mean"
             )
-            if force_padding_mask is None:
-                raise RuntimeError("force padding mask is required for diagnostics")
-            if force_padding_mask.ndim != 2 or force_padding_mask.shape[0] != 1:
-                raise RuntimeError("force padding mask must have flattened shape [1, N]")
-            valid_force_samples = int((~force_padding_mask[0]).sum().item())
-            padding_samples = int(force_padding_mask[0].sum().item())
+            valid_force_samples, padding_samples = self._force_mask_counts(
+                force_padding_mask
+            )
 
         latent = output.get(latent_name)
         source = output.get(source_name)
@@ -403,6 +462,21 @@ class RolloutPolicyAdapter:
             "force_history_valid_samples": valid_force_samples,
             "force_history_padding_samples": padding_samples,
         }
+
+    @staticmethod
+    def _force_mask_counts(
+        force_padding_mask: Optional[torch.Tensor],
+    ) -> tuple[int, int]:
+        if force_padding_mask is None:
+            raise RuntimeError("force padding mask is required for diagnostics")
+        if force_padding_mask.ndim != 2 or force_padding_mask.shape[0] != 1:
+            raise RuntimeError(
+                "force padding mask must have flattened shape [1, N]"
+            )
+        return (
+            int((~force_padding_mask[0]).sum().item()),
+            int(force_padding_mask[0].sum().item()),
+        )
 
     def denormalize_predictions(
         self,

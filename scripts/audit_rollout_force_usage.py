@@ -27,6 +27,8 @@ from force_aware_act.high_rate_force import (  # noqa: E402
     select_causal_force_window,
 )
 from force_aware_act.inference import (  # noqa: E402
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
+    ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
     ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     ACT_ALIGNED_ROLLOUT_KIND,
     RolloutPolicyAdapter,
@@ -188,9 +190,11 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
     if adapter.kind not in {
         ACT_ALIGNED_ROLLOUT_KIND,
         ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
+        ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
+        ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
     }:
         raise ValueError(
-            "force-usage audit requires an ACT-aligned Contact-CVAE checkpoint"
+            "force-usage audit requires an ACT-aligned force-aware checkpoint"
         )
 
     schema = inspect_episode(args.episode)

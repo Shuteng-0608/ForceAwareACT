@@ -22,6 +22,8 @@ from force_aware_act.inference.action_chunk_executor import (
     TemporalEndpointActionChunkExecutor,
 )
 from force_aware_act.inference.rollout_policy_adapter import (
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
+    ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
     ACT_ALIGNED_ROLLOUT_KIND,
     ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     NO_FORCE_HISTORY_CONTRACT,
@@ -54,6 +56,8 @@ from force_aware_act.inference.rollout_protocol import (
 )
 
 __all__ = [
+    "ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND",
+    "ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND",
     "ACT_ALIGNED_ROLLOUT_KIND",
     "ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND",
     "CONTROL_POSTPROCESS_VERSION",

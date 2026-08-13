@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from force_aware_act.act_aligned_training import (
@@ -11,6 +12,7 @@ from force_aware_act.act_aligned_training import (
     evaluate_high_rate_dual_zero_one_batch,
     evaluate_high_rate_motion_one_batch,
     run_high_rate_dual_zero_validation_epoch,
+    run_high_rate_control_preflight,
     run_high_rate_motion_validation_epoch,
     train_high_rate_dual_zero_one_step,
     train_high_rate_motion_one_step,
@@ -205,3 +207,39 @@ def test_control_validation_epochs_aggregate_semantic_selection_metrics():
     assert motion_metrics["posterior_mean_across_sample_variance"] >= 0
     assert dual_training_config.selection_metric in dual_metrics
     assert dual_metrics["deployment_total"] >= 0
+
+
+@pytest.mark.parametrize("kind", ("motion", "dual_zero"))
+def test_control_preflight_audits_native_force_and_latent_contract(kind):
+    model_config = _model_config(kind)
+    batch = _batch(model_config, batch_size=1)
+    if kind == "motion":
+        training_config = ACTAlignedHighRateMotionTrainingConfig()
+        model = ACTAlignedHighRateMotionCVAEPolicy(model_config)
+        criterion = ACTAlignedHighRateMotionCriterion(training_config)
+        optimizer = build_act_aligned_high_rate_motion_optimizer(
+            model,
+            training_config,
+        )
+    else:
+        training_config = ACTAlignedHighRateDualZeroTrainingConfig()
+        model = ACTAlignedHighRateDualZeroPolicy(model_config)
+        criterion = ACTAlignedHighRateDualZeroCriterion(training_config)
+        optimizer = build_act_aligned_high_rate_dual_zero_optimizer(
+            model,
+            training_config,
+        )
+
+    report = run_high_rate_control_preflight(
+        model,
+        criterion,
+        optimizer,
+        batch,
+    )
+
+    assert report["passed"] is True
+    assert report["native_force_intervention"]["passed"] is True
+    assert report["native_force_intervention"]["action_max_abs_delta"] > 0
+    assert report["latent"]["mechanism"] == (
+        "motion_cvae" if kind == "motion" else "none"
+    )
