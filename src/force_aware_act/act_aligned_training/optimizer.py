@@ -11,6 +11,18 @@ from force_aware_act.act_aligned_training.config import ACTAlignedTrainingConfig
 from force_aware_act.act_aligned_training.motion_config import (
     ACTAlignedMotionTrainingConfig,
 )
+from force_aware_act.act_aligned_training.high_rate_dual_zero_config import (
+    ACTAlignedHighRateDualZeroTrainingConfig,
+)
+from force_aware_act.act_aligned_training.high_rate_motion_config import (
+    ACTAlignedHighRateMotionTrainingConfig,
+)
+from force_aware_act.models.act_aligned.high_rate_dual_zero_policy import (
+    ACTAlignedHighRateDualZeroPolicy,
+)
+from force_aware_act.models.act_aligned.high_rate_motion_policy import (
+    ACTAlignedHighRateMotionCVAEPolicy,
+)
 from force_aware_act.models.act_aligned.motion_policy import (
     ACTAlignedMotionCVAEControlPolicy,
 )
@@ -107,6 +119,50 @@ def build_act_aligned_motion_optimizer(
     """Build the identical two-group AdamW optimizer for the control."""
 
     partition = partition_motion_trainable_parameters(model)
+    return torch.optim.AdamW(
+        [
+            {
+                "name": "main",
+                "params": partition["main"],
+                "lr": config.learning_rate,
+            },
+            {
+                "name": "backbone",
+                "params": partition["backbone"],
+                "lr": config.backbone_learning_rate,
+            },
+        ],
+        lr=config.learning_rate,
+        betas=(config.adam_beta1, config.adam_beta2),
+        eps=config.adam_epsilon,
+        weight_decay=config.weight_decay,
+    )
+
+
+def build_act_aligned_high_rate_motion_optimizer(
+    model: ACTAlignedHighRateMotionCVAEPolicy,
+    config: ACTAlignedHighRateMotionTrainingConfig,
+) -> torch.optim.AdamW:
+    """Build AdamW groups for the native-rate motion control."""
+
+    if not isinstance(model, ACTAlignedHighRateMotionCVAEPolicy):
+        raise TypeError("model must be ACTAlignedHighRateMotionCVAEPolicy")
+    return _build_optimizer_from_partition(model, config)
+
+
+def build_act_aligned_high_rate_dual_zero_optimizer(
+    model: ACTAlignedHighRateDualZeroPolicy,
+    config: ACTAlignedHighRateDualZeroTrainingConfig,
+) -> torch.optim.AdamW:
+    """Build AdamW groups for the native-rate latent-free control."""
+
+    if not isinstance(model, ACTAlignedHighRateDualZeroPolicy):
+        raise TypeError("model must be ACTAlignedHighRateDualZeroPolicy")
+    return _build_optimizer_from_partition(model, config)
+
+
+def _build_optimizer_from_partition(model: nn.Module, config) -> torch.optim.AdamW:
+    partition = _partition_policy_parameters(model)
     return torch.optim.AdamW(
         [
             {

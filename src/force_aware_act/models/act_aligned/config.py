@@ -364,14 +364,15 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
                 "local_force_dim": self.local_force_dim,
                 "local_force_encoder_layers": self.local_force_encoder_layers,
                 "shared_local_force_encoder": True,
-                "contact_posterior_layout": (
-                    "time_aligned_action_plus_encoded_500hz_interval_force"
-                ),
                 "future_force_interval_boundary": "(t_j,t_j+1]",
                 "legacy_force_window_len_role": "unused_by_v2",
             }
         )
-        if (
+        if self.architecture_version == ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION:
+            metadata["contact_posterior_layout"] = (
+                "time_aligned_action_plus_encoded_500hz_interval_force"
+            )
+        elif (
             self.architecture_version
             == ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION
         ):

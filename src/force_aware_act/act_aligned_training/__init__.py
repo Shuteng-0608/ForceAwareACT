@@ -59,6 +59,30 @@ from force_aware_act.act_aligned_training.high_rate_losses import (
     ACTAlignedHighRateCriterion,
     masked_interval_balanced_high_rate_l1_loss,
 )
+from force_aware_act.act_aligned_training.high_rate_control_losses import (
+    ACTAlignedHighRateDualZeroCriterion,
+    ACTAlignedHighRateMotionCriterion,
+)
+from force_aware_act.act_aligned_training.high_rate_dual_zero_config import (
+    ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_TRAINING_VERSION,
+    ACTAlignedHighRateDualZeroTrainingConfig,
+)
+from force_aware_act.act_aligned_training.high_rate_motion_config import (
+    ACT_ALIGNED_HIGH_RATE_MOTION_TRAINING_VERSION,
+    ACTAlignedHighRateMotionTrainingConfig,
+)
+from force_aware_act.act_aligned_training.high_rate_control_loop import (
+    run_high_rate_dual_zero_training_epoch,
+    run_high_rate_dual_zero_validation_epoch,
+    run_high_rate_motion_training_epoch,
+    run_high_rate_motion_validation_epoch,
+)
+from force_aware_act.act_aligned_training.high_rate_control_trainer import (
+    evaluate_high_rate_dual_zero_one_batch,
+    evaluate_high_rate_motion_one_batch,
+    train_high_rate_dual_zero_one_step,
+    train_high_rate_motion_one_step,
+)
 from force_aware_act.act_aligned_training.high_rate_loop import (
     run_high_rate_training_epoch,
     run_high_rate_validation_epoch,
@@ -81,6 +105,8 @@ from force_aware_act.act_aligned_training.normalization import (
 )
 from force_aware_act.act_aligned_training.optimizer import (
     build_act_aligned_motion_optimizer,
+    build_act_aligned_high_rate_dual_zero_optimizer,
+    build_act_aligned_high_rate_motion_optimizer,
     build_act_aligned_optimizer,
     build_act_aligned_high_rate_optimizer,
     partition_motion_trainable_parameters,
@@ -100,15 +126,21 @@ from force_aware_act.act_aligned_training.split import (
 __all__ = [
     "ACT_ALIGNED_TRAINING_VERSION",
     "ACT_ALIGNED_HIGH_RATE_TRAINING_VERSION",
+    "ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_TRAINING_VERSION",
+    "ACT_ALIGNED_HIGH_RATE_MOTION_TRAINING_VERSION",
     "ACT_ALIGNED_MOTION_CONTROL_TRAINING_VERSION",
     "ACTAlignedBatch",
     "ACTAlignedCriterion",
     "ACTAlignedHDF5Dataset",
     "ACTAlignedHighRateBatch",
     "ACTAlignedHighRateCriterion",
+    "ACTAlignedHighRateDualZeroCriterion",
+    "ACTAlignedHighRateDualZeroTrainingConfig",
     "ACTAlignedHighRateHDF5Dataset",
     "ACTAlignedHighRateSample",
     "ACTAlignedHighRateTrainingConfig",
+    "ACTAlignedHighRateMotionCriterion",
+    "ACTAlignedHighRateMotionTrainingConfig",
     "ACTAlignedMotionCriterion",
     "ACTAlignedMotionTrainingConfig",
     "ACTAlignedSample",
@@ -121,6 +153,8 @@ __all__ = [
     "TrainingProgress",
     "build_act_aligned_optimizer",
     "build_act_aligned_high_rate_optimizer",
+    "build_act_aligned_high_rate_dual_zero_optimizer",
+    "build_act_aligned_high_rate_motion_optimizer",
     "build_act_aligned_motion_optimizer",
     "collate_act_aligned_samples",
     "collate_high_rate_samples",
@@ -131,6 +165,8 @@ __all__ = [
     "diagonal_gaussian_kl",
     "evaluate_one_batch",
     "evaluate_high_rate_one_batch",
+    "evaluate_high_rate_dual_zero_one_batch",
+    "evaluate_high_rate_motion_one_batch",
     "evaluate_motion_one_batch",
     "discover_episodes",
     "load_act_aligned_checkpoint",
@@ -141,6 +177,10 @@ __all__ = [
     "read_act_aligned_checkpoint",
     "run_training_epoch",
     "run_high_rate_training_epoch",
+    "run_high_rate_dual_zero_training_epoch",
+    "run_high_rate_dual_zero_validation_epoch",
+    "run_high_rate_motion_training_epoch",
+    "run_high_rate_motion_validation_epoch",
     "run_high_rate_training_preflight",
     "run_high_rate_validation_epoch",
     "run_motion_training_epoch",
@@ -151,5 +191,7 @@ __all__ = [
     "standard_normal_kl",
     "train_one_step",
     "train_high_rate_one_step",
+    "train_high_rate_dual_zero_one_step",
+    "train_high_rate_motion_one_step",
     "train_motion_one_step",
 ]
