@@ -1,6 +1,6 @@
 # ForceAwareACT
 
-ForceAwareACT is a research codebase for ACT-style visuomotor policies that study how online wrist force and learned latent variables affect contact-rich peg-in-hole insertion. The repository contains HDF5 dataset readers, normalization utilities, four implemented policy families, offline latent-mode evaluators, guarded MuJoCo rollout tooling, batch hole-position experiments, plotting utilities, and architecture/test documentation.
+ForceAwareACT is a research codebase for ACT-style visuomotor policies that study how online wrist force and learned latent variables affect contact-rich peg-in-hole insertion. The repository contains the original four policy families plus a newer ACT-aligned stack with native 500 Hz force models, offline latent-mode evaluators, guarded MuJoCo rollout tooling, batch hole-position experiments, plotting utilities, and architecture/test documentation.
 
 This repository intentionally does not include HDF5 datasets, checkpoints, generated outputs, CSV logs, videos, or plots. Those artifacts are ignored by git and should remain local experiment outputs.
 
@@ -35,6 +35,19 @@ The implementation treats future action chunks and future force chunks as traini
 | `act_baseline` | yes | yes | no | yes | no | no | decoder hidden | none | motion posterior | zero motion latent |
 
 Token order is policy-specific and documented in [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md). In short: the force-aware policies use visual spatial tokens plus state/force/fusion tokens and the relevant latent token(s); the ACT baseline uses visual tokens, qpos token, and motion latent token only.
+
+### ACT-aligned native-rate controls
+
+The newer training framework provides the following controlled comparison. All force-aware rows consume causal raw 500 Hz wrench intervals; they do not downsample force to the policy/state rate.
+
+| architecture version | policy | force | training latent | deployment latent | policy special tokens |
+| --- | --- | --- | --- | --- | --- |
+| `official_act_single_arm_v1` | Official ACT baseline | none | motion posterior | exact zero | official ACT layout |
+| `act_aligned_contact_cvae_highrate_force_v2` | Contact-CVAE | native 500 Hz | contact posterior + conditional prior matching | zero or prior mean | `z_contact, qpos, z_F_online, z_VF` |
+| `act_aligned_motion_cvae_highrate_force_v2` | Motion-CVAE | native 500 Hz | `q(z_motion | qpos, action_chunk)` | exact zero | `z_motion, qpos, z_F_online, z_VF` |
+| `act_aligned_dual_zero_highrate_force_v1` | Dual-Zero | native 500 Hz | none | none | `qpos, z_F_online, z_VF` |
+
+Dual-Zero is structurally latent-free: it does not instantiate a zero-valued latent projection, posterior, prior, or latent token. See [the native-rate control specification](docs/training/NATIVE_RATE_CONTROL_MODELS.md).
 
 ## Repository Structure
 

@@ -9,6 +9,9 @@ This inventory covers every file directly under `scripts/` as audited on 2026-07
 | `train_minimal.py` | current | Main trainer with epoch accounting, deployment-path validation, and early stopping. | `force_aware_act`, `force_aware_motion_cvae`, `force_aware_contact_cvae` | train HDF5/list, optional validation list and stats | final/best/step checkpoints, train and validation CSV logs | no | no | optional |
 | `train_act_baseline.py` | current | Train force-free ACT Motion-CVAE baseline with validation and early stopping. | `act_baseline` | train HDF5/list, optional validation list and stats | final/best/step checkpoints, train and validation CSV logs | no | no | optional |
 | `train_contact_prior_stage2.py` | specialized | Stage-2 contact-prior distillation with optional deployment-path validation and early stopping. | `force_aware_act` | Stage-1 checkpoint, train HDF5/list, optional validation list, stats | final/best checkpoints and train/validation CSV logs | no | no | optional |
+| `train_act_aligned_high_rate_contact_cvae.py` | current | Train Contact-CVAE with causal native 500 Hz force intervals and endpoint/native-rate force heads. | ACT-aligned Contact-CVAE | HDF5 data root, optional experiment manifest/resume checkpoint | resume-capable periodic/best/final checkpoints and JSONL metrics | no | no | optional |
+| `train_act_aligned_high_rate_motion_cvae.py` | current | Train the action-only ACT motion posterior while retaining the native 500 Hz online-force path. | ACT-aligned Motion-CVAE | HDF5 data root, optional experiment manifest/resume checkpoint | resume-capable periodic/best/final checkpoints and JSONL metrics | no | no | optional |
+| `train_act_aligned_high_rate_dual_zero.py` | current | Train the structurally latent-free force-aware control with native 500 Hz force. | ACT-aligned Dual-Zero | HDF5 data root, optional experiment manifest/resume checkpoint | resume-capable periodic/best/final checkpoints and JSONL metrics | no | no | optional |
 
 Typical commands:
 
@@ -22,6 +25,8 @@ Key stopping flags: `--val-episode-list`, `--max-epochs`, `--val-every-epochs`, 
 With validation enabled, `checkpoint_best.pt` contains the lowest monitored deployment metric, while `checkpoint.pt` contains the final state and records `stop_reason`. Force-aware defaults monitor normalized `action_l1 + lambda_force * force_l1`; ACT baseline monitors normalized action L1. Conditional-prior models use deterministic prior validation only when prior training is enabled.
 
 Limitations: no resume CLI; `train_minimal.py` uses hard-coded small model settings; `train_contact_prior_stage2.py` is dual-latent-specific. Reproducible seed/deterministic/thread flags are implemented only by `train_minimal.py`; the ACT baseline and stage-2 trainers do not currently expose them.
+
+The no-resume limitation applies to the legacy trainers above. The three ACT-aligned native-rate trainers have strict mid-epoch resume, RNG/DataLoader-state restoration, and checkpoint reload auditing. See [`../training/NATIVE_RATE_CONTROL_MODELS.md`](../training/NATIVE_RATE_CONTROL_MODELS.md).
 
 ## Dataset Splitting
 

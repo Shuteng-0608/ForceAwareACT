@@ -1,6 +1,6 @@
 # Testing
 
-Verification snapshot on 2026-07-16: the audited `tests/` tree contains 36 test files. The full run completed with 321 passing tests and one CUDA-only skip.
+Verification snapshot on 2026-08-13: the audited `tests/` tree contains 82 `test_*.py` files. The full run completed with 671 passing tests and one CUDA-only skip.
 
 ## Commands
 
@@ -17,6 +17,10 @@ PYTHONPATH=src python -m pytest -q tests/test_force_aware_act_policy.py
 PYTHONPATH=src python -m pytest -q tests/test_force_aware_motion_cvae_policy.py
 PYTHONPATH=src python -m pytest -q tests/test_force_aware_contact_cvae_policy.py
 PYTHONPATH=src python -m pytest -q tests/test_act_policy_baseline.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src python -m pytest -q \
+  tests/test_act_aligned_high_rate_controls.py \
+  tests/test_act_aligned_high_rate_control_training.py \
+  tests/test_rollout_policy_adapter.py
 ```
 
 Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Plot tests use `pandas`/matplotlib paths. MuJoCo helper tests use mocked or minimal geometry paths where possible, but real rollout execution requires `mujoco`.
@@ -27,6 +31,8 @@ Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Pl
 | --- | --- | --- | --- | --- | --- |
 | `test_act_baseline_checkpointing.py` | ACT training checkpoints | training pipeline | `act_baseline` | parser flags, checkpoint schedule, periodic saves | no long-run resume. |
 | `test_act_policy_baseline.py` | ACT baseline model | unit/integration | `act_baseline` | no force/contact modules, posterior training, zero deploy, loss, checkpoint roundtrip, rollout dispatch | no real MuJoCo rollout. |
+| `test_act_aligned_high_rate_controls.py` | ACT-aligned native-rate models | unit/intervention | high-rate Motion-CVAE and Dual-Zero | architecture metadata, action-only posterior, exact-zero motion deployment, structural absence of Dual-Zero latent modules, 2 ms force intervention | no long-run convergence. |
+| `test_act_aligned_high_rate_control_training.py` | ACT-aligned native-rate training | unit/integration/preflight | high-rate Motion-CVAE and Dual-Zero | loss terms, parameter updates, high-rate force gradients, validation selection metrics, native-force intervention and latent-contract preflight | formal multi-GPU training not exercised. |
 | `test_action_mode_pipeline.py` | action modes/checkpoints | integration | force-aware variants | dataset action modes, stats metadata, mismatch validation, schedule, checkpoint envelope | no real dataset scale test. |
 | `test_analyze_contact_stage.py` | contact-stage analysis | unit | policy-agnostic | force/contact marker analysis and command deltas | synthetic data only. |
 | `test_audit_model_components.py` | model audit | parameter audit | all major variants | component sums, no double count, motion/contact/ACT boundaries | `--policy-variant both` compares only `force_aware_act` and `act_baseline`; audit all four variants individually for complete coverage. |
@@ -70,7 +76,7 @@ The full suite was run after documentation edits with:
 PYTHONPATH=src python -m pytest -q
 ```
 
-Verification snapshot on 2026-07-16: `321 passed, 1 skipped in 21.16s`. The skipped test is the CUDA-device rollout helper check when `torch.cuda.is_available()` is false. Syntax compilation and every script's `--help` path (except the non-CLI registry updater and compatibility module) also completed successfully with the active Python 3.10.20 environment.
+Verification snapshot on 2026-08-13: `671 passed, 1 skipped in 27.45s`. The skipped test is the CUDA-device rollout helper check when `torch.cuda.is_available()` is false. Syntax compilation completed successfully with the active Python 3.10.20 environment. Native-rate Motion-CVAE and Dual-Zero additionally passed real-HDF5 one-step burn-in, strict checkpoint reload, Dual-Zero mid-epoch resume, real-data preflight, and a real-checkpoint/episode force-usage intervention audit.
 
 ## Testing Conventions
 

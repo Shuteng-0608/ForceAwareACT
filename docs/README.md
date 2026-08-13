@@ -35,6 +35,7 @@ The `docs/` root intentionally contains only this index.
 | --- | --- |
 | Current high-rate Contact-CVAE model and every encoding stage | [`CONTACT_CVAE_MODEL_METHOD.md`](methods/CONTACT_CVAE_MODEL_METHOD.md) |
 | Current high-rate Contact-CVAE training configuration and logic | [`CONTACT_CVAE_TRAINING_METHOD.md`](methods/CONTACT_CVAE_TRAINING_METHOD.md) |
+| Native-rate Motion-CVAE and structurally latent-free Dual-Zero controls | [`NATIVE_RATE_CONTROL_MODELS.md`](training/NATIVE_RATE_CONTROL_MODELS.md) |
 | Current Contact-CVAE rollout and action-chunk execution logic | [`CONTACT_CVAE_ROLLOUT_METHOD.md`](methods/CONTACT_CVAE_ROLLOUT_METHOD.md) |
 | Repository overview and quick start | [`../README.md`](../README.md) |
 | Local MuJoCo dataset inventory and selection | [`../mujoco_data/DATASET_README.md`](../mujoco_data/DATASET_README.md) |
