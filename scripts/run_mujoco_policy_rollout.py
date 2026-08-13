@@ -40,6 +40,7 @@ from force_aware_act.inference import (  # noqa: E402
     DEFAULT_SUCCESS_DWELL_TIME,
     OFFICIAL_TEMPORAL_AGGREGATION_DECAY,
     OFFICIAL_ACT_ROLLOUT_KIND,
+    OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND,
     POLICY_STEP_SCHEDULER_VERSION,
     ROLLOUT_PROTOCOL_VERSION,
     TASK_SUCCESS_VERSION,
@@ -391,6 +392,8 @@ def _policy_variant_from_checkpoint(checkpoint: dict) -> str:
     architecture = checkpoint.get("architecture_version")
     if architecture == "official_act_single_arm_v1":
         return OFFICIAL_ACT_ROLLOUT_KIND
+    if architecture == "official_act_single_arm_no_latent_v1":
+        return OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND
     if architecture == "act_aligned_contact_cvae_v1":
         return ACT_ALIGNED_ROLLOUT_KIND
     if architecture == "act_aligned_contact_cvae_highrate_force_v2":

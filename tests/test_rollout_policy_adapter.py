@@ -17,6 +17,7 @@ from force_aware_act.inference import (
     HighRateForceRingBuffer,
     NO_FORCE_HISTORY_CONTRACT,
     OFFICIAL_ACT_ROLLOUT_KIND,
+    OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND,
     RolloutPolicyAdapter,
     checkpoint_uses_rollout_adapter,
 )
@@ -30,12 +31,20 @@ from force_aware_act.models.act_aligned import (
 )
 from force_aware_act.models.official_act import (
     OfficialACTConfig,
+    OfficialACTNoLatentConfig,
+    OfficialACTNoLatentPolicy,
     OfficialACTPolicy,
 )
 from force_aware_act.official_act_training.checkpoint import (
     OFFICIAL_ACT_CHECKPOINT_VERSION,
 )
-from scripts.run_mujoco_policy_rollout import _resolve_checkpoint_contract
+from force_aware_act.official_act_training.no_latent_checkpoint import (
+    OFFICIAL_ACT_NO_LATENT_CHECKPOINT_VERSION,
+)
+from scripts.run_mujoco_policy_rollout import (
+    _policy_variant_from_checkpoint,
+    _resolve_checkpoint_contract,
+)
 
 
 def _normalization(*, include_force: bool) -> dict:
@@ -71,6 +80,27 @@ def _official_checkpoint(*, include_format: bool = True) -> dict:
     }
     if include_format:
         payload["format_version"] = OFFICIAL_ACT_CHECKPOINT_VERSION
+    return payload
+
+
+def _official_no_latent_checkpoint(*, include_format: bool = True) -> dict:
+    config = OfficialACTNoLatentConfig.compact_smoke(
+        encoder_layers=1,
+        decoder_layers=1,
+        chunk_len=3,
+        image_height=32,
+        image_width=48,
+    )
+    payload = {
+        "architecture_version": config.architecture_version,
+        "model_config": asdict(config),
+        "model_state": OfficialACTNoLatentPolicy(config).state_dict(),
+        "normalization": _normalization(include_force=False),
+    }
+    if include_format:
+        payload["format_version"] = (
+            OFFICIAL_ACT_NO_LATENT_CHECKPOINT_VERSION
+        )
     return payload
 
 
@@ -176,6 +206,47 @@ def test_official_adapter_supports_full_and_best_policy_checkpoints(
     assert action.shape == (3, 7)
     assert force.shape == (3, 6)
     assert np.isnan(force).all()
+
+
+@pytest.mark.parametrize("include_format", (True, False))
+def test_no_latent_official_adapter_has_no_latent_or_force_contract(
+    include_format,
+):
+    checkpoint = _official_no_latent_checkpoint(
+        include_format=include_format
+    )
+    assert checkpoint_uses_rollout_adapter(checkpoint)
+    adapter = RolloutPolicyAdapter.from_checkpoint(
+        checkpoint,
+        device=torch.device("cpu"),
+    )
+    assert adapter.kind == OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND
+    assert not adapter.uses_force_history
+    assert not adapter.has_contact_prior
+    assert adapter.force_history_contract == NO_FORCE_HISTORY_CONTRACT
+
+    images = adapter.prepare_images(torch.rand(2, 3, 32, 48))
+    qpos = adapter.prepare_qpos(np.arange(7, dtype=np.float32))
+    output = adapter.forward(images, qpos)
+    diagnostics = adapter.deployment_diagnostics(
+        output,
+        force_padding_mask=None,
+        requested_latent_mode="zero",
+    )
+    action, force = adapter.denormalize_predictions(output)
+
+    assert diagnostics == {
+        "latent_name": "none",
+        "latent_source": "none",
+        "latent_max_abs": 0.0,
+        "force_history_valid_samples": 0,
+        "force_history_padding_samples": 0,
+    }
+    assert action.shape == (3, 7)
+    assert np.isnan(force).all()
+    assert _policy_variant_from_checkpoint(checkpoint) == (
+        OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND
+    )
 
 
 def test_contact_adapter_reproduces_causal_left_padded_force_contract():

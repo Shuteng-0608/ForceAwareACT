@@ -35,15 +35,22 @@ from force_aware_act.models.act_aligned import (
 )
 from force_aware_act.models.official_act import (
     OFFICIAL_ACT_ARCHITECTURE_VERSION,
+    OFFICIAL_ACT_NO_LATENT_ARCHITECTURE_VERSION,
     OfficialACTConfig,
+    OfficialACTNoLatentConfig,
+    OfficialACTNoLatentPolicy,
     OfficialACTPolicy,
 )
 from force_aware_act.official_act_training.checkpoint import (
     OFFICIAL_ACT_CHECKPOINT_VERSION,
 )
+from force_aware_act.official_act_training.no_latent_checkpoint import (
+    OFFICIAL_ACT_NO_LATENT_CHECKPOINT_VERSION,
+)
 
 
 OFFICIAL_ACT_ROLLOUT_KIND = "official_act"
+OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND = "official_act_no_latent"
 ACT_ALIGNED_ROLLOUT_KIND = "act_aligned_contact_cvae"
 ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND = "act_aligned_high_rate_contact_cvae"
 ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND = "act_aligned_high_rate_motion_cvae"
@@ -56,10 +63,15 @@ def checkpoint_uses_rollout_adapter(checkpoint: Mapping[str, Any]) -> bool:
 
     return (
         checkpoint.get("format_version")
-        in {OFFICIAL_ACT_CHECKPOINT_VERSION, CHECKPOINT_FORMAT_VERSION}
+        in {
+            OFFICIAL_ACT_CHECKPOINT_VERSION,
+            OFFICIAL_ACT_NO_LATENT_CHECKPOINT_VERSION,
+            CHECKPOINT_FORMAT_VERSION,
+        }
         or checkpoint.get("architecture_version")
         in {
             OFFICIAL_ACT_ARCHITECTURE_VERSION,
+            OFFICIAL_ACT_NO_LATENT_ARCHITECTURE_VERSION,
             ACT_ALIGNED_ARCHITECTURE_VERSION,
             ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
             ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
@@ -103,6 +115,11 @@ class RolloutPolicyAdapter:
                 OfficialACTConfig(**dict(model_config))
             )
             kind = OFFICIAL_ACT_ROLLOUT_KIND
+        elif architecture == OFFICIAL_ACT_NO_LATENT_ARCHITECTURE_VERSION:
+            model = OfficialACTNoLatentPolicy(
+                OfficialACTNoLatentConfig(**dict(model_config))
+            )
+            kind = OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND
         elif architecture == ACT_ALIGNED_ARCHITECTURE_VERSION:
             model = ACTAlignedContactCVAEPolicy(
                 ACTAlignedConfig(**dict(model_config))
@@ -140,7 +157,14 @@ class RolloutPolicyAdapter:
         return adapter
 
     @property
-    def config(self) -> OfficialACTConfig | ACTAlignedConfig | ACTAlignedHighRateConfig:
+    def config(
+        self,
+    ) -> (
+        OfficialACTConfig
+        | OfficialACTNoLatentConfig
+        | ACTAlignedConfig
+        | ACTAlignedHighRateConfig
+    ):
         return self.model.config
 
     @property
@@ -323,9 +347,14 @@ class RolloutPolicyAdapter:
         contact_latent_mode: str = "zero",
     ) -> dict[str, Any]:
         with torch.inference_mode():
-            if self.kind == OFFICIAL_ACT_ROLLOUT_KIND:
+            if self.kind in {
+                OFFICIAL_ACT_ROLLOUT_KIND,
+                OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND,
+            }:
                 if contact_latent_mode != "zero":
-                    raise ValueError("official ACT deployment latent must be zero")
+                    raise ValueError(
+                        "force-free ACT deployment latent mode must be zero"
+                    )
                 output = self.model(images, qpos)
                 self.deployment_diagnostics(
                     output,
@@ -400,6 +429,18 @@ class RolloutPolicyAdapter:
     ) -> dict[str, Any]:
         """Validate and summarize the deployment-only latent/input contract."""
 
+        if self.kind == OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND:
+            if output.get("latent_mechanism") != "none":
+                raise RuntimeError(
+                    "latent-free official ACT must declare no latent mechanism"
+                )
+            return {
+                "latent_name": "none",
+                "latent_source": "none",
+                "latent_max_abs": 0.0,
+                "force_history_valid_samples": 0,
+                "force_history_padding_samples": 0,
+            }
         if self.kind in {
             OFFICIAL_ACT_ROLLOUT_KIND,
             ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,

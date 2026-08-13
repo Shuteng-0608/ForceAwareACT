@@ -28,6 +28,7 @@ from force_aware_act.inference.rollout_policy_adapter import (
     ACT_ALIGNED_HIGH_RATE_ROLLOUT_KIND,
     NO_FORCE_HISTORY_CONTRACT,
     OFFICIAL_ACT_ROLLOUT_KIND,
+    OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND,
     RolloutPolicyAdapter,
     checkpoint_uses_rollout_adapter,
 )
@@ -80,6 +81,7 @@ __all__ = [
     "OFFICIAL_TEMPORAL_CANDIDATE_ORDER",
     "OFFICIAL_TEMPORAL_WEIGHT_FORMULA",
     "OFFICIAL_ACT_ROLLOUT_KIND",
+    "OFFICIAL_ACT_NO_LATENT_ROLLOUT_KIND",
     "OfficialTemporalActionChunkExecutor",
     "POLICY_STEP_SCHEDULER_VERSION",
     "ROLLOUT_PROTOCOL_VERSION",
