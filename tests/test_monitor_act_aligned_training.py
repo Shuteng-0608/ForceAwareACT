@@ -130,3 +130,24 @@ def test_find_training_process_supports_official_act_entry(
 
     assert process is not None
     assert process.pid == 300
+
+
+def test_find_training_process_supports_official_act_no_latent_entry(
+    tmp_path,
+    monkeypatch,
+):
+    output_dir = tmp_path / "official_no_latent"
+    output_dir.mkdir()
+    command = (
+        "python scripts/train_official_act_no_latent.py data "
+        f"--output-dir {output_dir}"
+    )
+    monkeypatch.setattr(
+        "scripts.monitor_act_aligned_training._process_table",
+        lambda: [ProcessInfo(301, 10, 30.0, command)],
+    )
+
+    process = find_training_process(output_dir)
+
+    assert process is not None
+    assert process.pid == 301

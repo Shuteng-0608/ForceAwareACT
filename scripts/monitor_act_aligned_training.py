@@ -25,6 +25,7 @@ TRAIN_SCRIPT_NAMES = (
     "train_act_aligned_high_rate_dual_zero.py",
     "train_act_aligned_motion_cvae_control.py",
     "train_official_act.py",
+    "train_official_act_no_latent.py",
 )
 DEFAULT_TARGET_STEPS = 24_000
 DEFAULT_CHECKPOINT_INTERVAL = 2_000

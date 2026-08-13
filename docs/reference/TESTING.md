@@ -1,6 +1,6 @@
 # Testing
 
-Verification snapshot on 2026-08-13: the audited `tests/` tree contains 82 `test_*.py` files. The full run completed with 671 passing tests and one CUDA-only skip.
+Verification snapshot on 2026-08-13: the audited `tests/` tree contains 85 `test_*.py` files. The full run completed with 684 passing tests and one CUDA-only skip.
 
 ## Commands
 
@@ -21,6 +21,10 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src python -m pytest -q \
   tests/test_act_aligned_high_rate_controls.py \
   tests/test_act_aligned_high_rate_control_training.py \
   tests/test_rollout_policy_adapter.py
+PYTHONPATH=src python -m pytest -q \
+  tests/test_official_act_no_latent_model.py \
+  tests/test_official_act_no_latent_training.py \
+  tests/test_preflight_official_act_no_latent.py
 ```
 
 Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Plot tests use `pandas`/matplotlib paths. MuJoCo helper tests use mocked or minimal geometry paths where possible, but real rollout execution requires `mujoco`.
@@ -31,6 +35,9 @@ Optional dependencies: most tests use `torch`, `numpy`, `h5py`, and `pytest`. Pl
 | --- | --- | --- | --- | --- | --- |
 | `test_act_baseline_checkpointing.py` | ACT training checkpoints | training pipeline | `act_baseline` | parser flags, checkpoint schedule, periodic saves | no long-run resume. |
 | `test_act_policy_baseline.py` | ACT baseline model | unit/integration | `act_baseline` | no force/contact modules, posterior training, zero deploy, loss, checkpoint roundtrip, rollout dispatch | no real MuJoCo rollout. |
+| `test_official_act_no_latent_model.py` | Official ACT NoLatent model | unit/structural | Official ACT NoLatent | truthful config metadata, 601-token canonical memory, output shapes, deterministic inference, absence of latent/posterior/prior state and future-label/force API | no convergence test. |
+| `test_official_act_no_latent_training.py` | Official ACT NoLatent training | unit/integration | Official ACT NoLatent | masked action-only L1, parameter update, deterministic validation, optimizer coverage and strict checkpoint roundtrip | no formal long-run training. |
+| `test_preflight_official_act_no_latent.py` | Official ACT NoLatent preflight | structural audit | Official ACT NoLatent | valid structure acceptance and injected latent-state rejection | real HDF5 execution is performed manually. |
 | `test_act_aligned_high_rate_controls.py` | ACT-aligned native-rate models | unit/intervention | high-rate Motion-CVAE and Dual-Zero | architecture metadata, action-only posterior, exact-zero motion deployment, structural absence of Dual-Zero latent modules, 2 ms force intervention | no long-run convergence. |
 | `test_act_aligned_high_rate_control_training.py` | ACT-aligned native-rate training | unit/integration/preflight | high-rate Motion-CVAE and Dual-Zero | loss terms, parameter updates, high-rate force gradients, validation selection metrics, native-force intervention and latent-contract preflight | formal multi-GPU training not exercised. |
 | `test_action_mode_pipeline.py` | action modes/checkpoints | integration | force-aware variants | dataset action modes, stats metadata, mismatch validation, schedule, checkpoint envelope | no real dataset scale test. |
@@ -76,7 +83,7 @@ The full suite was run after documentation edits with:
 PYTHONPATH=src python -m pytest -q
 ```
 
-Verification snapshot on 2026-08-13: `671 passed, 1 skipped in 27.45s`. The skipped test is the CUDA-device rollout helper check when `torch.cuda.is_available()` is false. Syntax compilation completed successfully with the active Python 3.10.20 environment. Native-rate Motion-CVAE and Dual-Zero additionally passed real-HDF5 one-step burn-in, strict checkpoint reload, Dual-Zero mid-epoch resume, real-data preflight, and a real-checkpoint/episode force-usage intervention audit.
+Verification snapshot on 2026-08-13: `684 passed, 1 skipped in 27.42s`. The skipped test is the CUDA-device rollout helper check when `torch.cuda.is_available()` is false. Syntax compilation completed successfully with the active Python 3.10.20 environment. Native-rate Motion-CVAE and Dual-Zero additionally passed real-HDF5 one-step burn-in, strict checkpoint reload, Dual-Zero mid-epoch resume, real-data preflight, and a real-checkpoint/episode force-usage intervention audit. Official ACT NoLatent passed a real-HDF5 structural/optimization preflight, a two-step smoke training, strict final-checkpoint reload, CLI resume, and a real validation-episode deployment forward from `best_policy.pt`.
 
 ## Testing Conventions
 
