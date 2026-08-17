@@ -59,18 +59,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target-steps",
         type=int,
-        default=DEFAULT_TARGET_STEPS,
+        help="override run_metadata target_optimizer_steps",
     )
     parser.add_argument(
         "--start-step",
         type=int,
-        default=0,
-        help="Global step at process start; set this when monitoring a resume.",
+        help="override run_metadata start_global_step",
     )
     parser.add_argument(
         "--checkpoint-interval",
         type=int,
-        default=DEFAULT_CHECKPOINT_INTERVAL,
+        help="override checkpoint interval from run metadata",
     )
     parser.add_argument(
         "--pid",
@@ -261,7 +260,10 @@ def _format_metric(value: Optional[float]) -> str:
 
 def _latest_periodic_checkpoint(output_dir: Path) -> Optional[Path]:
     checkpoints = sorted(output_dir.glob("step_*.pt"))
-    return checkpoints[-1] if checkpoints else None
+    if checkpoints:
+        return checkpoints[-1]
+    latest = output_dir / "latest.pt"
+    return latest if latest.is_file() else None
 
 
 def _read_summary(output_dir: Path) -> Optional[dict[str, Any]]:
@@ -273,6 +275,83 @@ def _read_summary(output_dir: Path) -> Optional[dict[str, Any]]:
             continue
         if isinstance(value, dict):
             return value
+    return None
+
+
+def _read_json(path: Path) -> Optional[dict[str, Any]]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def resolve_monitor_control(
+    output_dir: Path,
+    *,
+    target_steps: Optional[int],
+    start_step: Optional[int],
+    checkpoint_interval: Optional[int],
+) -> tuple[int, int, int]:
+    """Prefer the trainer's persisted runtime protocol over old defaults."""
+
+    metadata = _read_json(output_dir / "run_metadata.json") or {}
+    run_control = metadata.get("run_control")
+    if not isinstance(run_control, dict):
+        run_control = {}
+    training = metadata.get("training")
+    if not isinstance(training, dict):
+        training = {}
+    resolved_target = (
+        int(run_control["target_optimizer_steps"])
+        if target_steps is None
+        and "target_optimizer_steps" in run_control
+        else DEFAULT_TARGET_STEPS if target_steps is None else target_steps
+    )
+    resolved_start = (
+        int(run_control.get("start_global_step", 0))
+        if start_step is None
+        else start_step
+    )
+    persisted_checkpoint_interval = training.get("checkpoint_interval_steps")
+    if (
+        persisted_checkpoint_interval is None
+        and "checkpoint_interval_epochs" in training
+        and "steps_per_epoch" in metadata
+    ):
+        persisted_checkpoint_interval = (
+            int(training["checkpoint_interval_epochs"])
+            * int(metadata["steps_per_epoch"])
+        )
+    resolved_checkpoint = (
+        int(
+            DEFAULT_CHECKPOINT_INTERVAL
+            if persisted_checkpoint_interval is None
+            else persisted_checkpoint_interval
+        )
+        if checkpoint_interval is None
+        else checkpoint_interval
+    )
+    return resolved_target, resolved_start, resolved_checkpoint
+
+
+def _latest_convergence(
+    records: Sequence[dict[str, Any]],
+    summary: Optional[dict[str, Any]],
+    metadata: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    for record in reversed(records):
+        value = record.get("convergence")
+        if isinstance(value, dict):
+            return value
+    for container in (summary, metadata):
+        if not isinstance(container, dict):
+            continue
+        run_control = container.get("run_control")
+        if isinstance(run_control, dict):
+            value = run_control.get("convergence")
+            if isinstance(value, dict):
+                return value
     return None
 
 
@@ -302,19 +381,33 @@ def render_report(
         if record.get("record_type") == "epoch_segment"
     ]
     latest = step_records[-1] if step_records else {}
-    current_step = int(latest.get("global_step", 0))
+    activity_records = [
+        record
+        for record in records
+        if isinstance(record.get("global_step"), (int, float))
+    ]
+    latest_activity = activity_records[-1] if activity_records else latest
     process = find_training_process(
         output_dir,
         requested_pid=requested_pid,
     )
     summary = _read_summary(output_dir)
+    metadata = _read_json(output_dir / "run_metadata.json")
+    current_step = max(
+        [int(record["global_step"]) for record in activity_records]
+        + ([int(summary["global_step"])] if summary and "global_step" in summary else [])
+        + [0]
+    )
 
     try:
         log_age = max(0.0, time.time() - metrics_path.stat().st_mtime)
     except OSError:
         log_age = math.inf
 
-    if current_step >= target_steps or (
+    stop_reason = None if summary is None else summary.get("stop_reason")
+    if stop_reason == "early_stopping_plateau":
+        status = "EARLY STOPPED (CONVERGED)"
+    elif current_step >= target_steps or (
         summary is not None and summary.get("passed") is True
     ):
         status = "COMPLETED"
@@ -348,8 +441,8 @@ def render_report(
             f"{current_step:,}/{target_steps:,} ({progress:.2f}%)"
         ),
         (
-            f"position: epoch={latest.get('epoch', 'n/a')} "
-            f"step_in_epoch={latest.get('step_in_epoch', 'n/a')} "
+            f"position: epoch={latest_activity.get('epoch', 'n/a')} "
+            f"step_in_epoch={latest_activity.get('step_in_epoch', 'n/a')} "
             f"remaining_steps={remaining_steps:,}"
         ),
     ]
@@ -385,6 +478,8 @@ def render_report(
         )
     elif status == "COMPLETED":
         lines.append("ETA: complete")
+    elif status == "EARLY STOPPED (CONVERGED)":
+        lines.append("ETA: stopped after validation plateau")
     else:
         lines.append(
             "ETA: unavailable; pass --pid if automatic process detection failed"
@@ -455,15 +550,62 @@ def render_report(
         f"latest={latest_checkpoint.name if latest_checkpoint else 'none'} "
         f"next_step={next_checkpoint_step:,}"
     )
+    convergence = _latest_convergence(records, summary, metadata)
+    if convergence is not None:
+        minimum = int(convergence["minimum_optimizer_steps"])
+        patience_used = int(
+            convergence["validations_without_meaningful_improvement"]
+        )
+        patience = int(convergence["patience_validations"])
+        phase = "eligible" if current_step >= minimum else "minimum-step warmup"
+        lines.append(
+            "convergence: "
+            f"metric={convergence['metric_name']} "
+            f"best={_format_metric(convergence.get('best_metric'))} "
+            f"best_step={convergence.get('best_step', 'n/a')} "
+            f"patience={patience_used}/{patience} "
+            f"minimum_step={minimum:,} ({phase}) "
+            f"min_relative_improvement="
+            f"{100 * convergence['min_relative_improvement']:.3g}%"
+        )
+    best_artifact = None
+    for container in (summary, metadata):
+        if not isinstance(container, dict):
+            continue
+        candidate = container.get("best_artifact")
+        if candidate is None and isinstance(container.get("run_control"), dict):
+            candidate = container["run_control"].get("best_artifact")
+        if isinstance(candidate, dict):
+            best_artifact = candidate
+            break
+    if best_artifact is not None:
+        lines.append(
+            "best policy: "
+            f"step={best_artifact.get('global_step', 'n/a')} "
+            f"metric={_format_metric(best_artifact.get('metric'))} "
+            f"path={best_artifact.get('path', 'n/a')}"
+        )
     if segment_records:
         validation = segment_records[-1]
         validation_metrics = validation.get("validation", {})
+        full_validation_metrics = validation.get("full_validation", {})
         validation_line = (
             "validation: "
             f"last_step={validation.get('global_step', 'n/a')} "
             f"zero_action_l1="
             f"{_format_metric(validation_metrics.get('deployment_zero_action_l1'))}"
         )
+        physical_action_l1 = validation_metrics.get(
+            "deployment_zero_action_l1_physical",
+            full_validation_metrics.get(
+                "deployment_zero_action_l1_physical"
+            ),
+        )
+        if physical_action_l1 is not None:
+            validation_line += (
+                " physical_action_l1="
+                f"{_format_metric(physical_action_l1)}"
+            )
         if "deployment_prior_action_l1" in validation_metrics:
             validation_line += (
                 " prior_action_l1="
@@ -476,7 +618,10 @@ def render_report(
     lines.append(
         f"log freshness: {_format_duration(log_age)} since last metrics write"
     )
-    if log_age > stale_after and status != "COMPLETED":
+    if log_age > stale_after and status not in {
+        "COMPLETED",
+        "EARLY STOPPED (CONVERGED)",
+    }:
         lines.append(
             f"WARNING: metrics log is stale (threshold {stale_after:.0f}s)"
         )
@@ -486,11 +631,17 @@ def render_report(
 
 def main() -> None:
     args = build_parser().parse_args()
-    if args.target_steps <= 0:
+    target_steps, start_step, checkpoint_interval = resolve_monitor_control(
+        args.output_dir,
+        target_steps=args.target_steps,
+        start_step=args.start_step,
+        checkpoint_interval=args.checkpoint_interval,
+    )
+    if target_steps <= 0:
         raise SystemExit("--target-steps must be positive")
-    if args.start_step < 0 or args.start_step >= args.target_steps:
+    if start_step < 0 or start_step >= target_steps:
         raise SystemExit("--start-step must be in [0, target-steps)")
-    if args.checkpoint_interval <= 0:
+    if checkpoint_interval <= 0:
         raise SystemExit("--checkpoint-interval must be positive")
     if args.interval <= 0 or args.recent_window <= 0 or args.stale_after <= 0:
         raise SystemExit(
@@ -504,9 +655,9 @@ def main() -> None:
         try:
             report, previous_sample = render_report(
                 output_dir=args.output_dir,
-                target_steps=args.target_steps,
-                start_step=args.start_step,
-                checkpoint_interval=args.checkpoint_interval,
+                target_steps=target_steps,
+                start_step=start_step,
+                checkpoint_interval=checkpoint_interval,
                 recent_window=args.recent_window,
                 stale_after=args.stale_after,
                 requested_pid=args.pid,

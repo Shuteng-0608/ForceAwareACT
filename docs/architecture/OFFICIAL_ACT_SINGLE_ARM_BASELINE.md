@@ -92,7 +92,7 @@ Sampling is deterministically keyed by epoch and episode so an epoch-boundary
 resume is reproducible; this changes the random-number bookkeeping but not
 the sampling distribution or number of samples.
 
-Normalization follows the official behavior:
+Without an experiment manifest, normalization follows the official behavior:
 
 - compute qpos/action statistics over all 100 episodes, including validation;
 - concatenate variable-length episode timesteps before computing moments
@@ -101,6 +101,10 @@ Normalization follows the official behavior:
 - clamp standard deviations to at least `1e-2`;
 - divide images by 255 in the dataset;
 - apply ImageNet normalization inside the policy.
+
+For paired experiments, statistics are computed from manifest training
+episodes only. Validation episodes never contribute to normalization, so the
+Official ACT and Contact-CVAE comparison uses the same leakage boundary.
 
 ## Loss and schedule
 
@@ -123,15 +127,63 @@ With 100 episodes and the official 80/20 split:
 ```
 
 Validation occurs before training in every epoch, matching the official loop.
-The official sampled-posterior validation loss is computed every epoch.
-Deterministic posterior-mean versus zero-latent diagnostics run at epoch 0,
-every 100 epochs, and after training; they do not update model state.
+The official sampled-posterior validation loss remains a source-compatible
+diagnostic; it is not the formal model-selection metric.
 
-As in the official loop, the best validation weights are retained in CPU
-memory during training. Every 100 epochs, overwrite-style `latest.pt` stores
+Formal best selection uses deterministic zero-latent action L1 over every
+validation `(episode,timestep)` window. Predictions and labels are
+denormalized before globally averaging all valid physical action scalars:
+
+```text
+selection metric = deployment_zero_action_l1_physical
+```
+
+Full-window validation runs at run start, every
+`--full-validation-interval-epochs` (default 400), and at termination. This
+matches Contact-CVAE on split boundary, complete coverage, physical units and
+deployed zero latent.
+
+The best physical-validation weights are retained in CPU memory during
+training. Every 100 epochs, overwrite-style `latest.pt` stores
 the current model, optimizer, RNG, and best state for resume. Training writes
-one lightweight `best_policy.pt` at completion instead of retaining 20 large
-milestone files. This does not change model optimization or best selection.
+one lightweight `best_policy.pt` at completion instead of retaining many
+large milestone files.
+
+## Independent convergence training
+
+The trainer separates an absolute hard cap (`--target-optimizer-steps`), a
+minimum training amount (`--minimum-optimizer-steps`), and validation patience
+(`--early-stop-patience-validations`). The default meaningful-improvement
+threshold is 1%. Smaller strict improvements still update best, but do not
+reset patience. Omitting patience preserves fixed-epoch behavior.
+
+For 40 training episodes and batch 8, one Official ACT epoch has 5 optimizer
+steps, so every target must be divisible by 5. A continuation from step 25,000
+can use:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/train_official_act.py \
+  /path/to/data \
+  --output-dir runs/official_act_converged_b8_seed0 \
+  --device cuda --batch-size 8 --num-workers 2 --seed 0 \
+  --resume runs/official_act_previous/final.pt \
+  --target-optimizer-steps 100000 \
+  --minimum-optimizer-steps 50000 \
+  --early-stop-patience-validations 5 \
+  --early-stop-min-relative-improvement 0.005 \
+  --full-validation-interval-epochs 400 \
+  --checkpoint-interval-epochs 100 --log-interval 10
+```
+
+Official ACT and Contact-CVAE need not stop at the same optimizer step. The
+fairness contract is the same split, deployment semantics, physical selection
+metric and predeclared convergence rule; each model trains until its own
+plateau or hard cap.
+
+On resume, the checkpoint records its parent path, size and SHA-256. Legacy
+best numbers are not compared directly with the physical metric: the current
+weights and embedded historical best are both re-evaluated, and the better
+physical candidate becomes the new baseline.
 
 ## Local functional smoke
 
@@ -172,12 +224,11 @@ python scripts/train_official_act.py \
   2>&1 | tee runs/official_act_wst_b8_seed0/console.log
 ```
 
-Monitor the official 20,000-step target:
+The monitor reads the persisted target and resume start automatically:
 
 ```bash
 python scripts/monitor_act_aligned_training.py \
   runs/official_act_wst_b8_seed0 \
-  --target-steps 20000 \
   --watch \
   --interval 10
 ```

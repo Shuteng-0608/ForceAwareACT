@@ -278,129 +278,133 @@ KL 获得正常梯度。
 没有 learning-rate scheduler、gradient accumulation 或 automatic mixed precision
 的隐式逻辑。一个 DataLoader batch 对应一个 optimizer step。
 
-## 8. 训练长度：以 optimizer steps 为最终边界
+## 8. 训练长度：最低训练量、收敛判断与安全上限
 
-当前训练器遍历所有 window，但用 Official ACT 的“每个 reference epoch 对每个
-train episode 随机抽一个 timestep”的更新次数来确定总训练预算：
+canonical config 仍用 Official ACT 的 reference epoch 定义初始训练预算：
 
 ```text
 steps_per_reference_epoch = ceil(reference_train_episodes / batch_size)
 max_optimizer_steps       = steps_per_reference_epoch * official_reference_epochs
 ```
 
-标准 `official_reference_epochs=2000`。这使不同 dataset window 数量下仍能明确
-对齐 optimizer-update budget。需要注意：这里只对齐更新次数，不声称当前的
-all-window shuffled sampling distribution 与 Official ACT 的 per-episode random
-timestep sampling 完全相同。
+标准 `official_reference_epochs=2000`。它提供可复现的初始 update 尺度，不代表
+两个模型都已充分训练，也不要求 Official ACT 与 Contact-CVAE 在同一步停止。
 
-“data epoch”仍有实际意义：
+Contact-CVAE 的 data epoch 定义为：
 
 ```text
 steps_per_data_epoch = ceil(total_train_windows / batch_size)
 ```
 
-它决定什么时候完成一次全 window 遍历和常规验证；训练终止则由
-`max_optimizer_steps` 决定。最后一个 data epoch 可以是部分 epoch。
+它决定何时完成一次全 window 遍历并触发验证。formal run 支持三个独立控制量：
+
+- `--target-optimizer-steps`：绝对 global-step 安全上限，不是追加步数；
+- `--minimum-optimizer-steps`：达到此步数前不允许因平台期停止；
+- `--early-stop-patience-validations`：达到 minimum 后，连续多少次 full validation
+  无有效改善才停止。
+
+`--early-stop-min-relative-improvement` 默认 `0.01`，即相对下降至少 1% 才清空
+patience。小于阈值但严格更低的指标仍保存为 best，因此模型选择与平台判断相互
+独立。不传 patience 时保持固定预算；传 patience 但省略 minimum 时，minimum
+取 checkpoint 原始 canonical step limit。
 
 ## 9. Formal、burn-in 与 smoke
 
-- `formal`：使用 canonical model，并训练到派生的 `max_optimizer_steps`；
+- `formal`：使用 canonical model，训练到验证收敛或绝对 step 上限；
 - `burn_in`：使用同一目标和数据契约，但必须显式给定不超过正式预算的绝对
   `--max-train-steps`；
-- `--smoke`：使用小宽度/小图像/短 chunk 与少量样本，仅做结构和流程测试。
+- `--smoke`：使用小宽度、小图像、短 chunk 和少量样本，只验证结构和流程。
 
-burn-in step limit 是绝对 global step 上限，不是“在 checkpoint 基础上再跑 N
-步”。正式目录与 burn-in 目录应分开，避免 artifact 语义混乱。
+burn-in 与 formal 应使用不同目录。所有 step 参数都是绝对 global step。
 
-## 10. Validation 路径
+## 10. Validation 路径与模型选择
 
-validation 使用 `model.eval()` 和 `torch.no_grad()`，并分别计算三条路径：
+validation 使用 `model.eval()` 和 `torch.no_grad()`，并计算三条路径：
 
-1. posterior mean：仍使用 future label，但不随机采样，用于确定性 oracle 诊断；
+1. posterior mean：可见 future label 的确定性 oracle 诊断；
 2. deployment zero：只用在线输入，`z_contact` 严格为零；
 3. deployment prior：只用在线输入，使用 conditional-prior mean。
 
-三条路径分别计算 action、endpoint force 与 native-force L1；同时记录 posterior
-standard KL、posterior-prior KL、latent mean/std 以及 posterior/prior 相对 zero
-输出的变化量。
+三条路径分别计算 action、endpoint force、native-force L1，并记录 KL、latent
+统计与相对 zero 输出差异。validation 前后保存并恢复 Python、NumPy、Torch 和
+CUDA RNG，保证验证不改变后续训练随机序列。
 
-常规 validation 在完成一个 data epoch 后执行；如果 optimizer-step limit 在一个
-data epoch 中间到达，也会执行最后一次 validation。validation 前保存 Python、
-NumPy、Torch 和 CUDA RNG，结束后恢复，保证验证不会改变后续训练随机序列。
-
-默认 best-checkpoint selection metric 为：
+高频模型的 best selection metric 固定为：
 
 ```text
-deployment_zero_action_l1
+deployment_zero_action_l1_physical
 ```
 
-原因是默认部署使用 zero latent，模型选择应以真正部署路径的 action prediction
-为准，而不是以可见 future label 的 posterior oracle 为准。也可在配置版本允许的
-范围内显式选择 `deployment_prior_action_l1`。
+该路径枚举 episode-disjoint validation split 的每个 `(episode,timestep)` window，
+用 zero contact latent 确定性推理；prediction 与 label 反标准化到物理关节单位，
+再对所有有效 action scalar 做全局加权 L1。posterior/prior 指标只作诊断。
+
+fresh formal run 在训练前执行 full validation 建立基准。续训也在 run start 复评；
+旧 checkpoint 若没有当前物理指标和可定位 best，会重新建立基准并写出迁移记录。
 
 ## 11. 日志、checkpoint 与精确恢复
 
-### 11.1 日志
+`metrics.jsonl` 的 `step` 记录 loss、latent、gradient、LR 与显存；
+`epoch_segment` 记录完整或部分 data epoch、validation 和 convergence state；formal
+run 还写 `full_validation(stage=run_start)`。
 
-`metrics.jsonl` 包含两类 record：
+保存文件包括：
 
-- `step`：global step、data-epoch 位置、当前 loss/latent/gradient/LR 和 CUDA memory；
-- `epoch_segment`：本次完整或部分 data epoch 的训练聚合值及可选 validation。
+- `step_XXXXXXXX.pt`：周期性完整 checkpoint；
+- `last.pt`：每个 data-epoch segment 后更新；
+- `best.pt`：物理 selection metric 严格改善时更新；
+- `final.pt`：达到 step 上限或验证平台期停止；
+- `burn_in.pt`：burn-in 达到 step 上限。
 
-step 日志在首次更新、`log_interval`、checkpoint step 和最终 step 写入。
+checkpoint 使用临时文件加 `os.replace` 原子保存，并包含 model、optimizer、
+progress、normalization、split、experiment provenance、全部 RNG、DataLoader
+generator、runtime horizon、convergence monitor、父 checkpoint 内容指纹、best
+artifact 描述和可能的指标迁移记录。
 
-### 11.2 保存文件
+resume 会严格检查 config 并恢复 epoch 内 shuffle 起点及已完成 batch 数。最终
+checkpoint 立即执行 reload audit。新目录续训且父 best 未被超越时，`best.pt` 是到
+父 best 的符号链接；出现新 best 后，原子保存替换链接本身，不覆盖父文件。
 
-- `step_XXXXXXXX.pt`：按 optimizer step 周期保存；
-- `last.pt`：每个完整或部分 data-epoch segment 后更新；
-- `best.pt`：selection metric 改善时更新；
-- `final.pt`：formal 达到 step limit；
-- `burn_in.pt`：burn-in 达到 step limit。
+## 12. 充分训练的推荐 continuation 协议
 
-写 checkpoint 时先保存临时文件，再用原子 `os.replace` 替换目标，降低中断造成
-半文件的风险。
+以 40 个 train episodes、batch 8、已训练到 25,000 steps 为例，可把 50,000
+设为新 minimum、100,000 设为安全上限：
 
-### 11.3 checkpoint 内容
+```bash
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH=src python \
+  scripts/train_act_aligned_high_rate_contact_cvae.py \
+  /path/to/data \
+  --output-dir runs/contact_converged_b8_seed0 \
+  --device cuda --batch-size 8 --num-workers 2 --seed 0 \
+  --run-mode formal \
+  --resume runs/contact_previous/final.pt \
+  --target-optimizer-steps 100000 \
+  --minimum-optimizer-steps 50000 \
+  --early-stop-patience-validations 5 \
+  --early-stop-min-relative-improvement 0.005 \
+  --checkpoint-interval-steps 2000 --log-interval 10
+```
 
-checkpoint 包含：
+100,000 只是故障保护上限。每个模型按自己的 validation 曲线独立停止，实际训练
+量可以不同。minimum、patience、relative threshold 和上限必须在启动前固定。
 
-- architecture/training version 与完整 config；
-- model state 与 optimizer state；
-- `epoch`、`global_step`、`step_in_epoch`、`best_metric`；
-- normalization stats；
-- episode split 与 experiment provenance；
-- Python、NumPy、Torch、CUDA RNG；
-- DataLoader generator state。
+## 13. 方法边界
 
-resume 时严格比较 model/training config，strict load model state，恢复 optimizer、
-运行时 RNG 和 DataLoader generator。若在 data epoch 中间保存，则恢复同一个
-epoch 的 shuffle generator 起点并跳过已经完成的 batches，从而保持样本顺序。
+1. 训练 decoder 使用 posterior、默认部署使用 zero latent，是有意保留的非对称。
+2. conditional prior 可独立评估，但 prior matching 不应更新共享在线编码器或
+   posterior。
+3. native-force reconstruction 不等价于 500 Hz 闭环控制。
+4. validation L1 与 latent 诊断不是任务成功率；成功语义属于 rollout 方法。
+5. 修改 loss、采样、训练边界或选模指标时必须升级或明确记录协议。
 
-最终 checkpoint 保存后会立即做一次 reload audit，核对 progress、optimizer、
-DataLoader generator 与 RNG 是否可恢复；失败则训练流程不应宣告完成。
-
-## 12. 方法边界
-
-1. 训练时 decoder 使用 posterior；默认部署使用 zero latent，这是有意保留的
-   非对称路径，不是实现遗漏。
-2. conditional prior 是独立可评估/可部署模式，但 prior matching 不应改变共享
-   online encoder 或 posterior。
-3. native-force reconstruction 是辅助监督，不等价于把机器人闭环控制提升到
-   500 Hz；控制频率由 rollout scheduler 和 policy query rate 决定。
-4. 训练 loss、validation L1 与 latent 诊断都不是任务成功率；成功语义属于
-   rollout 方法，不写入本训练方法文档。
-5. 修改 loss 权重、采样方式、训练预算或 best selection metric 时，应升级或明确
-   记录 training config，而不能只改运行目录名。
-
-## 13. 源码索引
+## 14. 源码索引
 
 - 训练入口：`scripts/train_act_aligned_high_rate_contact_cvae.py`
 - 通用编排：`scripts/train_act_aligned_contact_cvae.py`
-- 配置：`src/force_aware_act/act_aligned_training/high_rate_config.py`
 - dataset：`src/force_aware_act/act_aligned_training/high_rate_data.py`
-- normalization：`src/force_aware_act/act_aligned_training/normalization.py`
 - criterion：`src/force_aware_act/act_aligned_training/high_rate_losses.py`
-- train/validation step：`src/force_aware_act/act_aligned_training/high_rate_trainer.py`
-- data-epoch loop：`src/force_aware_act/act_aligned_training/high_rate_loop.py`
-- optimizer：`src/force_aware_act/act_aligned_training/optimizer.py`
+- train/validation：`src/force_aware_act/act_aligned_training/high_rate_trainer.py`
 - checkpoint：`src/force_aware_act/act_aligned_training/checkpoint.py`
+- horizon：`src/force_aware_act/training/horizon.py`
+- convergence：`src/force_aware_act/training/convergence.py`
+- artifact lineage：`src/force_aware_act/training/artifacts.py`
