@@ -52,7 +52,10 @@ from force_aware_act.official_act_training import (  # noqa: E402
 from force_aware_act.official_act_training.data import (  # noqa: E402
     OFFICIAL_ACT_SPLIT_VERSION,
 )
-from force_aware_act.training import resolve_training_horizon  # noqa: E402
+from force_aware_act.training import (  # noqa: E402
+    resolve_convergence_monitor,
+    resolve_training_horizon,
+)
 
 
 def main() -> None:
@@ -246,6 +249,30 @@ def main() -> None:
         raise RuntimeError("Official ACT horizon did not resolve target epochs")
     target_epochs = horizon.target_epochs
     expected_total_steps = horizon.target_optimizer_steps
+    selection_metric = "deployment_zero_action_l1_physical"
+    prior_convergence = (
+        None
+        if prior_run_control is None
+        else prior_run_control.get("convergence")
+    )
+    convergence_monitor = resolve_convergence_monitor(
+        metric_name=selection_metric,
+        minimum_optimizer_steps=args.minimum_optimizer_steps,
+        patience_validations=args.early_stop_patience_validations,
+        min_relative_improvement=(
+            args.early_stop_min_relative_improvement
+        ),
+        default_minimum_optimizer_steps=source_optimizer_step_limit,
+        prior_state=prior_convergence,
+    )
+    if (
+        convergence_monitor is not None
+        and convergence_monitor.minimum_optimizer_steps
+        > horizon.target_optimizer_steps
+    ):
+        raise ValueError(
+            "minimum_optimizer_steps must not exceed the target horizon"
+        )
     training_metadata = training_config.checkpoint_metadata()
     training_metadata["normalization_scope"] = normalization_scope
     run_metadata = {
@@ -256,8 +283,10 @@ def main() -> None:
         "validation_windows": len(full_validation_dataset),
         "steps_per_epoch": steps_per_epoch,
         "expected_total_steps": expected_total_steps,
-        "run_control": horizon.to_dict(),
-        "selection_metric": "deployment_zero_action_l1_physical",
+        "run_control": _run_control_metadata(
+            horizon, convergence_monitor
+        ),
+        "selection_metric": selection_metric,
         "full_validation_interval_epochs": (
             args.full_validation_interval_epochs
         ),
@@ -283,25 +312,46 @@ def main() -> None:
             device=device,
         )
     )
-    best_metric = initial_full_validation[
-        "deployment_zero_action_l1_physical"
-    ]
-    best_epoch = start_epoch
-    best_model_state = {
-        name: value.detach().cpu().clone()
-        for name, value in model.state_dict().items()
-    }
+    initial_metric = initial_full_validation[selection_metric]
+    if convergence_monitor is None:
+        best_metric = initial_metric
+        best_epoch = start_epoch
+        best_model_state = {
+            name: value.detach().cpu().clone()
+            for name, value in model.state_dict().items()
+        }
+    elif convergence_monitor.validations_seen == 0:
+        convergence_monitor.update(initial_metric, global_step=global_step)
+        if convergence_monitor.best_metric is None:
+            raise RuntimeError("convergence monitor did not initialize")
+        best_metric = convergence_monitor.best_metric
+        best_epoch = start_epoch
+        best_model_state = {
+            name: value.detach().cpu().clone()
+            for name, value in model.state_dict().items()
+        }
+    else:
+        if convergence_monitor.best_metric is None:
+            raise RuntimeError("resumed convergence monitor has no best metric")
+        best_metric = convergence_monitor.best_metric
     initial_record = {
         "record_type": "full_validation",
         "stage": "run_start",
         "epoch": start_epoch,
         "global_step": global_step,
-        "selection_metric": "deployment_zero_action_l1_physical",
+        "selection_metric": selection_metric,
         "validation": initial_full_validation,
+        "convergence": (
+            None
+            if convergence_monitor is None
+            else convergence_monitor.to_dict()
+        ),
     }
     _append_json(metrics_path, initial_record)
     print(json.dumps(initial_record, sort_keys=True), flush=True)
     last_full_validation = initial_full_validation
+    stopped_early = False
+    completed_epochs = start_epoch
 
     for epoch in range(start_epoch, target_epochs):
         train_dataset.set_epoch(epoch)
@@ -384,10 +434,23 @@ def main() -> None:
                 )
             )
             last_full_validation = full_validation_metrics
-            selected = full_validation_metrics[
-                "deployment_zero_action_l1_physical"
-            ]
-            if selected < best_metric:
+            selected = full_validation_metrics[selection_metric]
+            checkpoint_improved = selected < best_metric
+            if convergence_monitor is not None:
+                convergence_update = convergence_monitor.update(
+                    selected,
+                    global_step=global_step,
+                )
+                checkpoint_improved = (
+                    convergence_update.checkpoint_improved
+                )
+                stopped_early = convergence_update.should_stop
+                if convergence_monitor.best_metric is None:
+                    raise RuntimeError(
+                        "convergence monitor did not record a best metric"
+                    )
+                best_metric = convergence_monitor.best_metric
+            if checkpoint_improved:
                 best_metric = selected
                 best_epoch = completed_epochs
                 best_model_state = {
@@ -400,9 +463,14 @@ def main() -> None:
                 "epoch": completed_epochs,
                 "global_step": global_step,
                 "selection_metric": (
-                    "deployment_zero_action_l1_physical"
+                    selection_metric
                 ),
                 "validation": full_validation_metrics,
+                "convergence": (
+                    None
+                    if convergence_monitor is None
+                    else convergence_monitor.to_dict()
+                ),
             }
             _append_json(metrics_path, full_record)
             print(json.dumps(full_record, sort_keys=True), flush=True)
@@ -424,6 +492,7 @@ def main() -> None:
             % training_config.checkpoint_interval_epochs
             == 0
             or completed_epochs == target_epochs
+            or stopped_early
         ):
             save_official_act_checkpoint(
                 output_dir / "latest.pt",
@@ -438,10 +507,14 @@ def main() -> None:
                 best_epoch=best_epoch,
                 best_model_state=best_model_state,
                 experiment_manifest=experiment_provenance,
-                run_control=horizon.to_dict(),
+                run_control=_run_control_metadata(
+                    horizon, convergence_monitor
+                ),
             )
+        if stopped_early:
+            break
 
-    validation_dataset.set_epoch(target_epochs)
+    validation_dataset.set_epoch(completed_epochs)
     final_validation = run_official_act_validation_epoch(
         model,
         criterion,
@@ -464,13 +537,15 @@ def main() -> None:
         training_config=training_config,
         normalization=normalization,
         split_manifest=manifest,
-        epoch=target_epochs,
+        epoch=completed_epochs,
         global_step=global_step,
         best_metric=best_metric,
         best_epoch=best_epoch,
         best_model_state=best_model_state,
         experiment_manifest=experiment_provenance,
-        run_control=horizon.to_dict(),
+        run_control=_run_control_metadata(
+            horizon, convergence_monitor
+        ),
     )
     if best_model_state is None:
         raise RuntimeError("official ACT training did not select a best model")
@@ -482,7 +557,7 @@ def main() -> None:
             "architecture_metadata": model_config.checkpoint_metadata(),
             "best_epoch": best_epoch,
             "best_metric": best_metric,
-            "selection_metric": "deployment_zero_action_l1_physical",
+            "selection_metric": selection_metric,
             "model_state": best_model_state,
             "normalization": normalization.to_dict(),
             "split_manifest": manifest.to_dict(),
@@ -500,11 +575,18 @@ def main() -> None:
         "passed": True,
         "architecture_version": model_config.architecture_version,
         "training_version": training_config.training_version,
-        "epochs": target_epochs,
+        "epochs": completed_epochs,
         "source_epochs": training_config.num_epochs,
         "global_step": global_step,
         "expected_total_steps": expected_total_steps,
-        "run_control": horizon.to_dict(),
+        "run_control": _run_control_metadata(
+            horizon, convergence_monitor
+        ),
+        "stop_reason": (
+            "maximum_optimizer_steps_reached"
+            if global_step >= expected_total_steps
+            else "early_stopping_plateau"
+        ),
         "normalization_scope": normalization_scope,
         "experiment_manifest": experiment_provenance,
         "best_metric": best_metric,
@@ -578,6 +660,16 @@ def _atomic_torch_save(path: Path, value: dict) -> None:
     os.replace(temporary, path)
 
 
+def _run_control_metadata(horizon, convergence_monitor) -> dict:
+    metadata = horizon.to_dict()
+    metadata["convergence"] = (
+        None
+        if convergence_monitor is None
+        else convergence_monitor.to_dict()
+    )
+    return metadata
+
+
 def _cuda_memory(device: torch.device) -> dict:
     if device.type != "cuda":
         return {
@@ -631,6 +723,17 @@ def _parse_args() -> argparse.Namespace:
             "this many completed epochs"
         ),
     )
+    parser.add_argument("--minimum-optimizer-steps", type=int)
+    parser.add_argument(
+        "--early-stop-patience-validations",
+        type=int,
+        help="enable validation-driven early stopping with this patience",
+    )
+    parser.add_argument(
+        "--early-stop-min-relative-improvement",
+        type=float,
+        default=0.01,
+    )
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--experiment-manifest", type=Path)
@@ -646,11 +749,30 @@ def _parse_args() -> argparse.Namespace:
         or args.num_workers < 0
         or args.checkpoint_interval_epochs <= 0
         or args.full_validation_interval_epochs <= 0
+        or (
+            args.minimum_optimizer_steps is not None
+            and args.minimum_optimizer_steps < 0
+        )
+        or (
+            args.early_stop_patience_validations is not None
+            and args.early_stop_patience_validations <= 0
+        )
+        or not 0.0
+        <= args.early_stop_min_relative_improvement
+        < 1.0
         or args.log_interval <= 0
     ):
         parser.error("numeric training arguments are invalid")
     if args.smoke and args.experiment_manifest is not None:
         parser.error("--smoke cannot be combined with --experiment-manifest")
+    if (
+        args.minimum_optimizer_steps is not None
+        and args.early_stop_patience_validations is None
+    ):
+        parser.error(
+            "--minimum-optimizer-steps requires "
+            "--early-stop-patience-validations"
+        )
     return args
 
 

@@ -24,6 +24,12 @@ from force_aware_act.training.horizon import (
     TrainingHorizon,
     resolve_training_horizon,
 )
+from force_aware_act.training.convergence import (
+    CONVERGENCE_MONITOR_VERSION,
+    ConvergenceUpdate,
+    ValidationConvergenceMonitor,
+    resolve_convergence_monitor,
+)
 
 __all__ = [
     "EARLY_STOP_METRICS",
@@ -43,4 +49,8 @@ __all__ = [
     "TRAINING_HORIZON_VERSION",
     "TrainingHorizon",
     "resolve_training_horizon",
+    "CONVERGENCE_MONITOR_VERSION",
+    "ConvergenceUpdate",
+    "ValidationConvergenceMonitor",
+    "resolve_convergence_monitor",
 ]

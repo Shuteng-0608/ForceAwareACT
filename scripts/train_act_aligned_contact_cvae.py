@@ -50,7 +50,10 @@ from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
 )
-from force_aware_act.training import resolve_training_horizon  # noqa: E402
+from force_aware_act.training import (  # noqa: E402
+    resolve_convergence_monitor,
+    resolve_training_horizon,
+)
 
 
 @dataclass(frozen=True)
@@ -284,6 +287,39 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         raise ValueError(
             "burn-in step limit must not exceed canonical max_optimizer_steps"
         )
+    prior_convergence = (
+        None
+        if prior_run_control is None
+        else prior_run_control.get("convergence")
+    )
+    convergence_monitor = None
+    if args.run_mode == "formal":
+        convergence_monitor = resolve_convergence_monitor(
+            metric_name=runtime_selection_metric,
+            minimum_optimizer_steps=args.minimum_optimizer_steps,
+            patience_validations=(
+                args.early_stop_patience_validations
+            ),
+            min_relative_improvement=(
+                args.early_stop_min_relative_improvement
+            ),
+            default_minimum_optimizer_steps=(
+                source_optimizer_step_limit
+            ),
+            prior_state=prior_convergence,
+        )
+        if (
+            convergence_monitor is not None
+            and convergence_monitor.minimum_optimizer_steps > step_limit
+        ):
+            raise ValueError(
+                "minimum_optimizer_steps must not exceed the target horizon"
+            )
+        if (
+            convergence_monitor is not None
+            and convergence_monitor.best_metric is not None
+        ):
+            best_metric = convergence_monitor.best_metric
     if resume_step_in_epoch >= len(train_loader):
         raise ValueError(
             "checkpoint step_in_epoch must be smaller than epoch length"
@@ -299,7 +335,9 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         "validation_windows": len(validation_dataset),
         "steps_per_data_epoch": len(train_loader),
         "optimizer_step_limit": step_limit,
-        "run_control": horizon.to_dict(),
+        "run_control": _run_control_metadata(
+            horizon, convergence_monitor
+        ),
         "selection_metric": runtime_selection_metric,
     }
     _atomic_write_json(args.output_dir / "run_metadata.json", run_metadata)
@@ -309,6 +347,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         torch.cuda.reset_peak_memory_stats(device)
     initial_memory = _cuda_memory_snapshot(device)
     stopped_at_limit = False
+    stopped_early = False
     try:
         for epoch in itertools.count(start_epoch):
             step_in_epoch = (
@@ -386,7 +425,9 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         manifest,
                         periodic_generator,
                         experiment_provenance,
-                        horizon.to_dict(),
+                        _run_control_metadata(
+                            horizon, convergence_monitor
+                        ),
                     )
 
             train_metrics = stack.run_training_epoch(
@@ -446,8 +487,22 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                 finally:
                     _restore_runtime_rng_state(training_rng_state)
                 selected = validation_metrics[runtime_selection_metric]
-                if selected < best_metric:
-                    best_metric = selected
+                checkpoint_improved = selected < best_metric
+                if convergence_monitor is not None:
+                    convergence_update = convergence_monitor.update(
+                        selected,
+                        global_step=global_step,
+                    )
+                    checkpoint_improved = (
+                        convergence_update.checkpoint_improved
+                    )
+                    stopped_early = convergence_update.should_stop
+                    if convergence_monitor.best_metric is None:
+                        raise RuntimeError(
+                            "convergence monitor did not record a best metric"
+                        )
+                    best_metric = convergence_monitor.best_metric
+                if checkpoint_improved:
                     progress = TrainingProgress(
                         progress.epoch,
                         progress.global_step,
@@ -464,7 +519,9 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         manifest,
                         checkpoint_generator,
                         experiment_provenance,
-                        horizon.to_dict(),
+                        _run_control_metadata(
+                            horizon, convergence_monitor
+                        ),
                     )
             validation_memory = _cuda_memory_snapshot(device)
             record = {
@@ -475,6 +532,11 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                 "global_step": global_step,
                 "train": train_metrics,
                 "validation": validation_metrics,
+                "convergence": (
+                    None
+                    if convergence_monitor is None
+                    else convergence_monitor.to_dict()
+                ),
             }
             _append_json_record(log_path, record)
             print(json.dumps(record, sort_keys=True), flush=True)
@@ -488,9 +550,9 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                 manifest,
                 checkpoint_generator,
                 experiment_provenance,
-                horizon.to_dict(),
+                _run_control_metadata(horizon, convergence_monitor),
             )
-            if stopped_at_limit:
+            if stopped_at_limit or stopped_early:
                 final_name = (
                     "burn_in.pt"
                     if args.run_mode == "burn_in"
@@ -507,7 +569,9 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     manifest,
                     checkpoint_generator,
                     experiment_provenance,
-                    horizon.to_dict(),
+                    _run_control_metadata(
+                        horizon, convergence_monitor
+                    ),
                 )
                 expected_rng_state = _capture_runtime_rng_state()
                 reload_audit = _audit_checkpoint_reload(
@@ -525,9 +589,15 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     "training_stack": stack.name,
                     "mode": args.run_mode,
                     "passed": True,
-                    "stop_reason": "optimizer_step_limit_reached",
+                    "stop_reason": (
+                        "maximum_optimizer_steps_reached"
+                        if stopped_at_limit
+                        else "early_stopping_plateau"
+                    ),
                     "optimizer_step_limit": step_limit,
-                    "run_control": horizon.to_dict(),
+                    "run_control": _run_control_metadata(
+                        horizon, convergence_monitor
+                    ),
                     "selection_metric": runtime_selection_metric,
                     "official_reference_epochs": (
                         training_config.official_reference_epochs
@@ -577,8 +647,8 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
     finally:
         train_dataset.close()
         validation_dataset.close()
-    if not stopped_at_limit:
-        raise RuntimeError("training ended before its optimizer-step limit")
+    if not (stopped_at_limit or stopped_early):
+        raise RuntimeError("training ended without a terminal condition")
 
 
 def _make_loader(
@@ -627,6 +697,16 @@ def _save(
         experiment_manifest=experiment_manifest,
         run_control=run_control,
     )
+
+
+def _run_control_metadata(horizon, convergence_monitor) -> dict:
+    metadata = horizon.to_dict()
+    metadata["convergence"] = (
+        None
+        if convergence_monitor is None
+        else convergence_monitor.to_dict()
+    )
+    return metadata
 
 
 def _seed_worker(worker_id: int) -> None:
@@ -684,6 +764,17 @@ def _parse_args() -> argparse.Namespace:
             "this can extend the checkpoint's original horizon"
         ),
     )
+    parser.add_argument("--minimum-optimizer-steps", type=int)
+    parser.add_argument(
+        "--early-stop-patience-validations",
+        type=int,
+        help="enable validation-driven early stopping with this patience",
+    )
+    parser.add_argument(
+        "--early-stop-min-relative-improvement",
+        type=float,
+        default=0.01,
+    )
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument(
         "--checkpoint-interval-steps",
@@ -707,6 +798,17 @@ def _parse_args() -> argparse.Namespace:
             args.target_optimizer_steps is not None
             and args.target_optimizer_steps <= 0
         )
+        or (
+            args.minimum_optimizer_steps is not None
+            and args.minimum_optimizer_steps < 0
+        )
+        or (
+            args.early_stop_patience_validations is not None
+            and args.early_stop_patience_validations <= 0
+        )
+        or not 0.0
+        <= args.early_stop_min_relative_improvement
+        < 1.0
     ):
         parser.error(
             "batch-size/official-reference-epochs/log-interval/"
@@ -714,6 +816,11 @@ def _parse_args() -> argparse.Namespace:
             "num-workers non-negative"
         )
     if args.run_mode == "burn_in":
+        if (
+            args.minimum_optimizer_steps is not None
+            or args.early_stop_patience_validations is not None
+        ):
+            parser.error("early stopping is valid only for formal training")
         if args.target_optimizer_steps is not None:
             parser.error(
                 "--target-optimizer-steps is valid only for formal training"
@@ -722,6 +829,14 @@ def _parse_args() -> argparse.Namespace:
             parser.error("burn_in requires positive --max-train-steps")
     elif args.max_train_steps is not None:
         parser.error("--max-train-steps is valid only for burn_in")
+    if (
+        args.minimum_optimizer_steps is not None
+        and args.early_stop_patience_validations is None
+    ):
+        parser.error(
+            "--minimum-optimizer-steps requires "
+            "--early-stop-patience-validations"
+        )
     if args.smoke and args.experiment_manifest is not None:
         parser.error("--smoke cannot be combined with --experiment-manifest")
     return args
