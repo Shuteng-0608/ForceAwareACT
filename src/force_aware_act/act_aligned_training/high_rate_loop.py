@@ -74,6 +74,64 @@ def run_high_rate_validation_epoch(
     return accumulator.validation_result()
 
 
+def run_high_rate_physical_action_validation_epoch(
+    model: ACTAlignedHighRateContactCVAEPolicy,
+    batches: Iterable[ACTAlignedHighRateBatch],
+    action_std: tuple[float, ...],
+    *,
+    device: torch.device,
+) -> Dict[str, float]:
+    """Measure zero-latent action L1 in physical joint-command units."""
+
+    if len(action_std) != model.config.action_dim:
+        raise ValueError("action_std dimension does not match the model")
+    previous_mode = model.training
+    model.eval()
+    error_sum = 0.0
+    valid_scalar_count = 0
+    window_count = 0
+    try:
+        with torch.no_grad():
+            for batch in batches:
+                batch = batch.to(device)
+                batch.validate(model.config)
+                outputs = model(
+                    batch.images,
+                    batch.qpos,
+                    batch.online_force_intervals,
+                    batch.online_force_relative_time,
+                    batch.online_force_sample_padding_mask,
+                    batch.online_force_interval_padding_mask,
+                    contact_latent_mode="zero",
+                    deterministic_prior=True,
+                )
+                difference = (
+                    outputs["pred_action"] - batch.action_chunk
+                ).abs()
+                difference = difference * difference.new_tensor(action_std)
+                valid = (
+                    (~batch.action_padding_mask)
+                    .unsqueeze(-1)
+                    .expand_as(difference)
+                )
+                error_sum += float(
+                    difference.masked_select(valid).sum().item()
+                )
+                valid_scalar_count += int(valid.sum().item())
+                window_count += batch.batch_size
+    finally:
+        model.train(previous_mode)
+    if valid_scalar_count <= 0 or window_count <= 0:
+        raise ValueError("physical action validation epoch is empty")
+    return {
+        "deployment_zero_action_l1_physical": (
+            error_sum / valid_scalar_count
+        ),
+        "full_validation_windows": float(window_count),
+        "full_validation_action_scalars": float(valid_scalar_count),
+    }
+
+
 class _HighRateEpochAccumulator:
     def __init__(self, model_config, training_config) -> None:
         self.model_config = model_config

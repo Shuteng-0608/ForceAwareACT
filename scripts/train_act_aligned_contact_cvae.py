@@ -70,6 +70,7 @@ class TrainingStack:
     dataset_type: type = ACTAlignedHDF5Dataset
     collate_fn: Callable[..., Any] = collate_act_aligned_samples
     normalization_fn: Callable[..., NormalizationStats] = compute_normalization_stats
+    physical_action_validation_fn: Callable[..., dict[str, float]] | None = None
 
 
 def _contact_smoke_model_config() -> ACTAlignedConfig:
@@ -244,6 +245,13 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         pin_memory=device.type == "cuda",
         collate_fn=stack.collate_fn,
     )
+    runtime_selection_metric = training_config.selection_metric
+    if stack.physical_action_validation_fn is not None:
+        runtime_selection_metric = "deployment_zero_action_l1_physical"
+        if args.resume is not None:
+            # Legacy checkpoints stored a normalized selection metric.  It is
+            # not numerically comparable with the physical full-window metric.
+            best_metric = float("inf")
 
     log_path = args.output_dir / "metrics.jsonl"
     source_optimizer_step_limit = training_config.max_optimizer_steps
@@ -292,6 +300,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         "steps_per_data_epoch": len(train_loader),
         "optimizer_step_limit": step_limit,
         "run_control": horizon.to_dict(),
+        "selection_metric": runtime_selection_metric,
     }
     _atomic_write_json(args.output_dir / "run_metadata.json", run_metadata)
     print(json.dumps(run_metadata, sort_keys=True), flush=True)
@@ -425,9 +434,18 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         training_config,
                         device=device,
                     )
+                    if stack.physical_action_validation_fn is not None:
+                        validation_metrics.update(
+                            stack.physical_action_validation_fn(
+                                model,
+                                validation_loader,
+                                normalization.action_std,
+                                device=device,
+                            )
+                        )
                 finally:
                     _restore_runtime_rng_state(training_rng_state)
-                selected = validation_metrics[training_config.selection_metric]
+                selected = validation_metrics[runtime_selection_metric]
                 if selected < best_metric:
                     best_metric = selected
                     progress = TrainingProgress(
@@ -510,6 +528,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     "stop_reason": "optimizer_step_limit_reached",
                     "optimizer_step_limit": step_limit,
                     "run_control": horizon.to_dict(),
+                    "selection_metric": runtime_selection_metric,
                     "official_reference_epochs": (
                         training_config.official_reference_epochs
                     ),

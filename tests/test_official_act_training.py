@@ -17,6 +17,7 @@ from force_aware_act.official_act_training import (
     OfficialACTBatch,
     OfficialACTCriterion,
     OfficialACTEpisodicDataset,
+    OfficialACTWindowDataset,
     OfficialACTNormalizationStats,
     OfficialACTSplitManifest,
     OfficialACTTrainingConfig,
@@ -26,6 +27,7 @@ from force_aware_act.official_act_training import (
     official_masked_l1,
     load_official_act_checkpoint,
     save_official_act_checkpoint,
+    run_official_act_full_window_validation_epoch,
     train_official_act_step,
 )
 from force_aware_act.official_act_training.data import (
@@ -139,6 +141,87 @@ def test_episodic_dataset_has_one_item_per_episode_and_epoch_sampling(tmp_path):
         6,
         8 - first_timestep,
     )
+
+
+def test_window_dataset_exposes_every_episode_timestep_once(tmp_path):
+    records = []
+    for episode_id, steps in (("first", 3), ("second", 5)):
+        relative = f"{episode_id}/episode.hdf5"
+        _write_episode(tmp_path / relative, num_steps=steps)
+        records.append(
+            EpisodeRecord(
+                episode_id,
+                relative,
+                steps,
+                ("cam_a", "cam_b"),
+            )
+        )
+    dataset = OfficialACTWindowDataset(
+        tmp_path,
+        records,
+        _stats(),
+        OfficialACTConfig.compact_smoke(),
+    )
+
+    assert len(dataset) == 8
+    assert [dataset.sample_location(index) for index in range(8)] == [
+        (0, 0),
+        (0, 1),
+        (0, 2),
+        (1, 0),
+        (1, 1),
+        (1, 2),
+        (1, 3),
+        (1, 4),
+    ]
+
+
+def test_full_window_validation_is_global_and_uses_physical_units():
+    config = OfficialACTConfig.compact_smoke()
+    model = OfficialACTPolicy(config)
+    for parameter in model.parameters():
+        parameter.data.zero_()
+    first = _batch(config, batch_size=1)
+    second = _batch(config, batch_size=1)
+    first.action_chunk.fill_(1.0)
+    second.action_chunk.fill_(1.0)
+    stats = OfficialACTNormalizationStats(
+        format_version=OFFICIAL_ACT_STATS_VERSION,
+        qpos_mean=(0.0,) * 7,
+        qpos_std=(1.0,) * 7,
+        action_mean=(0.0,) * 7,
+        action_std=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0),
+    )
+
+    separate = run_official_act_full_window_validation_epoch(
+        model,
+        [first, second],
+        stats,
+        device=torch.device("cpu"),
+    )
+    combined = run_official_act_full_window_validation_epoch(
+        model,
+        [collate_official_act([
+            OfficialACTBatch(
+                images=first.images[0],
+                qpos=first.qpos[0],
+                action_chunk=first.action_chunk[0],
+                padding_mask=first.padding_mask[0],
+            ),
+            OfficialACTBatch(
+                images=second.images[0],
+                qpos=second.qpos[0],
+                action_chunk=second.action_chunk[0],
+                padding_mask=second.padding_mask[0],
+            ),
+        ])],
+        stats,
+        device=torch.device("cpu"),
+    )
+
+    assert separate["deployment_zero_action_l1_full_normalized"] == pytest.approx(1.0)
+    assert separate["deployment_zero_action_l1_physical"] == pytest.approx(4.0)
+    assert separate == combined
 
 
 def test_training_step_and_validation_use_official_and_zero_paths():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -98,6 +99,12 @@ class OfficialACTNormalizationStats:
         return (
             values - values.new_tensor(self.action_mean)
         ) / values.new_tensor(self.action_std)
+
+    def denormalize_action(self, values: torch.Tensor) -> torch.Tensor:
+        return (
+            values * values.new_tensor(self.action_std)
+            + values.new_tensor(self.action_mean)
+        )
 
 
 @dataclass(frozen=True)
@@ -266,65 +273,126 @@ class OfficialACTEpisodicDataset(Dataset):
     def __getitem__(self, index: int) -> OfficialACTBatch:
         record = self.episodes[index]
         timestep = self.sampled_timestep(index)
-        with h5py.File(record.resolve(self.data_root), "r") as handle:
-            images = torch.stack(
-                [
-                    torch.from_numpy(
-                        np.asarray(
-                            handle[f"observations/images/{camera_name}"][
-                                timestep
-                            ],
-                            dtype=np.uint8,
-                        ).copy()
-                    ).permute(2, 0, 1)
-                    for camera_name in record.camera_names
-                ]
-            ).float().div_(255.0)
-            if images.shape[-2:] != (
-                self.config.image_height,
-                self.config.image_width,
-            ):
-                images = functional.interpolate(
-                    images,
-                    size=(
-                        self.config.image_height,
-                        self.config.image_width,
-                    ),
-                    mode="bilinear",
-                    align_corners=False,
-                    antialias=True,
-                )
-            qpos = torch.from_numpy(
-                np.asarray(
-                    handle["observations/joint_pos"][timestep],
-                    dtype=np.float32,
-                )
-            )
-            future_end = min(
-                record.num_steps,
-                timestep + self.config.chunk_len,
-            )
-            valid_length = future_end - timestep
-            actions = torch.zeros(
-                self.config.chunk_len,
-                self.config.action_dim,
-                dtype=torch.float32,
-            )
-            actions[:valid_length] = torch.from_numpy(
-                np.asarray(
-                    handle["action"][timestep:future_end],
-                    dtype=np.float32,
-                )
-            )
-        actions = self.stats.normalize_action(actions)
-        padding_mask = torch.ones(self.config.chunk_len, dtype=torch.bool)
-        padding_mask[:valid_length] = False
-        return OfficialACTBatch(
-            images=images,
-            qpos=self.stats.normalize_qpos(qpos),
-            action_chunk=actions,
-            padding_mask=padding_mask,
+        return _load_official_act_sample(
+            self.data_root,
+            record,
+            timestep,
+            self.stats,
+            self.config,
         )
+
+
+class OfficialACTWindowDataset(Dataset):
+    """Expose every ``(episode, timestep)`` exactly once for validation."""
+
+    def __init__(
+        self,
+        data_root: Path,
+        episodes: Sequence[EpisodeRecord],
+        stats: OfficialACTNormalizationStats,
+        config: OfficialACTConfig,
+    ) -> None:
+        if not episodes:
+            raise ValueError("dataset requires episodes")
+        self.data_root = Path(data_root).resolve()
+        self.episodes = tuple(episodes)
+        self.stats = stats
+        self.config = config
+        self.cumulative_steps = []
+        total = 0
+        for record in self.episodes:
+            if len(record.camera_names) != config.num_cameras:
+                raise ValueError(
+                    f"episode {record.episode_id} camera count mismatch"
+                )
+            total += record.num_steps
+            self.cumulative_steps.append(total)
+
+    def __len__(self) -> int:
+        return self.cumulative_steps[-1]
+
+    def sample_location(self, index: int) -> tuple[int, int]:
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError("window index is out of range")
+        episode_index = bisect.bisect_right(self.cumulative_steps, index)
+        previous_end = (
+            0 if episode_index == 0 else self.cumulative_steps[episode_index - 1]
+        )
+        return episode_index, index - previous_end
+
+    def __getitem__(self, index: int) -> OfficialACTBatch:
+        episode_index, timestep = self.sample_location(index)
+        return _load_official_act_sample(
+            self.data_root,
+            self.episodes[episode_index],
+            timestep,
+            self.stats,
+            self.config,
+        )
+
+
+def _load_official_act_sample(
+    data_root: Path,
+    record: EpisodeRecord,
+    timestep: int,
+    stats: OfficialACTNormalizationStats,
+    config: OfficialACTConfig,
+) -> OfficialACTBatch:
+    with h5py.File(record.resolve(data_root), "r") as handle:
+        images = torch.stack(
+            [
+                torch.from_numpy(
+                    np.asarray(
+                        handle[f"observations/images/{camera_name}"][
+                            timestep
+                        ],
+                        dtype=np.uint8,
+                    ).copy()
+                ).permute(2, 0, 1)
+                for camera_name in record.camera_names
+            ]
+        ).float().div_(255.0)
+        if images.shape[-2:] != (
+            config.image_height,
+            config.image_width,
+        ):
+            images = functional.interpolate(
+                images,
+                size=(config.image_height, config.image_width),
+                mode="bilinear",
+                align_corners=False,
+                antialias=True,
+            )
+        qpos = torch.from_numpy(
+            np.asarray(
+                handle["observations/joint_pos"][timestep],
+                dtype=np.float32,
+            )
+        )
+        future_end = min(record.num_steps, timestep + config.chunk_len)
+        valid_length = future_end - timestep
+        actions = torch.zeros(
+            config.chunk_len,
+            config.action_dim,
+            dtype=torch.float32,
+        )
+        actions[:valid_length] = torch.from_numpy(
+            np.asarray(
+                handle["action"][timestep:future_end],
+                dtype=np.float32,
+            )
+        )
+    actions = stats.normalize_action(actions)
+    padding_mask = torch.ones(config.chunk_len, dtype=torch.bool)
+    padding_mask[:valid_length] = False
+    return OfficialACTBatch(
+        images=images,
+        qpos=stats.normalize_qpos(qpos),
+        action_chunk=actions,
+        padding_mask=padding_mask,
+    )
 
 
 def collate_official_act(

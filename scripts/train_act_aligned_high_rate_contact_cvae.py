@@ -20,6 +20,7 @@ from force_aware_act.act_aligned_training import (  # noqa: E402
     compute_high_rate_normalization_stats,
     run_high_rate_training_epoch,
     run_high_rate_validation_epoch,
+    run_high_rate_physical_action_validation_epoch,
 )
 from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedHighRateConfig,
@@ -57,6 +58,9 @@ HIGH_RATE_TRAINING_STACK = TrainingStack(
     dataset_type=ACTAlignedHighRateHDF5Dataset,
     collate_fn=collate_high_rate_samples,
     normalization_fn=compute_high_rate_normalization_stats,
+    physical_action_validation_fn=(
+        run_high_rate_physical_action_validation_epoch
+    ),
 )
 
 

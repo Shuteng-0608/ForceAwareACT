@@ -14,6 +14,9 @@ from force_aware_act.official_act_training.config import (
     OfficialACTTrainingConfig,
 )
 from force_aware_act.official_act_training.data import OfficialACTBatch
+from force_aware_act.official_act_training.data import (
+    OfficialACTNormalizationStats,
+)
 from force_aware_act.official_act_training.losses import OfficialACTCriterion
 
 
@@ -254,6 +257,69 @@ def run_official_act_validation_epoch(
         .item()
     )
     return result
+
+
+def run_official_act_full_window_validation_epoch(
+    model: OfficialACTPolicy,
+    batches: Iterable[OfficialACTBatch],
+    normalization: OfficialACTNormalizationStats,
+    *,
+    device: torch.device,
+) -> Dict[str, float]:
+    """Evaluate deterministic zero-latent action error over every window."""
+
+    previous_mode = model.training
+    model.eval()
+    normalized_error_sum = 0.0
+    physical_error_sum = 0.0
+    valid_scalar_count = 0
+    window_count = 0
+    try:
+        with torch.no_grad():
+            for batch in batches:
+                batch = batch.to(device)
+                batch.validate(model.config)
+                outputs = model(batch.images, batch.qpos)
+                prediction = outputs["pred_action"]
+                valid = (~batch.padding_mask).unsqueeze(-1).expand_as(
+                    prediction
+                )
+                normalized_error_sum += float(
+                    (prediction - batch.action_chunk)
+                    .abs()
+                    .masked_select(valid)
+                    .sum()
+                    .item()
+                )
+                prediction_physical = normalization.denormalize_action(
+                    prediction
+                )
+                target_physical = normalization.denormalize_action(
+                    batch.action_chunk
+                )
+                physical_error_sum += float(
+                    (prediction_physical - target_physical)
+                    .abs()
+                    .masked_select(valid)
+                    .sum()
+                    .item()
+                )
+                valid_scalar_count += int(valid.sum().item())
+                window_count += batch.batch_size
+    finally:
+        model.train(previous_mode)
+    if valid_scalar_count <= 0 or window_count <= 0:
+        raise ValueError("full-window validation epoch is empty")
+    return {
+        "deployment_zero_action_l1_full_normalized": (
+            normalized_error_sum / valid_scalar_count
+        ),
+        "deployment_zero_action_l1_physical": (
+            physical_error_sum / valid_scalar_count
+        ),
+        "full_validation_windows": float(window_count),
+        "full_validation_action_scalars": float(valid_scalar_count),
+    }
 
 
 def _gradient_norm(parameters: list[torch.nn.Parameter]) -> float:

@@ -14,6 +14,7 @@ from force_aware_act.official_act_training.config import (
 from force_aware_act.official_act_training.data import (
     OfficialACTBatch,
     OfficialACTEpisodicDataset,
+    OfficialACTWindowDataset,
     OfficialACTNormalizationStats,
     OfficialACTSplitManifest,
     collate_official_act,
@@ -31,6 +32,7 @@ from force_aware_act.official_act_training.trainer import (
     evaluate_official_act_batch,
     run_official_act_training_epoch,
     run_official_act_validation_epoch,
+    run_official_act_full_window_validation_epoch,
     train_official_act_step,
 )
 from force_aware_act.official_act_training.no_latent_checkpoint import (
@@ -67,6 +69,7 @@ __all__ = [
     "OfficialACTNoLatentCriterion",
     "OfficialACTNoLatentTrainingConfig",
     "OfficialACTEpisodicDataset",
+    "OfficialACTWindowDataset",
     "OfficialACTNormalizationStats",
     "OfficialACTSplitManifest",
     "OfficialACTTrainingConfig",
@@ -87,6 +90,7 @@ __all__ = [
     "run_official_act_training_epoch",
     "run_official_act_no_latent_training_epoch",
     "run_official_act_validation_epoch",
+    "run_official_act_full_window_validation_epoch",
     "run_official_act_no_latent_validation_epoch",
     "save_official_act_checkpoint",
     "save_official_act_no_latent_checkpoint",

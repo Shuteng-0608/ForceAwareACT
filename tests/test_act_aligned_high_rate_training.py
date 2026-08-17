@@ -14,6 +14,7 @@ from force_aware_act.act_aligned_training import (
     compute_high_rate_normalization_stats,
     load_act_aligned_checkpoint,
     masked_interval_balanced_high_rate_l1_loss,
+    run_high_rate_physical_action_validation_epoch,
     save_act_aligned_checkpoint,
     train_high_rate_one_step,
 )
@@ -155,6 +156,25 @@ def test_high_rate_train_step_updates_explicit_high_rate_head():
 
     assert metrics["loss_force_highrate"] > 0.0
     assert not torch.equal(before, model.high_rate_force_head.weight.detach())
+
+
+def test_high_rate_physical_action_validation_uses_action_std():
+    config = _model_config()
+    model = ACTAlignedHighRateContactCVAEPolicy(config)
+    for parameter in model.parameters():
+        parameter.data.zero_()
+    batch = _batch(config, batch_size=2)
+    batch.action_chunk.fill_(1.0)
+
+    metrics = run_high_rate_physical_action_validation_epoch(
+        model,
+        [batch],
+        (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0),
+        device=torch.device("cpu"),
+    )
+
+    assert metrics["deployment_zero_action_l1_physical"] == 4.0
+    assert metrics["full_validation_windows"] == 2.0
 
 
 def test_prior_match_cannot_update_shared_high_rate_encoder():

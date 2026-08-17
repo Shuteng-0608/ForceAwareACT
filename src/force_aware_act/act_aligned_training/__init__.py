@@ -89,6 +89,7 @@ from force_aware_act.act_aligned_training.high_rate_control_trainer import (
 from force_aware_act.act_aligned_training.high_rate_loop import (
     run_high_rate_training_epoch,
     run_high_rate_validation_epoch,
+    run_high_rate_physical_action_validation_epoch,
 )
 from force_aware_act.act_aligned_training.high_rate_trainer import (
     evaluate_high_rate_one_batch,
@@ -187,6 +188,7 @@ __all__ = [
     "run_high_rate_motion_validation_epoch",
     "run_high_rate_training_preflight",
     "run_high_rate_validation_epoch",
+    "run_high_rate_physical_action_validation_epoch",
     "run_motion_training_epoch",
     "run_motion_validation_epoch",
     "run_training_preflight",

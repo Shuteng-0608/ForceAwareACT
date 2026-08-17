@@ -34,6 +34,7 @@ from force_aware_act.models.official_act import (  # noqa: E402
 from force_aware_act.official_act_training import (  # noqa: E402
     OfficialACTCriterion,
     OfficialACTEpisodicDataset,
+    OfficialACTWindowDataset,
     OfficialACTNormalizationStats,
     OfficialACTSplitManifest,
     OfficialACTTrainingConfig,
@@ -44,6 +45,7 @@ from force_aware_act.official_act_training import (  # noqa: E402
     load_official_act_checkpoint,
     read_official_act_checkpoint,
     run_official_act_training_epoch,
+    run_official_act_full_window_validation_epoch,
     run_official_act_validation_epoch,
     save_official_act_checkpoint,
 )
@@ -204,6 +206,20 @@ def main() -> None:
         sampling_seed=training_config.seed,
         stream_id=1,
     )
+    full_validation_dataset = OfficialACTWindowDataset(
+        args.data_root,
+        manifest.validation_episodes,
+        normalization,
+        model_config,
+    )
+    full_validation_loader = _make_loader(
+        full_validation_dataset,
+        batch_size=training_config.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        seed=training_config.seed + 3_000_000,
+        pin_memory=device.type == "cuda",
+    )
     steps_per_epoch = (
         len(train_dataset) + training_config.batch_size - 1
     ) // training_config.batch_size
@@ -237,9 +253,14 @@ def main() -> None:
         "training": training_metadata,
         "train_episodes": len(train_dataset),
         "validation_episodes": len(validation_dataset),
+        "validation_windows": len(full_validation_dataset),
         "steps_per_epoch": steps_per_epoch,
         "expected_total_steps": expected_total_steps,
         "run_control": horizon.to_dict(),
+        "selection_metric": "deployment_zero_action_l1_physical",
+        "full_validation_interval_epochs": (
+            args.full_validation_interval_epochs
+        ),
         "normalization_scope": normalization_scope,
         "experiment_manifest": experiment_provenance,
         "formal_native_image_resolution": (
@@ -253,6 +274,34 @@ def main() -> None:
     }
     _atomic_json(output_dir / "run_metadata.json", run_metadata)
     print(json.dumps(run_metadata, sort_keys=True), flush=True)
+
+    initial_full_validation = (
+        run_official_act_full_window_validation_epoch(
+            model,
+            full_validation_loader,
+            normalization,
+            device=device,
+        )
+    )
+    best_metric = initial_full_validation[
+        "deployment_zero_action_l1_physical"
+    ]
+    best_epoch = start_epoch
+    best_model_state = {
+        name: value.detach().cpu().clone()
+        for name, value in model.state_dict().items()
+    }
+    initial_record = {
+        "record_type": "full_validation",
+        "stage": "run_start",
+        "epoch": start_epoch,
+        "global_step": global_step,
+        "selection_metric": "deployment_zero_action_l1_physical",
+        "validation": initial_full_validation,
+    }
+    _append_json(metrics_path, initial_record)
+    print(json.dumps(initial_record, sort_keys=True), flush=True)
+    last_full_validation = initial_full_validation
 
     for epoch in range(start_epoch, target_epochs):
         train_dataset.set_epoch(epoch)
@@ -278,15 +327,6 @@ def main() -> None:
                 or epoch + 1 == target_epochs
             ),
         )
-        selected = validation_metrics[training_config.selection_metric]
-        if selected < best_metric:
-            best_metric = selected
-            best_epoch = epoch
-            best_model_state = {
-                name: value.detach().cpu().clone()
-                for name, value in model.state_dict().items()
-            }
-
         train_loader = _make_loader(
             train_dataset,
             batch_size=training_config.batch_size,
@@ -329,6 +369,43 @@ def main() -> None:
             step_callback=log_step,
         )
         global_step += int(train_metrics["optimizer_steps"])
+        completed_epochs = epoch + 1
+        full_validation_metrics = {}
+        if (
+            completed_epochs % args.full_validation_interval_epochs == 0
+            or completed_epochs == target_epochs
+        ):
+            full_validation_metrics = (
+                run_official_act_full_window_validation_epoch(
+                    model,
+                    full_validation_loader,
+                    normalization,
+                    device=device,
+                )
+            )
+            last_full_validation = full_validation_metrics
+            selected = full_validation_metrics[
+                "deployment_zero_action_l1_physical"
+            ]
+            if selected < best_metric:
+                best_metric = selected
+                best_epoch = completed_epochs
+                best_model_state = {
+                    name: value.detach().cpu().clone()
+                    for name, value in model.state_dict().items()
+                }
+            full_record = {
+                "record_type": "full_validation",
+                "stage": "after_training",
+                "epoch": completed_epochs,
+                "global_step": global_step,
+                "selection_metric": (
+                    "deployment_zero_action_l1_physical"
+                ),
+                "validation": full_validation_metrics,
+            }
+            _append_json(metrics_path, full_record)
+            print(json.dumps(full_record, sort_keys=True), flush=True)
         record = {
             "record_type": "epoch_segment",
             "epoch": epoch,
@@ -337,11 +414,11 @@ def main() -> None:
             "global_step": global_step,
             "train": train_metrics,
             "validation": validation_metrics,
+            "full_validation": full_validation_metrics,
         }
         _append_json(metrics_path, record)
         print(json.dumps(record, sort_keys=True), flush=True)
 
-        completed_epochs = epoch + 1
         if (
             completed_epochs
             % training_config.checkpoint_interval_epochs
@@ -405,6 +482,7 @@ def main() -> None:
             "architecture_metadata": model_config.checkpoint_metadata(),
             "best_epoch": best_epoch,
             "best_metric": best_metric,
+            "selection_metric": "deployment_zero_action_l1_physical",
             "model_state": best_model_state,
             "normalization": normalization.to_dict(),
             "split_manifest": manifest.to_dict(),
@@ -431,7 +509,9 @@ def main() -> None:
         "experiment_manifest": experiment_provenance,
         "best_metric": best_metric,
         "best_epoch": best_epoch,
+        "selection_metric": "deployment_zero_action_l1_physical",
         "final_validation": final_validation,
+        "final_full_validation": last_full_validation,
         "checkpoint": str(final_path.resolve()),
         "reload_audit": {
             "passed": True,
@@ -542,6 +622,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--checkpoint-interval-epochs", type=int, default=100)
+    parser.add_argument(
+        "--full-validation-interval-epochs",
+        type=int,
+        default=400,
+        help=(
+            "run deterministic all-window physical-action validation every "
+            "this many completed epochs"
+        ),
+    )
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--experiment-manifest", type=Path)
@@ -556,6 +645,7 @@ def _parse_args() -> argparse.Namespace:
         )
         or args.num_workers < 0
         or args.checkpoint_interval_epochs <= 0
+        or args.full_validation_interval_epochs <= 0
         or args.log_interval <= 0
     ):
         parser.error("numeric training arguments are invalid")
