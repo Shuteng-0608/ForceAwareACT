@@ -30,6 +30,15 @@ from force_aware_act.training.convergence import (
     ValidationConvergenceMonitor,
     resolve_convergence_monitor,
 )
+from force_aware_act.training.artifacts import (
+    BEST_ARTIFACT_VERSION,
+    CHECKPOINT_LINEAGE_VERSION,
+    SELECTION_MIGRATION_VERSION,
+    best_policy_artifact,
+    checkpoint_identity,
+    materialize_best_artifact_reference,
+    selection_metric_migration,
+)
 
 __all__ = [
     "EARLY_STOP_METRICS",
@@ -53,4 +62,11 @@ __all__ = [
     "ConvergenceUpdate",
     "ValidationConvergenceMonitor",
     "resolve_convergence_monitor",
+    "BEST_ARTIFACT_VERSION",
+    "CHECKPOINT_LINEAGE_VERSION",
+    "SELECTION_MIGRATION_VERSION",
+    "best_policy_artifact",
+    "checkpoint_identity",
+    "materialize_best_artifact_reference",
+    "selection_metric_migration",
 ]

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import math
 import os
 import random
 import sys
@@ -51,8 +52,12 @@ from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedContactCVAEPolicy,
 )
 from force_aware_act.training import (  # noqa: E402
+    best_policy_artifact,
+    checkpoint_identity,
+    materialize_best_artifact_reference,
     resolve_convergence_monitor,
     resolve_training_horizon,
+    selection_metric_migration,
 )
 
 
@@ -119,6 +124,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         )
     )
 
+    payload = None
     if args.resume is None:
         model_config = (
             stack.smoke_model_config()
@@ -169,6 +175,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         resume_step_in_epoch = 0
         global_step = 0
         best_metric = float("inf")
+        checkpoint_best_metric = None
         prior_run_control = None
     else:
         payload = read_act_aligned_checkpoint(args.resume, map_location="cpu")
@@ -184,6 +191,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         )
         global_step = int(payload["progress"]["global_step"])
         best_metric = float(payload["progress"]["best_metric"])
+        checkpoint_best_metric = best_metric
         prior_run_control = payload.get("run_control")
         experiment_provenance = payload.get("experiment_manifest")
         if experiment_subset is not None:
@@ -191,6 +199,11 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                 experiment_provenance,
                 experiment_subset,
             )
+    parent_checkpoint = (
+        None
+        if args.resume is None
+        else checkpoint_identity(args.resume, payload=payload)
+    )
 
     model = stack.policy_type(model_config).to(device)
     criterion = stack.criterion_type(training_config)
@@ -324,6 +337,182 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         raise ValueError(
             "checkpoint step_in_epoch must be smaller than epoch length"
         )
+    prior_best_artifact = (
+        None
+        if prior_run_control is None
+        else prior_run_control.get("best_artifact")
+    )
+    trusted_prior_best = _trusted_best_artifact(
+        prior_best_artifact,
+        metric_name=runtime_selection_metric,
+    )
+    metric_migration = (
+        None
+        if prior_run_control is None
+        else prior_run_control.get("selection_metric_migration")
+    )
+    runtime_state = {
+        "selection_metric": runtime_selection_metric,
+        "parent_checkpoint": parent_checkpoint,
+        "best_artifact": prior_best_artifact if trusted_prior_best else None,
+        "selection_metric_migration": metric_migration,
+    }
+    run_start_validation = {}
+    if args.run_mode == "formal":
+        training_rng_state = _capture_runtime_rng_state()
+        try:
+            run_start_validation = stack.run_validation_epoch(
+                model,
+                criterion,
+                validation_loader,
+                training_config,
+                device=device,
+            )
+            if stack.physical_action_validation_fn is not None:
+                run_start_validation.update(
+                    stack.physical_action_validation_fn(
+                        model,
+                        validation_loader,
+                        normalization.action_std,
+                        device=device,
+                    )
+                )
+        finally:
+            _restore_runtime_rng_state(training_rng_state)
+        run_start_metric = run_start_validation[runtime_selection_metric]
+        if trusted_prior_best:
+            best_metric = float(prior_best_artifact["metric"])
+            if convergence_monitor is not None:
+                if convergence_monitor.best_metric is None:
+                    raise RuntimeError(
+                        "resumed convergence monitor has no best metric"
+                    )
+                if not math.isclose(
+                    convergence_monitor.best_metric,
+                    best_metric,
+                    rel_tol=1e-9,
+                    abs_tol=1e-12,
+                ):
+                    raise ValueError(
+                        "best artifact metric does not match convergence state"
+                    )
+            if (
+                convergence_monitor is None
+                and run_start_metric < best_metric
+            ):
+                best_metric = run_start_metric
+                runtime_state["best_artifact"] = best_policy_artifact(
+                    args.output_dir / "best.pt",
+                    metric_name=runtime_selection_metric,
+                    metric=best_metric,
+                    global_step=global_step,
+                    storage="full_resume_checkpoint",
+                )
+                run_start_progress = TrainingProgress(
+                    epoch=start_epoch,
+                    global_step=global_step,
+                    best_metric=best_metric,
+                    step_in_epoch=resume_step_in_epoch,
+                )
+                _save(
+                    args.output_dir / "best.pt",
+                    model,
+                    optimizer,
+                    training_config,
+                    run_start_progress,
+                    normalization,
+                    manifest,
+                    generator,
+                    experiment_provenance,
+                    _run_control_metadata(
+                        horizon, convergence_monitor, runtime_state
+                    ),
+                )
+            else:
+                materialize_best_artifact_reference(
+                    args.output_dir / "best.pt",
+                    prior_best_artifact,
+                )
+        else:
+            source_metric_name = (
+                None
+                if prior_run_control is None
+                else prior_run_control.get("selection_metric")
+            )
+            source_best_metric = checkpoint_best_metric
+            if convergence_monitor is not None:
+                convergence_monitor.reset_observations()
+                convergence_monitor.update(
+                    run_start_metric,
+                    global_step=global_step,
+                )
+                if convergence_monitor.best_metric is None:
+                    raise RuntimeError(
+                        "convergence monitor did not initialize"
+                    )
+                best_metric = convergence_monitor.best_metric
+            else:
+                best_metric = run_start_metric
+            if args.resume is not None:
+                runtime_state["selection_metric_migration"] = (
+                    selection_metric_migration(
+                        source_metric_name=source_metric_name,
+                        source_best_metric=source_best_metric,
+                        target_metric_name=runtime_selection_metric,
+                        target_metric=best_metric,
+                        global_step=global_step,
+                        reason=(
+                            "prior_best_artifact_missing_or_incompatible"
+                        ),
+                    )
+                )
+            runtime_state["best_artifact"] = best_policy_artifact(
+                args.output_dir / "best.pt",
+                metric_name=runtime_selection_metric,
+                metric=best_metric,
+                global_step=global_step,
+                storage="full_resume_checkpoint",
+            )
+            run_start_progress = TrainingProgress(
+                epoch=start_epoch,
+                global_step=global_step,
+                best_metric=best_metric,
+                step_in_epoch=resume_step_in_epoch,
+            )
+            _save(
+                args.output_dir / "best.pt",
+                model,
+                optimizer,
+                training_config,
+                run_start_progress,
+                normalization,
+                manifest,
+                generator,
+                experiment_provenance,
+                _run_control_metadata(
+                    horizon, convergence_monitor, runtime_state
+                ),
+            )
+        run_start_record = {
+            "record_type": "full_validation",
+            "stage": "run_start",
+            "epoch": start_epoch,
+            "step_in_epoch": resume_step_in_epoch,
+            "global_step": global_step,
+            "selection_metric": runtime_selection_metric,
+            "validation": run_start_validation,
+            "selection_metric_migration": runtime_state[
+                "selection_metric_migration"
+            ],
+            "best_artifact": runtime_state["best_artifact"],
+            "convergence": (
+                None
+                if convergence_monitor is None
+                else convergence_monitor.to_dict()
+            ),
+        }
+        _append_json_record(log_path, run_start_record)
+        print(json.dumps(run_start_record, sort_keys=True), flush=True)
     run_metadata = {
         "training_stack": stack.name,
         "model": model_config.checkpoint_metadata(),
@@ -336,7 +525,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         "steps_per_data_epoch": len(train_loader),
         "optimizer_step_limit": step_limit,
         "run_control": _run_control_metadata(
-            horizon, convergence_monitor
+            horizon, convergence_monitor, runtime_state
         ),
         "selection_metric": runtime_selection_metric,
     }
@@ -426,7 +615,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         periodic_generator,
                         experiment_provenance,
                         _run_control_metadata(
-                            horizon, convergence_monitor
+                            horizon, convergence_monitor, runtime_state
                         ),
                     )
 
@@ -502,7 +691,16 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                             "convergence monitor did not record a best metric"
                         )
                     best_metric = convergence_monitor.best_metric
+                elif checkpoint_improved:
+                    best_metric = selected
                 if checkpoint_improved:
+                    runtime_state["best_artifact"] = best_policy_artifact(
+                        args.output_dir / "best.pt",
+                        metric_name=runtime_selection_metric,
+                        metric=best_metric,
+                        global_step=global_step,
+                        storage="full_resume_checkpoint",
+                    )
                     progress = TrainingProgress(
                         progress.epoch,
                         progress.global_step,
@@ -520,7 +718,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         checkpoint_generator,
                         experiment_provenance,
                         _run_control_metadata(
-                            horizon, convergence_monitor
+                            horizon, convergence_monitor, runtime_state
                         ),
                     )
             validation_memory = _cuda_memory_snapshot(device)
@@ -550,7 +748,9 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                 manifest,
                 checkpoint_generator,
                 experiment_provenance,
-                _run_control_metadata(horizon, convergence_monitor),
+                _run_control_metadata(
+                    horizon, convergence_monitor, runtime_state
+                ),
             )
             if stopped_at_limit or stopped_early:
                 final_name = (
@@ -570,7 +770,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     checkpoint_generator,
                     experiment_provenance,
                     _run_control_metadata(
-                        horizon, convergence_monitor
+                        horizon, convergence_monitor, runtime_state
                     ),
                 )
                 expected_rng_state = _capture_runtime_rng_state()
@@ -596,9 +796,14 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     ),
                     "optimizer_step_limit": step_limit,
                     "run_control": _run_control_metadata(
-                        horizon, convergence_monitor
+                        horizon, convergence_monitor, runtime_state
                     ),
                     "selection_metric": runtime_selection_metric,
+                    "best_artifact": runtime_state["best_artifact"],
+                    "parent_checkpoint": parent_checkpoint,
+                    "selection_metric_migration": runtime_state[
+                        "selection_metric_migration"
+                    ],
                     "official_reference_epochs": (
                         training_config.official_reference_epochs
                     ),
@@ -699,14 +904,30 @@ def _save(
     )
 
 
-def _run_control_metadata(horizon, convergence_monitor) -> dict:
+def _run_control_metadata(
+    horizon,
+    convergence_monitor,
+    runtime_state,
+) -> dict:
     metadata = horizon.to_dict()
     metadata["convergence"] = (
         None
         if convergence_monitor is None
         else convergence_monitor.to_dict()
     )
+    metadata.update(runtime_state)
     return metadata
+
+
+def _trusted_best_artifact(artifact, *, metric_name: str) -> bool:
+    if not isinstance(artifact, dict):
+        return False
+    if artifact.get("metric_name") != metric_name:
+        return False
+    try:
+        return Path(str(artifact["path"])).resolve(strict=True).is_file()
+    except (KeyError, OSError):
+        return False
 
 
 def _seed_worker(worker_id: int) -> None:

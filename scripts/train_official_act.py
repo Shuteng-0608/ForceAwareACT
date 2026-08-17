@@ -53,8 +53,11 @@ from force_aware_act.official_act_training.data import (  # noqa: E402
     OFFICIAL_ACT_SPLIT_VERSION,
 )
 from force_aware_act.training import (  # noqa: E402
+    best_policy_artifact,
+    checkpoint_identity,
     resolve_convergence_monitor,
     resolve_training_horizon,
+    selection_metric_migration,
 )
 
 
@@ -79,6 +82,7 @@ def main() -> None:
         )
     )
 
+    payload = None
     if args.resume is None:
         model_config = (
             OfficialACTConfig.compact_smoke()
@@ -145,6 +149,7 @@ def main() -> None:
         start_epoch = 0
         global_step = 0
         best_metric = float("inf")
+        checkpoint_best_metric = None
         best_epoch = -1
         best_model_state = None
         prior_run_control = None
@@ -166,6 +171,7 @@ def main() -> None:
         start_epoch = int(payload["progress"]["epoch"])
         global_step = int(payload["progress"]["global_step"])
         best_metric = float(payload["progress"]["best_metric"])
+        checkpoint_best_metric = best_metric
         best_epoch = int(payload["progress"].get("best_epoch", -1))
         best_model_state = payload.get("best_model_state")
         prior_run_control = payload.get("run_control")
@@ -180,6 +186,11 @@ def main() -> None:
                 experiment_provenance,
                 experiment_subset,
             )
+    parent_checkpoint = (
+        None
+        if args.resume is None
+        else checkpoint_identity(args.resume, payload=payload)
+    )
 
     model = OfficialACTPolicy(model_config).to(device)
     criterion = OfficialACTCriterion(training_config)
@@ -273,6 +284,26 @@ def main() -> None:
         raise ValueError(
             "minimum_optimizer_steps must not exceed the target horizon"
         )
+    prior_best_artifact = (
+        None
+        if prior_run_control is None
+        else prior_run_control.get("best_artifact")
+    )
+    trusted_prior_best = (
+        isinstance(prior_best_artifact, dict)
+        and prior_best_artifact.get("metric_name") == selection_metric
+        and best_model_state is not None
+    )
+    runtime_state = {
+        "selection_metric": selection_metric,
+        "parent_checkpoint": parent_checkpoint,
+        "best_artifact": prior_best_artifact,
+        "selection_metric_migration": (
+            None
+            if prior_run_control is None
+            else prior_run_control.get("selection_metric_migration")
+        ),
+    }
     training_metadata = training_config.checkpoint_metadata()
     training_metadata["normalization_scope"] = normalization_scope
     run_metadata = {
@@ -284,7 +315,7 @@ def main() -> None:
         "steps_per_epoch": steps_per_epoch,
         "expected_total_steps": expected_total_steps,
         "run_control": _run_control_metadata(
-            horizon, convergence_monitor
+            horizon, convergence_monitor, runtime_state
         ),
         "selection_metric": selection_metric,
         "full_validation_interval_epochs": (
@@ -301,9 +332,6 @@ def main() -> None:
             == (480, 640)
         ),
     }
-    _atomic_json(output_dir / "run_metadata.json", run_metadata)
-    print(json.dumps(run_metadata, sort_keys=True), flush=True)
-
     initial_full_validation = (
         run_official_act_full_window_validation_epoch(
             model,
@@ -313,13 +341,59 @@ def main() -> None:
         )
     )
     initial_metric = initial_full_validation[selection_metric]
+    historical_best_validation = None
+    if (
+        args.resume is not None
+        and prior_convergence is None
+        and not trusted_prior_best
+        and best_model_state is not None
+    ):
+        model.load_state_dict(best_model_state, strict=True)
+        historical_best_validation = (
+            run_official_act_full_window_validation_epoch(
+                model,
+                full_validation_loader,
+                normalization,
+                device=device,
+            )
+        )
+        model.load_state_dict(payload["model_state"], strict=True)
     if convergence_monitor is None:
-        best_metric = initial_metric
-        best_epoch = start_epoch
-        best_model_state = {
-            name: value.detach().cpu().clone()
-            for name, value in model.state_dict().items()
-        }
+        if trusted_prior_best:
+            best_metric = float(prior_best_artifact["metric"])
+        else:
+            historical_metric = (
+                None
+                if historical_best_validation is None
+                else historical_best_validation[selection_metric]
+            )
+            if (
+                historical_metric is not None
+                and historical_metric < initial_metric
+            ):
+                best_metric = historical_metric
+            else:
+                best_metric = initial_metric
+                best_epoch = start_epoch
+                best_model_state = {
+                    name: value.detach().cpu().clone()
+                    for name, value in model.state_dict().items()
+                }
+            if args.resume is not None:
+                runtime_state["selection_metric_migration"] = (
+                    selection_metric_migration(
+                        source_metric_name=(
+                            None
+                            if prior_run_control is None
+                            else prior_run_control.get("selection_metric")
+                        ),
+                        source_best_metric=checkpoint_best_metric,
+                        target_metric_name=selection_metric,
+                        target_metric=best_metric,
+                        global_step=global_step,
+                        reason="legacy_best_revalidated_in_physical_units",
+                    )
+                )
     elif convergence_monitor.validations_seen == 0:
         convergence_monitor.update(initial_metric, global_step=global_step)
         if convergence_monitor.best_metric is None:
@@ -333,7 +407,29 @@ def main() -> None:
     else:
         if convergence_monitor.best_metric is None:
             raise RuntimeError("resumed convergence monitor has no best metric")
+        if best_model_state is None:
+            raise RuntimeError(
+                "resumed convergence state has no embedded best model"
+            )
         best_metric = convergence_monitor.best_metric
+    best_step = (
+        global_step
+        if convergence_monitor is None
+        or convergence_monitor.best_step is None
+        else convergence_monitor.best_step
+    )
+    runtime_state["best_artifact"] = best_policy_artifact(
+        output_dir / "best_policy.pt",
+        metric_name=selection_metric,
+        metric=best_metric,
+        global_step=best_step,
+        storage="lightweight_policy_checkpoint",
+    )
+    run_metadata["run_control"] = _run_control_metadata(
+        horizon, convergence_monitor, runtime_state
+    )
+    _atomic_json(output_dir / "run_metadata.json", run_metadata)
+    print(json.dumps(run_metadata, sort_keys=True), flush=True)
     initial_record = {
         "record_type": "full_validation",
         "stage": "run_start",
@@ -341,6 +437,11 @@ def main() -> None:
         "global_step": global_step,
         "selection_metric": selection_metric,
         "validation": initial_full_validation,
+        "historical_best_validation": historical_best_validation,
+        "selection_metric_migration": runtime_state[
+            "selection_metric_migration"
+        ],
+        "best_artifact": runtime_state["best_artifact"],
         "convergence": (
             None
             if convergence_monitor is None
@@ -457,6 +558,13 @@ def main() -> None:
                     name: value.detach().cpu().clone()
                     for name, value in model.state_dict().items()
                 }
+                runtime_state["best_artifact"] = best_policy_artifact(
+                    output_dir / "best_policy.pt",
+                    metric_name=selection_metric,
+                    metric=best_metric,
+                    global_step=global_step,
+                    storage="lightweight_policy_checkpoint",
+                )
             full_record = {
                 "record_type": "full_validation",
                 "stage": "after_training",
@@ -508,7 +616,7 @@ def main() -> None:
                 best_model_state=best_model_state,
                 experiment_manifest=experiment_provenance,
                 run_control=_run_control_metadata(
-                    horizon, convergence_monitor
+                    horizon, convergence_monitor, runtime_state
                 ),
             )
         if stopped_early:
@@ -544,7 +652,7 @@ def main() -> None:
         best_model_state=best_model_state,
         experiment_manifest=experiment_provenance,
         run_control=_run_control_metadata(
-            horizon, convergence_monitor
+            horizon, convergence_monitor, runtime_state
         ),
     )
     if best_model_state is None:
@@ -580,7 +688,7 @@ def main() -> None:
         "global_step": global_step,
         "expected_total_steps": expected_total_steps,
         "run_control": _run_control_metadata(
-            horizon, convergence_monitor
+            horizon, convergence_monitor, runtime_state
         ),
         "stop_reason": (
             "maximum_optimizer_steps_reached"
@@ -592,6 +700,11 @@ def main() -> None:
         "best_metric": best_metric,
         "best_epoch": best_epoch,
         "selection_metric": "deployment_zero_action_l1_physical",
+        "best_artifact": runtime_state["best_artifact"],
+        "parent_checkpoint": parent_checkpoint,
+        "selection_metric_migration": runtime_state[
+            "selection_metric_migration"
+        ],
         "final_validation": final_validation,
         "final_full_validation": last_full_validation,
         "checkpoint": str(final_path.resolve()),
@@ -660,13 +773,18 @@ def _atomic_torch_save(path: Path, value: dict) -> None:
     os.replace(temporary, path)
 
 
-def _run_control_metadata(horizon, convergence_monitor) -> dict:
+def _run_control_metadata(
+    horizon,
+    convergence_monitor,
+    runtime_state,
+) -> dict:
     metadata = horizon.to_dict()
     metadata["convergence"] = (
         None
         if convergence_monitor is None
         else convergence_monitor.to_dict()
     )
+    metadata.update(runtime_state)
     return metadata
 
 

@@ -97,6 +97,15 @@ class ValidationConvergenceMonitor:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    def reset_observations(self) -> None:
+        """Discard metric history when its selected artifact is unavailable."""
+
+        self.best_metric = None
+        self.best_step = None
+        self.plateau_reference_metric = None
+        self.validations_seen = 0
+        self.validations_without_meaningful_improvement = 0
+
     @classmethod
     def from_dict(
         cls,
