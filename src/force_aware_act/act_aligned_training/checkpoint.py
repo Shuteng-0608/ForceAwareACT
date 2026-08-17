@@ -50,6 +50,7 @@ def save_act_aligned_checkpoint(
     split_manifest: EpisodeSplitManifest,
     dataloader_generator: Optional[torch.Generator] = None,
     experiment_manifest: Optional[Mapping[str, Any]] = None,
+    run_control: Optional[Mapping[str, Any]] = None,
 ) -> None:
     """Atomically save a complete ACT-aligned, resume-capable checkpoint."""
 
@@ -71,6 +72,7 @@ def save_act_aligned_checkpoint(
             if experiment_manifest is None
             else dict(experiment_manifest)
         ),
+        "run_control": None if run_control is None else dict(run_control),
         "rng_state": _capture_rng_state(),
         "dataloader_generator_state": (
             None

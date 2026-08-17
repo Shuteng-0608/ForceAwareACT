@@ -19,6 +19,11 @@ from force_aware_act.training.losses import (
     compute_force_aware_motion_cvae_loss,
     linear_warmup,
 )
+from force_aware_act.training.horizon import (
+    TRAINING_HORIZON_VERSION,
+    TrainingHorizon,
+    resolve_training_horizon,
+)
 
 __all__ = [
     "EARLY_STOP_METRICS",
@@ -35,4 +40,7 @@ __all__ = [
     "compute_force_aware_motion_cvae_loss",
     "compute_contact_prior_distillation_loss",
     "linear_warmup",
+    "TRAINING_HORIZON_VERSION",
+    "TrainingHorizon",
+    "resolve_training_horizon",
 ]

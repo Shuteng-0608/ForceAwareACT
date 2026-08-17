@@ -226,6 +226,7 @@ def test_official_checkpoint_round_trip_is_strict(tmp_path):
         global_step=2,
         best_metric=0.5,
         experiment_manifest=experiment_manifest,
+        run_control={"target_optimizer_steps": 4},
     )
     with torch.no_grad():
         model.action_head.weight.add_(10)
@@ -245,6 +246,7 @@ def test_official_checkpoint_round_trip_is_strict(tmp_path):
         "best_epoch": -1,
     }
     assert payload["experiment_manifest"] == experiment_manifest
+    assert payload["run_control"] == {"target_optimizer_steps": 4}
 
 
 def test_rng_restore_moves_loaded_cpu_and_cuda_states_back_to_cpu():

@@ -50,6 +50,7 @@ from force_aware_act.official_act_training import (  # noqa: E402
 from force_aware_act.official_act_training.data import (  # noqa: E402
     OFFICIAL_ACT_SPLIT_VERSION,
 )
+from force_aware_act.training import resolve_training_horizon  # noqa: E402
 
 
 def main() -> None:
@@ -141,6 +142,7 @@ def main() -> None:
         best_metric = float("inf")
         best_epoch = -1
         best_model_state = None
+        prior_run_control = None
     else:
         payload = read_official_act_checkpoint(
             args.resume,
@@ -161,6 +163,7 @@ def main() -> None:
         best_metric = float(payload["progress"]["best_metric"])
         best_epoch = int(payload["progress"].get("best_epoch", -1))
         best_model_state = payload.get("best_model_state")
+        prior_run_control = payload.get("run_control")
         experiment_provenance = payload.get("experiment_manifest")
         normalization_scope = (
             "paired_manifest_train_episodes_only"
@@ -204,7 +207,29 @@ def main() -> None:
     steps_per_epoch = (
         len(train_dataset) + training_config.batch_size - 1
     ) // training_config.batch_size
-    expected_total_steps = steps_per_epoch * training_config.num_epochs
+    source_optimizer_step_limit = (
+        steps_per_epoch * training_config.num_epochs
+    )
+    requested_target_optimizer_steps = args.target_optimizer_steps
+    if (
+        requested_target_optimizer_steps is None
+        and prior_run_control is not None
+    ):
+        requested_target_optimizer_steps = int(
+            prior_run_control["target_optimizer_steps"]
+        )
+    horizon = resolve_training_horizon(
+        source_optimizer_step_limit=source_optimizer_step_limit,
+        start_global_step=global_step,
+        requested_target_optimizer_steps=(
+            requested_target_optimizer_steps
+        ),
+        steps_per_epoch=steps_per_epoch,
+    )
+    if horizon.target_epochs is None:
+        raise RuntimeError("Official ACT horizon did not resolve target epochs")
+    target_epochs = horizon.target_epochs
+    expected_total_steps = horizon.target_optimizer_steps
     training_metadata = training_config.checkpoint_metadata()
     training_metadata["normalization_scope"] = normalization_scope
     run_metadata = {
@@ -214,6 +239,7 @@ def main() -> None:
         "validation_episodes": len(validation_dataset),
         "steps_per_epoch": steps_per_epoch,
         "expected_total_steps": expected_total_steps,
+        "run_control": horizon.to_dict(),
         "normalization_scope": normalization_scope,
         "experiment_manifest": experiment_provenance,
         "formal_native_image_resolution": (
@@ -228,7 +254,7 @@ def main() -> None:
     _atomic_json(output_dir / "run_metadata.json", run_metadata)
     print(json.dumps(run_metadata, sort_keys=True), flush=True)
 
-    for epoch in range(start_epoch, training_config.num_epochs):
+    for epoch in range(start_epoch, target_epochs):
         train_dataset.set_epoch(epoch)
         validation_dataset.set_epoch(epoch)
         validation_loader = _make_loader(
@@ -249,7 +275,7 @@ def main() -> None:
                 or (epoch + 1)
                 % training_config.checkpoint_interval_epochs
                 == 0
-                or epoch + 1 == training_config.num_epochs
+                or epoch + 1 == target_epochs
             ),
         )
         selected = validation_metrics[training_config.selection_metric]
@@ -320,7 +346,7 @@ def main() -> None:
             completed_epochs
             % training_config.checkpoint_interval_epochs
             == 0
-            or completed_epochs == training_config.num_epochs
+            or completed_epochs == target_epochs
         ):
             save_official_act_checkpoint(
                 output_dir / "latest.pt",
@@ -335,9 +361,10 @@ def main() -> None:
                 best_epoch=best_epoch,
                 best_model_state=best_model_state,
                 experiment_manifest=experiment_provenance,
+                run_control=horizon.to_dict(),
             )
 
-    validation_dataset.set_epoch(training_config.num_epochs)
+    validation_dataset.set_epoch(target_epochs)
     final_validation = run_official_act_validation_epoch(
         model,
         criterion,
@@ -360,12 +387,13 @@ def main() -> None:
         training_config=training_config,
         normalization=normalization,
         split_manifest=manifest,
-        epoch=training_config.num_epochs,
+        epoch=target_epochs,
         global_step=global_step,
         best_metric=best_metric,
         best_epoch=best_epoch,
         best_model_state=best_model_state,
         experiment_manifest=experiment_provenance,
+        run_control=horizon.to_dict(),
     )
     if best_model_state is None:
         raise RuntimeError("official ACT training did not select a best model")
@@ -394,9 +422,11 @@ def main() -> None:
         "passed": True,
         "architecture_version": model_config.architecture_version,
         "training_version": training_config.training_version,
-        "epochs": training_config.num_epochs,
+        "epochs": target_epochs,
+        "source_epochs": training_config.num_epochs,
         "global_step": global_step,
         "expected_total_steps": expected_total_steps,
+        "run_control": horizon.to_dict(),
         "normalization_scope": normalization_scope,
         "experiment_manifest": experiment_provenance,
         "best_metric": best_metric,
@@ -500,6 +530,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-epochs", type=int, default=2000)
+    parser.add_argument(
+        "--target-optimizer-steps",
+        type=int,
+        help=(
+            "absolute optimizer-step target; on --resume this can extend "
+            "the checkpoint's original training horizon and must end on an "
+            "Official ACT epoch boundary"
+        ),
+    )
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--checkpoint-interval-epochs", type=int, default=100)
@@ -511,6 +550,10 @@ def _parse_args() -> argparse.Namespace:
     if (
         args.batch_size <= 0
         or args.num_epochs <= 0
+        or (
+            args.target_optimizer_steps is not None
+            and args.target_optimizer_steps <= 0
+        )
         or args.num_workers < 0
         or args.checkpoint_interval_epochs <= 0
         or args.log_interval <= 0

@@ -50,6 +50,7 @@ from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
 )
+from force_aware_act.training import resolve_training_horizon  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         resume_step_in_epoch = 0
         global_step = 0
         best_metric = float("inf")
+        prior_run_control = None
     else:
         payload = read_act_aligned_checkpoint(args.resume, map_location="cpu")
         model_config = stack.model_config_type(**payload["model_config"])
@@ -178,6 +180,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         )
         global_step = int(payload["progress"]["global_step"])
         best_metric = float(payload["progress"]["best_metric"])
+        prior_run_control = payload.get("run_control")
         experiment_provenance = payload.get("experiment_manifest")
         if experiment_subset is not None:
             validate_checkpoint_experiment_provenance(
@@ -243,18 +246,33 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
     )
 
     log_path = args.output_dir / "metrics.jsonl"
-    step_limit = (
+    source_optimizer_step_limit = training_config.max_optimizer_steps
+    if source_optimizer_step_limit is None:
+        raise RuntimeError("training step limit was not configured")
+    requested_target_optimizer_steps = (
         args.max_train_steps
         if args.run_mode == "burn_in"
-        else training_config.max_optimizer_steps
+        else args.target_optimizer_steps
     )
-    if step_limit is None:
-        raise RuntimeError("training step limit was not configured")
-    if global_step >= step_limit:
-        raise ValueError(
-            "checkpoint global_step has already reached the run step limit"
+    if (
+        requested_target_optimizer_steps is None
+        and prior_run_control is not None
+    ):
+        requested_target_optimizer_steps = int(
+            prior_run_control["target_optimizer_steps"]
         )
-    if step_limit > training_config.max_optimizer_steps:
+    horizon = resolve_training_horizon(
+        source_optimizer_step_limit=source_optimizer_step_limit,
+        start_global_step=global_step,
+        requested_target_optimizer_steps=(
+            requested_target_optimizer_steps
+        ),
+    )
+    step_limit = horizon.target_optimizer_steps
+    if (
+        args.run_mode == "burn_in"
+        and step_limit > source_optimizer_step_limit
+    ):
         raise ValueError(
             "burn-in step limit must not exceed canonical max_optimizer_steps"
         )
@@ -273,6 +291,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         "validation_windows": len(validation_dataset),
         "steps_per_data_epoch": len(train_loader),
         "optimizer_step_limit": step_limit,
+        "run_control": horizon.to_dict(),
     }
     _atomic_write_json(args.output_dir / "run_metadata.json", run_metadata)
     print(json.dumps(run_metadata, sort_keys=True), flush=True)
@@ -358,6 +377,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         manifest,
                         periodic_generator,
                         experiment_provenance,
+                        horizon.to_dict(),
                     )
 
             train_metrics = stack.run_training_epoch(
@@ -426,6 +446,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                         manifest,
                         checkpoint_generator,
                         experiment_provenance,
+                        horizon.to_dict(),
                     )
             validation_memory = _cuda_memory_snapshot(device)
             record = {
@@ -449,6 +470,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                 manifest,
                 checkpoint_generator,
                 experiment_provenance,
+                horizon.to_dict(),
             )
             if stopped_at_limit:
                 final_name = (
@@ -467,6 +489,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     manifest,
                     checkpoint_generator,
                     experiment_provenance,
+                    horizon.to_dict(),
                 )
                 expected_rng_state = _capture_runtime_rng_state()
                 reload_audit = _audit_checkpoint_reload(
@@ -486,6 +509,7 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
                     "passed": True,
                     "stop_reason": "optimizer_step_limit_reached",
                     "optimizer_step_limit": step_limit,
+                    "run_control": horizon.to_dict(),
                     "official_reference_epochs": (
                         training_config.official_reference_epochs
                     ),
@@ -570,6 +594,7 @@ def _save(
     manifest,
     generator,
     experiment_manifest,
+    run_control,
 ) -> None:
     save_act_aligned_checkpoint(
         path,
@@ -581,6 +606,7 @@ def _save(
         split_manifest=manifest,
         dataloader_generator=generator,
         experiment_manifest=experiment_manifest,
+        run_control=run_control,
     )
 
 
@@ -631,6 +657,14 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         help="absolute global optimizer-step limit; valid only for burn_in",
     )
+    parser.add_argument(
+        "--target-optimizer-steps",
+        type=int,
+        help=(
+            "absolute formal-training optimizer-step target; on --resume "
+            "this can extend the checkpoint's original horizon"
+        ),
+    )
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument(
         "--checkpoint-interval-steps",
@@ -650,6 +684,10 @@ def _parse_args() -> argparse.Namespace:
         or args.num_workers < 0
         or args.log_interval <= 0
         or args.checkpoint_interval_steps <= 0
+        or (
+            args.target_optimizer_steps is not None
+            and args.target_optimizer_steps <= 0
+        )
     ):
         parser.error(
             "batch-size/official-reference-epochs/log-interval/"
@@ -657,6 +695,10 @@ def _parse_args() -> argparse.Namespace:
             "num-workers non-negative"
         )
     if args.run_mode == "burn_in":
+        if args.target_optimizer_steps is not None:
+            parser.error(
+                "--target-optimizer-steps is valid only for formal training"
+            )
         if args.max_train_steps is None or args.max_train_steps <= 0:
             parser.error("burn_in requires positive --max-train-steps")
     elif args.max_train_steps is not None:

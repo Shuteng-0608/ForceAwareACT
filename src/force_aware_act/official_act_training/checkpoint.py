@@ -41,6 +41,7 @@ def save_official_act_checkpoint(
     best_epoch: int = -1,
     best_model_state: Any = None,
     experiment_manifest: Optional[Mapping[str, Any]] = None,
+    run_control: Optional[Mapping[str, Any]] = None,
 ) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,6 +60,7 @@ def save_official_act_checkpoint(
             if experiment_manifest is None
             else dict(experiment_manifest)
         ),
+        "run_control": None if run_control is None else dict(run_control),
         "progress": {
             "epoch": int(epoch),
             "global_step": int(global_step),

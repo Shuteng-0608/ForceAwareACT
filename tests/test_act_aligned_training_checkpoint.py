@@ -87,6 +87,7 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
         split_manifest=_manifest(),
         dataloader_generator=generator,
         experiment_manifest=experiment_manifest,
+        run_control={"target_optimizer_steps": 24_000},
     )
     expected_random = torch.rand(4)
     with torch.no_grad():
@@ -106,6 +107,9 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
     assert loaded.split_manifest == _manifest()
     payload = torch.load(path, weights_only=False)
     assert payload["experiment_manifest"] == experiment_manifest
+    assert payload["run_control"] == {
+        "target_optimizer_steps": 24_000,
+    }
     torch.testing.assert_close(
         loaded.dataloader_generator_state,
         generator.get_state(),
