@@ -157,6 +157,39 @@ def test_rng_restore_normalizes_map_location_and_visible_gpu_count():
     ignored_loaded_cuda.detach.assert_not_called()
 
 
+def test_checkpoint_loader_normalizes_dataloader_generator_state(tmp_path):
+    model = ACTAlignedContactCVAEPolicy(_model_config())
+    config = ACTAlignedTrainingConfig()
+    optimizer = build_act_aligned_optimizer(model, config)
+    path = tmp_path / "checkpoint.pt"
+    save_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=config,
+        progress=TrainingProgress(1, 2, 0.5),
+        normalization=_stats(),
+        split_manifest=_manifest(),
+        dataloader_generator=torch.Generator().manual_seed(9),
+    )
+    expected = torch.load(path, weights_only=False)[
+        "dataloader_generator_state"
+    ]
+
+    loaded = load_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=config,
+        restore_rng=False,
+    )
+
+    assert loaded.dataloader_generator_state is not None
+    assert loaded.dataloader_generator_state.device.type == "cpu"
+    assert loaded.dataloader_generator_state.dtype is torch.uint8
+    torch.testing.assert_close(loaded.dataloader_generator_state, expected)
+
+
 def test_checkpoint_rejects_mismatched_training_config(tmp_path):
     model = ACTAlignedContactCVAEPolicy(_model_config())
     config = ACTAlignedTrainingConfig()

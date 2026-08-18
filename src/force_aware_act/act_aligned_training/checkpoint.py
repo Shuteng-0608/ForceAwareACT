@@ -112,7 +112,11 @@ def load_act_aligned_checkpoint(
         split_manifest=EpisodeSplitManifest.from_dict(
             payload["split_manifest"]
         ),
-        dataloader_generator_state=payload.get("dataloader_generator_state"),
+        dataloader_generator_state=(
+            None
+            if payload.get("dataloader_generator_state") is None
+            else _cpu_rng_state(payload["dataloader_generator_state"])
+        ),
     )
 
 
