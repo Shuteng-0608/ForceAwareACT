@@ -42,6 +42,7 @@ The `docs/` root intentionally contains only this index.
 | Data/model/rollout architecture | [`ARCHITECTURE.md`](architecture/ARCHITECTURE.md) |
 | HDF5 action labels through MuJoCo control | [`ACTION_SEMANTICS.md`](data/ACTION_SEMANTICS.md) |
 | Every script and its role | [`SCRIPTS_REFERENCE.md`](reference/SCRIPTS_REFERENCE.md) |
+| Move the repository, data, and training workflow to a new computer | [`NEW_MACHINE_MIGRATION_AND_TRAINING.md`](training/NEW_MACHINE_MIGRATION_AND_TRAINING.md) |
 | A new HDF5 dataset through training | [`NEW_DATASET_TRAINING_MANUAL.md`](data/NEW_DATASET_TRAINING_MANUAL.md) |
 | Five controlled training configurations and early stopping | [`MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md`](training/MODEL_TRAINING_AND_EARLY_STOPPING_MANUAL.md) |
 | Single, grid, suite, and multi-seed MuJoCo rollout | [`ROLLOUT_EXPERIMENT_MANUAL.md`](rollout/ROLLOUT_EXPERIMENT_MANUAL.md) |
