@@ -155,9 +155,13 @@ def _restore_rng(state: dict[str, Any]) -> None:
     np.random.set_state(state["numpy"])
     torch.set_rng_state(_cpu_rng_state(state["torch"]))
     if state["cuda"] is not None and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(
-            [_cpu_rng_state(value) for value in state["cuda"]]
-        )
+        visible_device_count = torch.cuda.device_count()
+        visible_states = [
+            _cpu_rng_state(value)
+            for value in state["cuda"][:visible_device_count]
+        ]
+        if visible_states:
+            torch.cuda.set_rng_state_all(visible_states)
 
 
 def _cpu_rng_state(value: torch.Tensor) -> torch.Tensor:

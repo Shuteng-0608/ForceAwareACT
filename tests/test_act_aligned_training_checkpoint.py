@@ -1,4 +1,5 @@
 import random
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
@@ -20,6 +21,9 @@ from force_aware_act.act_aligned_training import (  # noqa: E402
 from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
+)
+from force_aware_act.act_aligned_training.checkpoint import (  # noqa: E402
+    _restore_rng_state,
 )
 
 
@@ -114,6 +118,43 @@ def test_checkpoint_round_trip_restores_model_optimizer_progress_and_rng(tmp_pat
         loaded.dataloader_generator_state,
         generator.get_state(),
     )
+
+
+def test_rng_restore_normalizes_map_location_and_visible_gpu_count():
+    expected_cpu = torch.get_rng_state()
+    expected_cuda = torch.arange(8, dtype=torch.uint8)
+    loaded_cpu = Mock(spec=torch.Tensor)
+    loaded_cuda = Mock(spec=torch.Tensor)
+    ignored_loaded_cuda = Mock(spec=torch.Tensor)
+    loaded_cpu.detach.return_value.cpu.return_value = expected_cpu
+    loaded_cuda.detach.return_value.cpu.return_value = expected_cuda
+    state = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": loaded_cpu,
+        "cuda": [loaded_cuda, ignored_loaded_cuda],
+    }
+
+    with patch(
+        "force_aware_act.act_aligned_training.checkpoint."
+        "torch.set_rng_state"
+    ) as set_cpu, patch(
+        "force_aware_act.act_aligned_training.checkpoint."
+        "torch.cuda.is_available",
+        return_value=True,
+    ), patch(
+        "force_aware_act.act_aligned_training.checkpoint."
+        "torch.cuda.device_count",
+        return_value=1,
+    ), patch(
+        "force_aware_act.act_aligned_training.checkpoint."
+        "torch.cuda.set_rng_state_all"
+    ) as set_cuda:
+        _restore_rng_state(state)
+
+    set_cpu.assert_called_once_with(expected_cpu)
+    set_cuda.assert_called_once_with([expected_cuda])
+    ignored_loaded_cuda.detach.assert_not_called()
 
 
 def test_checkpoint_rejects_mismatched_training_config(tmp_path):

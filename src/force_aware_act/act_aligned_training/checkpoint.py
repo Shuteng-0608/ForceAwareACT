@@ -198,6 +198,23 @@ def _capture_rng_state() -> dict[str, Any]:
 def _restore_rng_state(state: dict[str, Any]) -> None:
     random.setstate(state["python"])
     np.random.set_state(state["numpy"])
-    torch.set_rng_state(state["torch"])
+    torch.set_rng_state(_cpu_rng_state(state["torch"]))
     if state.get("cuda") is not None and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(state["cuda"])
+        visible_device_count = torch.cuda.device_count()
+        visible_states = [
+            _cpu_rng_state(value)
+            for value in state["cuda"][:visible_device_count]
+        ]
+        if visible_states:
+            torch.cuda.set_rng_state_all(visible_states)
+
+
+def _cpu_rng_state(value: torch.Tensor) -> torch.Tensor:
+    """Normalize RNG tensors loaded through a CUDA map_location."""
+
+    if not isinstance(value, torch.Tensor):
+        raise TypeError("RNG state must be a torch.Tensor")
+    state = value.detach().cpu()
+    if state.dtype is not torch.uint8:
+        raise TypeError("RNG state must have dtype torch.uint8")
+    return state
