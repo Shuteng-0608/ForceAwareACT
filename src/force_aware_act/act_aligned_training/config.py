@@ -6,6 +6,12 @@ import math
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
+from force_aware_act.training.sampling import (
+    DENSE_WINDOW_SAMPLING,
+    EPISODIC_UNIFORM_SAMPLING,
+    validate_train_sampling_mode,
+)
+
 
 ACT_ALIGNED_TRAINING_VERSION = "act_aligned_conditional_cvae_training_v2"
 LEGACY_ACT_ALIGNED_TRAINING_VERSION = (
@@ -40,6 +46,7 @@ class ACTAlignedTrainingConfig:
     validation_interval: int = 1
     checkpoint_interval_steps: int = 2000
     gradient_clip_norm: Optional[float] = None
+    train_sampling_mode: str = DENSE_WINDOW_SAMPLING
 
     selection_metric: str = "deployment_zero_action_l1"
 
@@ -123,6 +130,7 @@ class ACTAlignedTrainingConfig:
                 or self.gradient_clip_norm <= 0
             ):
                 raise ValueError("gradient_clip_norm must be positive or None")
+        validate_train_sampling_mode(self.train_sampling_mode)
         if self.prior_match_mode != "detached_gaussian_kl":
             raise ValueError(
                 "prior_match_mode must be 'detached_gaussian_kl' in training v2"
@@ -151,9 +159,11 @@ class ACTAlignedTrainingConfig:
                     "+prior_match_weight*kl_stopgrad_q_p_conditional"
                 ),
                 "scheduler": None,
+                "sampling": self.train_sampling_mode,
                 "duration_semantics": (
-                    "official_equivalent_optimizer_steps_for_one_random_"
-                    "timestep_per_train_episode_per_reference_epoch"
+                    "one_uniform_timestep_per_train_episode_per_sampling_epoch"
+                    if self.train_sampling_mode == EPISODIC_UNIFORM_SAMPLING
+                    else "all_train_timestep_windows_per_data_epoch"
                 ),
                 "posterior_validation_latent": "mean",
                 "deployment_validation_latents": (

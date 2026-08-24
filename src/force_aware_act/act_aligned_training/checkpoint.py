@@ -19,6 +19,7 @@ from force_aware_act.act_aligned_training.config import (
 )
 from force_aware_act.act_aligned_training.normalization import NormalizationStats
 from force_aware_act.act_aligned_training.split import EpisodeSplitManifest
+from force_aware_act.training.sampling import DENSE_WINDOW_SAMPLING
 CHECKPOINT_FORMAT_VERSION = "act_aligned_checkpoint_v2"
 _LEGACY_CHECKPOINT_FORMAT_VERSION = "act_aligned_checkpoint_v1"
 
@@ -155,6 +156,12 @@ def read_act_aligned_checkpoint(
         payload["progress"] = dict(payload["progress"])
         payload["progress"].setdefault("step_in_epoch", 0)
     payload = _migrate_training_config(payload)
+    if "train_sampling_mode" not in payload["training_config"]:
+        payload = dict(payload)
+        payload["training_config"] = dict(payload["training_config"])
+        payload["training_config"]["train_sampling_mode"] = (
+            DENSE_WINDOW_SAMPLING
+        )
     return payload
 
 

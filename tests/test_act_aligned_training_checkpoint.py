@@ -16,8 +16,10 @@ from force_aware_act.act_aligned_training import (  # noqa: E402
     TrainingProgress,
     build_act_aligned_optimizer,
     load_act_aligned_checkpoint,
+    read_act_aligned_checkpoint,
     save_act_aligned_checkpoint,
 )
+from force_aware_act.training import DENSE_WINDOW_SAMPLING
 from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedConfig,
     ACTAlignedContactCVAEPolicy,
@@ -288,3 +290,28 @@ def test_reader_migrates_v1_training_schedule_to_step_semantics(tmp_path):
 
     assert loaded.progress.global_step == 200
     assert migrated_config.max_optimizer_steps == 2000
+
+
+def test_reader_migrates_missing_sampling_mode_to_dense(tmp_path):
+    model = ACTAlignedContactCVAEPolicy(_model_config())
+    config = ACTAlignedTrainingConfig()
+    optimizer = build_act_aligned_optimizer(model, config)
+    path = tmp_path / "pre_sampling_mode.pt"
+    save_act_aligned_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=config,
+        progress=TrainingProgress(0, 1, 0.3, step_in_epoch=1),
+        normalization=_stats(),
+        split_manifest=_manifest(),
+    )
+    payload = torch.load(path, weights_only=False)
+    del payload["training_config"]["train_sampling_mode"]
+    torch.save(payload, path)
+
+    migrated = read_act_aligned_checkpoint(path)
+
+    assert migrated["training_config"]["train_sampling_mode"] == (
+        DENSE_WINDOW_SAMPLING
+    )

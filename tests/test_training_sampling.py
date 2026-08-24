@@ -9,6 +9,9 @@ from force_aware_act.training import (
     sample_uniform_episode_timestep,
     validate_train_sampling_mode,
 )
+from scripts.train_act_aligned_contact_cvae import (
+    _episodic_validation_interval,
+)
 
 
 @dataclass(frozen=True)
@@ -101,3 +104,12 @@ def test_episodic_view_rejects_an_inconsistent_dense_dataset():
             sampling_seed=0,
             stream_id=0,
         )
+
+
+def test_episodic_validation_cadence_matches_one_dense_epoch():
+    episodes = tuple(
+        [_Episode(618) for _ in range(40)]
+        + [_Episode(645) for _ in range(40)]
+    )
+
+    assert _episodic_validation_interval(episodes, batch_size=8) == 632

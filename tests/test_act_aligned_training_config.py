@@ -4,6 +4,10 @@ from force_aware_act.act_aligned_training import (
     ACT_ALIGNED_TRAINING_VERSION,
     ACTAlignedTrainingConfig,
 )
+from force_aware_act.training import (
+    DENSE_WINDOW_SAMPLING,
+    EPISODIC_UNIFORM_SAMPLING,
+)
 
 
 def test_canonical_training_config_is_act_style_and_explicit():
@@ -23,6 +27,7 @@ def test_canonical_training_config_is_act_style_and_explicit():
     assert config.max_optimizer_steps == 24000
     assert config.checkpoint_interval_steps == 2000
     assert config.gradient_clip_norm is None
+    assert config.train_sampling_mode == DENSE_WINDOW_SAMPLING
 
 
 def test_training_checkpoint_metadata_records_objective_and_validation_modes():
@@ -30,9 +35,10 @@ def test_training_checkpoint_metadata_records_objective_and_validation_modes():
 
     assert metadata["optimizer"] == "AdamW"
     assert metadata["scheduler"] is None
-    assert "official_equivalent_optimizer_steps" in metadata[
-        "duration_semantics"
-    ]
+    assert metadata["sampling"] == DENSE_WINDOW_SAMPLING
+    assert metadata["duration_semantics"] == (
+        "all_train_timestep_windows_per_data_epoch"
+    )
     assert "kl_q_standard_normal" in metadata["objective"]
     assert "kl_stopgrad_q_p_conditional" in metadata["objective"]
     assert metadata["posterior_validation_latent"] == "mean"
@@ -40,6 +46,12 @@ def test_training_checkpoint_metadata_records_objective_and_validation_modes():
         "zero",
         "conditional_prior_mean",
     )
+
+    episodic = ACTAlignedTrainingConfig(
+        train_sampling_mode=EPISODIC_UNIFORM_SAMPLING
+    ).checkpoint_metadata()
+    assert episodic["sampling"] == EPISODIC_UNIFORM_SAMPLING
+    assert "one_uniform_timestep" in episodic["duration_semantics"]
 
 
 def test_training_config_derives_official_equivalent_optimizer_steps():

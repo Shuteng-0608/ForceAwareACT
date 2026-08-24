@@ -52,6 +52,10 @@ from force_aware_act.models.act_aligned import (  # noqa: E402
     ACTAlignedContactCVAEPolicy,
 )
 from force_aware_act.training import (  # noqa: E402
+    DENSE_WINDOW_SAMPLING,
+    EPISODIC_UNIFORM_SAMPLING,
+    TRAIN_SAMPLING_MODES,
+    EpisodicUniformWindowDataset,
     best_policy_artifact,
     checkpoint_identity,
     materialize_best_artifact_reference,
@@ -166,6 +170,21 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
             ),
             official_reference_epochs=args.official_reference_epochs,
             checkpoint_interval_steps=args.checkpoint_interval_steps,
+            train_sampling_mode=(
+                DENSE_WINDOW_SAMPLING
+                if args.train_sampling_mode is None
+                else args.train_sampling_mode
+            ),
+            validation_interval=(
+                1
+                if args.smoke
+                or args.train_sampling_mode
+                != EPISODIC_UNIFORM_SAMPLING
+                else _episodic_validation_interval(
+                    manifest.train_episodes,
+                    args.batch_size,
+                )
+            ),
         )
         normalization = stack.normalization_fn(
             args.data_root,
@@ -183,6 +202,14 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         training_config = stack.training_config_type(
             **payload["training_config"]
         )
+        if (
+            args.train_sampling_mode is not None
+            and args.train_sampling_mode
+            != training_config.train_sampling_mode
+        ):
+            raise ValueError(
+                "--train-sampling-mode does not match the checkpoint"
+            )
         manifest = EpisodeSplitManifest.from_dict(payload["split_manifest"])
         normalization = NormalizationStats.from_dict(payload["normalization"])
         start_epoch = int(payload["progress"]["epoch"])
@@ -221,12 +248,23 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         if loaded.dataloader_generator_state is not None:
             generator.set_state(loaded.dataloader_generator_state)
 
-    train_dataset = stack.dataset_type(
+    dense_train_dataset = stack.dataset_type(
         args.data_root,
         manifest.train_episodes,
         normalization,
         model_config,
     )
+    if training_config.train_sampling_mode == DENSE_WINDOW_SAMPLING:
+        train_dataset = dense_train_dataset
+    elif training_config.train_sampling_mode == EPISODIC_UNIFORM_SAMPLING:
+        train_dataset = EpisodicUniformWindowDataset(
+            dense_train_dataset,
+            manifest.train_episodes,
+            sampling_seed=training_config.seed,
+            stream_id=0,
+        )
+    else:
+        raise RuntimeError("unsupported Contact-CVAE training sampling mode")
     validation_dataset = stack.dataset_type(
         args.data_root,
         manifest.validation_episodes,
@@ -520,9 +558,24 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
         "experiment_manifest": experiment_provenance,
         "train_episodes": len(manifest.train_episodes),
         "validation_episodes": len(manifest.validation_episodes),
-        "train_windows": len(train_dataset),
+        "train_windows": len(dense_train_dataset),
         "validation_windows": len(validation_dataset),
-        "steps_per_data_epoch": len(train_loader),
+        "train_samples_per_sampling_epoch": len(train_source),
+        "train_sampling_mode": training_config.train_sampling_mode,
+        "steps_per_sampling_epoch": len(train_loader),
+        "steps_per_data_epoch": (
+            len(train_loader)
+            if training_config.train_sampling_mode == DENSE_WINDOW_SAMPLING
+            else math.ceil(
+                len(dense_train_dataset) / training_config.batch_size
+            )
+        ),
+        "validation_interval_sampling_epochs": (
+            training_config.validation_interval
+        ),
+        "validation_interval_optimizer_steps": (
+            training_config.validation_interval * len(train_loader)
+        ),
         "optimizer_step_limit": step_limit,
         "run_control": _run_control_metadata(
             horizon, convergence_monitor, runtime_state
@@ -539,6 +592,9 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
     stopped_early = False
     try:
         for epoch in itertools.count(start_epoch):
+            set_train_epoch = getattr(train_dataset, "set_epoch", None)
+            if set_train_epoch is not None:
+                set_train_epoch(epoch)
             step_in_epoch = (
                 resume_step_in_epoch if epoch == start_epoch else 0
             )
@@ -965,6 +1021,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--validation-fraction", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--train-sampling-mode",
+        choices=TRAIN_SAMPLING_MODES,
+        help=(
+            "training sample distribution; fresh runs default to "
+            f"{DENSE_WINDOW_SAMPLING!r}, while resumed runs use the "
+            "checkpoint value"
+        ),
+    )
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--experiment-manifest", type=Path)
     parser.add_argument("--smoke", action="store_true")
@@ -1061,6 +1126,16 @@ def _parse_args() -> argparse.Namespace:
     if args.smoke and args.experiment_manifest is not None:
         parser.error("--smoke cannot be combined with --experiment-manifest")
     return args
+
+
+def _episodic_validation_interval(episodes, batch_size: int) -> int:
+    """Match random-sampling validation cadence to one dense data epoch."""
+
+    dense_steps = math.ceil(
+        sum(record.num_steps for record in episodes) / batch_size
+    )
+    episodic_steps = math.ceil(len(episodes) / batch_size)
+    return max(1, math.ceil(dense_steps / episodic_steps))
 
 
 def _append_json_record(path: Path, record: dict) -> None:
