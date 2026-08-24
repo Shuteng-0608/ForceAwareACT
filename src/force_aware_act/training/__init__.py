@@ -39,6 +39,14 @@ from force_aware_act.training.artifacts import (
     materialize_best_artifact_reference,
     selection_metric_migration,
 )
+from force_aware_act.training.sampling import (
+    DENSE_WINDOW_SAMPLING,
+    EPISODIC_UNIFORM_SAMPLING,
+    TRAIN_SAMPLING_MODES,
+    EpisodicUniformWindowDataset,
+    sample_uniform_episode_timestep,
+    validate_train_sampling_mode,
+)
 
 __all__ = [
     "EARLY_STOP_METRICS",
@@ -69,4 +77,10 @@ __all__ = [
     "checkpoint_identity",
     "materialize_best_artifact_reference",
     "selection_metric_migration",
+    "DENSE_WINDOW_SAMPLING",
+    "EPISODIC_UNIFORM_SAMPLING",
+    "TRAIN_SAMPLING_MODES",
+    "EpisodicUniformWindowDataset",
+    "sample_uniform_episode_timestep",
+    "validate_train_sampling_mode",
 ]

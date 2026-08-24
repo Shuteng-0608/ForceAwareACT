@@ -18,6 +18,7 @@ from force_aware_act.act_aligned_training.split import (
     discover_episodes,
 )
 from force_aware_act.models.official_act.config import OfficialACTConfig
+from force_aware_act.training.sampling import sample_uniform_episode_timestep
 
 
 OFFICIAL_ACT_SPLIT_VERSION = "official_act_episode_split_v1"
@@ -264,11 +265,13 @@ class OfficialACTEpisodicDataset(Dataset):
 
     def sampled_timestep(self, index: int) -> int:
         record = self.episodes[index]
-        seed = np.random.SeedSequence(
-            (self.sampling_seed, self.stream_id, self.epoch, index)
+        return sample_uniform_episode_timestep(
+            sampling_seed=self.sampling_seed,
+            stream_id=self.stream_id,
+            epoch=self.epoch,
+            episode_index=index,
+            episode_steps=record.num_steps,
         )
-        generator = np.random.default_rng(seed)
-        return int(generator.integers(0, record.num_steps))
 
     def __getitem__(self, index: int) -> OfficialACTBatch:
         record = self.episodes[index]
