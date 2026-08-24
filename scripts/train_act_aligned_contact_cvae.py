@@ -794,20 +794,25 @@ def main(stack: TrainingStack = CONTACT_TRAINING_STACK) -> None:
             }
             _append_json_record(log_path, record)
             print(json.dumps(record, sort_keys=True), flush=True)
-            _save(
-                args.output_dir / "last.pt",
-                model,
-                optimizer,
-                training_config,
-                progress,
-                normalization,
-                manifest,
-                checkpoint_generator,
-                experiment_provenance,
-                _run_control_metadata(
-                    horizon, convergence_monitor, runtime_state
-                ),
-            )
+            if _should_persist_last_checkpoint(
+                validated=bool(validation_metrics),
+                stopped_at_limit=stopped_at_limit,
+                stopped_early=stopped_early,
+            ):
+                _save(
+                    args.output_dir / "last.pt",
+                    model,
+                    optimizer,
+                    training_config,
+                    progress,
+                    normalization,
+                    manifest,
+                    checkpoint_generator,
+                    experiment_provenance,
+                    _run_control_metadata(
+                        horizon, convergence_monitor, runtime_state
+                    ),
+                )
             if stopped_at_limit or stopped_early:
                 final_name = (
                     "burn_in.pt"
@@ -1136,6 +1141,17 @@ def _episodic_validation_interval(episodes, batch_size: int) -> int:
     )
     episodic_steps = math.ceil(len(episodes) / batch_size)
     return max(1, math.ceil(dense_steps / episodic_steps))
+
+
+def _should_persist_last_checkpoint(
+    *,
+    validated: bool,
+    stopped_at_limit: bool,
+    stopped_early: bool,
+) -> bool:
+    """Avoid rewriting a full checkpoint after every short sampling epoch."""
+
+    return validated or stopped_at_limit or stopped_early
 
 
 def _append_json_record(path: Path, record: dict) -> None:

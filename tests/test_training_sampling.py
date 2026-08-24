@@ -11,6 +11,7 @@ from force_aware_act.training import (
 )
 from scripts.train_act_aligned_contact_cvae import (
     _episodic_validation_interval,
+    _should_persist_last_checkpoint,
 )
 
 
@@ -113,3 +114,21 @@ def test_episodic_validation_cadence_matches_one_dense_epoch():
     )
 
     assert _episodic_validation_interval(episodes, batch_size=8) == 632
+
+
+def test_last_checkpoint_is_throttled_between_episodic_validations():
+    assert not _should_persist_last_checkpoint(
+        validated=False,
+        stopped_at_limit=False,
+        stopped_early=False,
+    )
+    assert _should_persist_last_checkpoint(
+        validated=True,
+        stopped_at_limit=False,
+        stopped_early=False,
+    )
+    assert _should_persist_last_checkpoint(
+        validated=False,
+        stopped_at_limit=True,
+        stopped_early=False,
+    )
