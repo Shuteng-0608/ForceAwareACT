@@ -26,6 +26,7 @@ from force_aware_act.official_act_training import (
     evaluate_official_act_batch,
     official_masked_l1,
     load_official_act_checkpoint,
+    read_official_act_checkpoint,
     save_official_act_checkpoint,
     run_official_act_full_window_validation_epoch,
     train_official_act_step,
@@ -34,6 +35,10 @@ from force_aware_act.official_act_training.data import (
     OFFICIAL_ACT_STATS_VERSION,
 )
 from force_aware_act.official_act_training.checkpoint import _restore_rng
+from force_aware_act.training import (
+    DENSE_WINDOW_SAMPLING,
+    EPISODIC_UNIFORM_SAMPLING,
+)
 
 
 def _stats():
@@ -330,6 +335,55 @@ def test_official_checkpoint_round_trip_is_strict(tmp_path):
     }
     assert payload["experiment_manifest"] == experiment_manifest
     assert payload["run_control"] == {"target_optimizer_steps": 4}
+
+
+def test_official_training_config_records_sampling_mode():
+    default = OfficialACTTrainingConfig()
+    dense = OfficialACTTrainingConfig(
+        train_sampling_mode=DENSE_WINDOW_SAMPLING
+    )
+
+    assert default.train_sampling_mode == EPISODIC_UNIFORM_SAMPLING
+    assert default.checkpoint_metadata()["sampling"] == (
+        EPISODIC_UNIFORM_SAMPLING
+    )
+    assert dense.checkpoint_metadata()["sampling"] == DENSE_WINDOW_SAMPLING
+
+
+def test_official_checkpoint_migrates_legacy_sampling_mode(tmp_path):
+    model_config = OfficialACTConfig.compact_smoke()
+    training_config = OfficialACTTrainingConfig(num_epochs=2)
+    model = OfficialACTPolicy(model_config)
+    optimizer = build_official_act_optimizer(model, training_config)
+    manifest = OfficialACTSplitManifest(
+        format_version="official_act_episode_split_v1",
+        data_root=str(tmp_path),
+        split_seed=1,
+        validation_fraction=0.5,
+        train_episodes=(_record(),),
+        validation_episodes=(_record(),),
+    )
+    path = tmp_path / "legacy.pt"
+    save_official_act_checkpoint(
+        path,
+        model=model,
+        optimizer=optimizer,
+        training_config=training_config,
+        normalization=_stats(),
+        split_manifest=manifest,
+        epoch=1,
+        global_step=2,
+        best_metric=0.5,
+    )
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    del payload["training_config"]["train_sampling_mode"]
+    torch.save(payload, path)
+
+    migrated = read_official_act_checkpoint(path)
+
+    assert migrated["training_config"]["train_sampling_mode"] == (
+        EPISODIC_UNIFORM_SAMPLING
+    )
 
 
 def test_rng_restore_moves_loaded_cpu_and_cuda_states_back_to_cpu():

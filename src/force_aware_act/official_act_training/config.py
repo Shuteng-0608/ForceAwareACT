@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from force_aware_act.training.sampling import (
+    EPISODIC_UNIFORM_SAMPLING,
+    validate_train_sampling_mode,
+)
+
 
 OFFICIAL_ACT_TRAINING_VERSION = "official_act_training_v1"
 
@@ -24,6 +29,7 @@ class OfficialACTTrainingConfig:
     validation_fraction: float = 0.2
     checkpoint_interval_epochs: int = 100
     selection_metric: str = "official_sampled_validation_loss"
+    train_sampling_mode: str = EPISODIC_UNIFORM_SAMPLING
 
     def __post_init__(self) -> None:
         if self.training_version != OFFICIAL_ACT_TRAINING_VERSION:
@@ -60,6 +66,7 @@ class OfficialACTTrainingConfig:
                 "selection_metric must be "
                 "'official_sampled_validation_loss'"
             )
+        validate_train_sampling_mode(self.train_sampling_mode)
 
     def checkpoint_metadata(self) -> dict[str, Any]:
         metadata = asdict(self)
@@ -68,7 +75,7 @@ class OfficialACTTrainingConfig:
                 "optimizer": "AdamW",
                 "scheduler": None,
                 "objective": "official_masked_l1+10*kl_q_standard_normal",
-                "sampling": "one_uniform_timestep_per_episode_per_epoch",
+                "sampling": self.train_sampling_mode,
                 "normalization_scope": "all_episodes_official_behavior",
                 "normalization_minimum_std": 1.0e-2,
                 "validation_order": "before_training_each_epoch",

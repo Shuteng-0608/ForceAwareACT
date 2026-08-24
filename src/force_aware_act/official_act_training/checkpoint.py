@@ -22,6 +22,7 @@ from force_aware_act.official_act_training.data import (
 from force_aware_act.official_act_training.optimizer import (
     build_official_act_optimizer,
 )
+from force_aware_act.training.sampling import EPISODIC_UNIFORM_SAMPLING
 
 
 OFFICIAL_ACT_CHECKPOINT_VERSION = "official_act_checkpoint_v1"
@@ -87,6 +88,12 @@ def read_official_act_checkpoint(
     )
     if payload.get("format_version") != OFFICIAL_ACT_CHECKPOINT_VERSION:
         raise ValueError("unsupported official ACT checkpoint")
+    if "train_sampling_mode" not in payload["training_config"]:
+        payload = dict(payload)
+        payload["training_config"] = dict(payload["training_config"])
+        payload["training_config"]["train_sampling_mode"] = (
+            EPISODIC_UNIFORM_SAMPLING
+        )
     return payload
 
 

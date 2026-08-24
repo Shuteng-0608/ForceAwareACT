@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
@@ -53,6 +53,9 @@ from force_aware_act.official_act_training.data import (  # noqa: E402
     OFFICIAL_ACT_SPLIT_VERSION,
 )
 from force_aware_act.training import (  # noqa: E402
+    DENSE_WINDOW_SAMPLING,
+    EPISODIC_UNIFORM_SAMPLING,
+    TRAIN_SAMPLING_MODES,
     best_policy_artifact,
     checkpoint_identity,
     resolve_convergence_monitor,
@@ -100,6 +103,11 @@ def main() -> None:
             ),
             checkpoint_interval_epochs=(
                 1 if args.smoke else args.checkpoint_interval_epochs
+            ),
+            train_sampling_mode=(
+                EPISODIC_UNIFORM_SAMPLING
+                if args.train_sampling_mode is None
+                else args.train_sampling_mode
             ),
         )
         if experiment_subset is None:
@@ -162,6 +170,14 @@ def main() -> None:
         training_config = OfficialACTTrainingConfig(
             **payload["training_config"]
         )
+        if (
+            args.train_sampling_mode is not None
+            and args.train_sampling_mode
+            != training_config.train_sampling_mode
+        ):
+            raise ValueError(
+                "--train-sampling-mode does not match the checkpoint"
+            )
         manifest = OfficialACTSplitManifest.from_dict(
             payload["split_manifest"]
         )
@@ -204,13 +220,28 @@ def main() -> None:
             map_location=device,
         )
 
-    train_dataset = OfficialACTEpisodicDataset(
-        args.data_root,
-        manifest.train_episodes,
-        normalization,
-        model_config,
-        sampling_seed=training_config.seed,
-        stream_id=0,
+    if training_config.train_sampling_mode == EPISODIC_UNIFORM_SAMPLING:
+        train_dataset = OfficialACTEpisodicDataset(
+            args.data_root,
+            manifest.train_episodes,
+            normalization,
+            model_config,
+            sampling_seed=training_config.seed,
+            stream_id=0,
+        )
+    elif training_config.train_sampling_mode == DENSE_WINDOW_SAMPLING:
+        train_dataset = OfficialACTWindowDataset(
+            args.data_root,
+            manifest.train_episodes,
+            normalization,
+            model_config,
+        )
+    else:
+        raise RuntimeError("unsupported Official ACT training sampling mode")
+    train_source = (
+        Subset(train_dataset, range(min(4, len(train_dataset))))
+        if args.smoke
+        else train_dataset
     )
     validation_dataset = OfficialACTEpisodicDataset(
         args.data_root,
@@ -235,7 +266,7 @@ def main() -> None:
         pin_memory=device.type == "cuda",
     )
     steps_per_epoch = (
-        len(train_dataset) + training_config.batch_size - 1
+        len(train_source) + training_config.batch_size - 1
     ) // training_config.batch_size
     source_optimizer_step_limit = (
         steps_per_epoch * training_config.num_epochs
@@ -309,7 +340,9 @@ def main() -> None:
     run_metadata = {
         "model": model_config.checkpoint_metadata(),
         "training": training_metadata,
-        "train_episodes": len(train_dataset),
+        "train_episodes": len(manifest.train_episodes),
+        "train_samples_per_epoch": len(train_source),
+        "train_sampling_mode": training_config.train_sampling_mode,
         "validation_episodes": len(validation_dataset),
         "validation_windows": len(full_validation_dataset),
         "steps_per_epoch": steps_per_epoch,
@@ -455,7 +488,9 @@ def main() -> None:
     completed_epochs = start_epoch
 
     for epoch in range(start_epoch, target_epochs):
-        train_dataset.set_epoch(epoch)
+        set_train_epoch = getattr(train_dataset, "set_epoch", None)
+        if set_train_epoch is not None:
+            set_train_epoch(epoch)
         validation_dataset.set_epoch(epoch)
         validation_loader = _make_loader(
             validation_dataset,
@@ -479,7 +514,7 @@ def main() -> None:
             ),
         )
         train_loader = _make_loader(
-            train_dataset,
+            train_source,
             batch_size=training_config.batch_size,
             shuffle=True,
             num_workers=args.num_workers,
@@ -831,6 +866,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--train-sampling-mode",
+        choices=TRAIN_SAMPLING_MODES,
+        help=(
+            "training sample distribution; fresh runs default to "
+            f"{EPISODIC_UNIFORM_SAMPLING!r}, while resumed runs use the "
+            "checkpoint value"
+        ),
+    )
     parser.add_argument("--checkpoint-interval-epochs", type=int, default=100)
     parser.add_argument(
         "--full-validation-interval-epochs",
