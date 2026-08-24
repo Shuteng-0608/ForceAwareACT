@@ -188,6 +188,27 @@ def test_discovery_validates_all_episode_records(tmp_path):
     assert records[0].camera_names == ("ee_cam", "base_top_cam")
 
 
+def test_discovery_supports_nested_category_roots(tmp_path):
+    clean = tmp_path / "clean_100"
+    collision = tmp_path / "collision_100"
+    clean.mkdir()
+    collision.mkdir()
+    _write_episode(clean, "episode_a", 0.0)
+    _write_episode(collision, "episode_b", 10.0)
+
+    records = discover_episodes(tmp_path)
+
+    assert [record.episode_id for record in records] == [
+        "clean_100/episode_a",
+        "collision_100/episode_b",
+    ]
+    assert [record.relative_hdf5_path for record in records] == [
+        "clean_100/episode_a/episode.hdf5",
+        "collision_100/episode_b/episode.hdf5",
+    ]
+    assert all(record.resolve(tmp_path).is_file() for record in records)
+
+
 def test_dataset_preserves_native_images_without_interpolation(tmp_path):
     _write_episode(tmp_path, "episode_a", 0.0)
     _write_episode(tmp_path, "episode_b", 10.0)

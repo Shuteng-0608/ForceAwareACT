@@ -77,10 +77,11 @@ def discover_episodes(data_root: Path) -> Tuple[EpisodeRecord, ...]:
     if not data_root.is_dir():
         raise FileNotFoundError(f"data root does not exist: {data_root}")
     records = []
-    for episode_dir in sorted(path for path in data_root.iterdir() if path.is_dir()):
-        hdf5_path = episode_dir / "episode.hdf5"
+    episode_paths = sorted(data_root.rglob("episode.hdf5"))
+    for hdf5_path in episode_paths:
+        episode_dir = hdf5_path.parent
         metadata_path = episode_dir / "metadata.json"
-        if not hdf5_path.is_file() or not metadata_path.is_file():
+        if not metadata_path.is_file():
             continue
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if metadata.get("schema_version") != EXPECTED_SCHEMA_VERSION:
@@ -88,9 +89,10 @@ def discover_episodes(data_root: Path) -> Tuple[EpisodeRecord, ...]:
         schema = inspect_episode(hdf5_path)
         if int(metadata.get("n_state", -1)) != schema.num_steps:
             raise ValueError(f"{episode_dir} metadata n_state is inconsistent")
+        relative_episode_dir = episode_dir.relative_to(data_root)
         records.append(
             EpisodeRecord(
-                episode_id=episode_dir.name,
+                episode_id=relative_episode_dir.as_posix(),
                 relative_hdf5_path=str(hdf5_path.relative_to(data_root)),
                 num_steps=schema.num_steps,
                 camera_names=schema.camera_names,

@@ -47,7 +47,17 @@ def main() -> int:
     subset = load_paired_episode_subset_manifest(
         args.manifest, data_root=args.data_root
     )
-    force_audit = audit_collection(args.data_root)
+    manifest_episodes = (
+        *subset.train_episodes,
+        *subset.validation_episodes,
+        *subset.holdout_episodes,
+    )
+    force_audit = audit_collection(
+        args.data_root,
+        episode_paths=[
+            record.resolve(args.data_root) for record in manifest_episodes
+        ],
+    )
     training = ACTAlignedHighRateTrainingConfig(
         batch_size=args.batch_size,
         reference_train_episodes=len(subset.train_episodes),

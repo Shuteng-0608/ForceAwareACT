@@ -28,6 +28,10 @@ SELECTION_ALGORITHM = "chronological_strata_distribution_match_v1"
 SCRIPTED_FIXED50_SELECTION_ALGORITHM = (
     "chronological_stratified_validation_all50_v1"
 )
+SCRIPTED_BALANCED200_SELECTION_ALGORITHM = (
+    "scripted200_balanced_paired_train80_val20_holdout100_v1"
+)
+SCRIPTED_BALANCED200_CATEGORIES = ("clean_100", "collision_100")
 DEFAULT_SUCCESS_STATUS = "auto_stop_task_success"
 SCRIPTED_REPLAY_SUCCESS_STATUS = "scripted_replay_success"
 SCRIPTED_COLLECTION_METHOD = "scripted_two_stage_replay"
@@ -526,6 +530,139 @@ def build_scripted50_train_validation_manifest(
     return manifest
 
 
+def build_scripted200_balanced_paired_manifest(
+    data_root: Path,
+    *,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Build a category-balanced 80/20/100 split from 200 scripted episodes.
+
+    Each of ``clean_100`` and ``collision_100`` is independently divided by
+    the existing distribution-matched paired50 protocol into 40 train, 10
+    validation and 50 holdout episodes.  The two category partitions are then
+    merged, preserving exact category balance in every split.
+    """
+
+    data_root = Path(data_root)
+    discovered = discover_episodes(data_root)
+    episodes = tuple(
+        record
+        for record in discovered
+        if Path(record.relative_hdf5_path).parts[0]
+        in SCRIPTED_BALANCED200_CATEGORIES
+    )
+    ignored_episode_ids = sorted(
+        set(record.episode_id for record in discovered)
+        - set(record.episode_id for record in episodes)
+    )
+    if len(episodes) != 200:
+        raise ValueError(
+            "expected 200 in-scope episodes under "
+            f"{SCRIPTED_BALANCED200_CATEGORIES!r}, found {len(episodes)}"
+        )
+    features = extract_episode_selection_features(
+        data_root,
+        episodes,
+        expected_success_status=SCRIPTED_REPLAY_SUCCESS_STATUS,
+        expected_collection_method=SCRIPTED_COLLECTION_METHOD,
+    )
+    records_by_id = {record.episode_id: record for record in episodes}
+    features_by_id = {item.episode_id: item for item in features}
+    groups = {name: [] for name in ("all", "selected", "train", "validation", "holdout")}
+    standardized_by_id: dict[str, np.ndarray] = {}
+    category_reports: dict[str, Any] = {}
+    strata: list[dict[str, Any]] = []
+
+    for category_index, category in enumerate(SCRIPTED_BALANCED200_CATEGORIES):
+        category_records = tuple(
+            record
+            for record in episodes
+            if Path(record.relative_hdf5_path).parts[0] == category
+        )
+        if len(category_records) != 100:
+            raise ValueError(
+                f"expected 100 episodes in category {category!r}, "
+                f"found {len(category_records)}"
+            )
+        category_features = tuple(
+            features_by_id[record.episode_id] for record in category_records
+        )
+        category_selection = select_paired_episode_subset(
+            category_records,
+            category_features,
+            seed=seed,
+        )
+        for group_name in groups:
+            groups[group_name].extend(category_selection["groups"][group_name])
+
+        ordered_ids = sorted(record.episode_id for record in category_records)
+        matrix = np.stack([features_by_id[item].vector() for item in ordered_ids])
+        standardized, center, scale = _robust_standardize(matrix)
+        standardized_by_id.update(
+            {
+                episode_id: standardized[index]
+                for index, episode_id in enumerate(ordered_ids)
+            }
+        )
+        category_reports[category] = {
+            "episode_count": 100,
+            "selected_episode_count": 50,
+            "train_episode_count": 40,
+            "validation_episode_count": 10,
+            "holdout_episode_count": 50,
+            "robust_center": center.tolist(),
+            "robust_scale": scale.tolist(),
+            "audit": category_selection["audit"],
+        }
+        for category_stratum in category_selection["strata"]:
+            item = dict(category_stratum)
+            item["category"] = category
+            item["category_stratum_index"] = int(item["stratum_index"])
+            item["stratum_index"] = category_index * 10 + int(
+                item["stratum_index"]
+            )
+            strata.append(item)
+
+    groups = {name: sorted(values) for name, values in groups.items()}
+    _validate_selection({"groups": groups}, expected_ids=set(records_by_id))
+    selection = {
+        "algorithm": SCRIPTED_BALANCED200_SELECTION_ALGORITHM,
+        "seed": seed,
+        "feature_names": list(SELECTION_FEATURE_NAMES),
+        "success_status": SCRIPTED_REPLAY_SUCCESS_STATUS,
+        "collection_method": SCRIPTED_COLLECTION_METHOD,
+        "category_names": list(SCRIPTED_BALANCED200_CATEGORIES),
+        "ignored_episode_ids": ignored_episode_ids,
+        "categories": category_reports,
+        "temporal_strata_per_category": 10,
+        "stratum_size": 10,
+        "selected_per_stratum": 5,
+        "validation_per_stratum": 1,
+        "strata": strata,
+        "audit": _selection_audit(groups, features_by_id, standardized_by_id),
+    }
+    manifest = {
+        "format_version": PAIRED_EPISODE_SUBSET_VERSION,
+        "data_root_hint": str(data_root),
+        "dataset_fingerprint": _dataset_fingerprint(episodes),
+        "selection": selection,
+        "all_episode_count": 200,
+        "selected_episode_count": 100,
+        "train_episode_count": 80,
+        "validation_episode_count": 20,
+        "holdout_episode_count": 100,
+        "train_episodes": _records(groups["train"], records_by_id),
+        "validation_episodes": _records(groups["validation"], records_by_id),
+        "holdout_episodes": _records(groups["holdout"], records_by_id),
+        "selected_episodes": _records(groups["selected"], records_by_id),
+        "episode_features": {
+            item.episode_id: item.to_dict() for item in features
+        },
+    }
+    validate_paired_episode_subset_manifest(manifest, data_root=data_root)
+    return manifest
+
+
 def load_paired_episode_subset_manifest(
     path: Path,
     *,
@@ -631,6 +768,7 @@ def validate_paired_episode_subset_manifest(
         selected_per_stratum = 5
         train_per_stratum = 4
         holdout_per_stratum = 5
+        expected_strata_count = 10
     elif algorithm == SCRIPTED_FIXED50_SELECTION_ALGORITHM:
         expected_total = 50
         expected_counts = {
@@ -643,6 +781,7 @@ def validate_paired_episode_subset_manifest(
         selected_per_stratum = 5
         train_per_stratum = 4
         holdout_per_stratum = 0
+        expected_strata_count = 10
         if selection.get("success_status") != SCRIPTED_REPLAY_SUCCESS_STATUS:
             raise ValueError(
                 "scripted50 manifest success_status must be "
@@ -652,6 +791,36 @@ def validate_paired_episode_subset_manifest(
             raise ValueError(
                 "scripted50 manifest collection_method must be "
                 f"{SCRIPTED_COLLECTION_METHOD!r}"
+            )
+    elif algorithm == SCRIPTED_BALANCED200_SELECTION_ALGORITHM:
+        expected_total = 200
+        expected_counts = {
+            "selected_episodes": 100,
+            "train_episodes": 80,
+            "validation_episodes": 20,
+            "holdout_episodes": 100,
+        }
+        stratum_size = 10
+        selected_per_stratum = 5
+        train_per_stratum = 4
+        holdout_per_stratum = 5
+        expected_strata_count = 20
+        if selection.get("success_status") != SCRIPTED_REPLAY_SUCCESS_STATUS:
+            raise ValueError(
+                "scripted200 manifest success_status must be "
+                f"{SCRIPTED_REPLAY_SUCCESS_STATUS!r}"
+            )
+        if selection.get("collection_method") != SCRIPTED_COLLECTION_METHOD:
+            raise ValueError(
+                "scripted200 manifest collection_method must be "
+                f"{SCRIPTED_COLLECTION_METHOD!r}"
+            )
+        if tuple(selection.get("category_names", ())) != (
+            SCRIPTED_BALANCED200_CATEGORIES
+        ):
+            raise ValueError(
+                "scripted200 manifest category_names must be "
+                f"{SCRIPTED_BALANCED200_CATEGORIES!r}"
             )
     else:
         raise ValueError(f"unsupported selection algorithm: {algorithm!r}")
@@ -692,8 +861,11 @@ def validate_paired_episode_subset_manifest(
             raise ValueError(f"{key} must equal {expected}")
 
     strata = selection.get("strata")
-    if not isinstance(strata, list) or len(strata) != 10:
-        raise ValueError("manifest must contain ten chronological strata")
+    if not isinstance(strata, list) or len(strata) != expected_strata_count:
+        raise ValueError(
+            "manifest must contain "
+            f"{expected_strata_count} chronological strata"
+        )
     stratified_ids = []
     for stratum in strata:
         stratum_all = stratum.get("all_episode_ids", [])
@@ -737,8 +909,42 @@ def validate_paired_episode_subset_manifest(
     ) != all_ids:
         raise ValueError("chronological strata must partition all episodes")
 
+    if algorithm == SCRIPTED_BALANCED200_SELECTION_ALGORITHM:
+        expected_category_counts = {
+            "train_episodes": 40,
+            "validation_episodes": 10,
+            "holdout_episodes": 50,
+            "selected_episodes": 50,
+        }
+        for category in SCRIPTED_BALANCED200_CATEGORIES:
+            category_strata = [
+                stratum for stratum in strata if stratum.get("category") == category
+            ]
+            if len(category_strata) != 10:
+                raise ValueError(
+                    f"scripted200 category {category!r} must contain ten strata"
+                )
+            for field, expected_count in expected_category_counts.items():
+                records = manifest[field]
+                actual_count = sum(
+                    Path(record["relative_hdf5_path"]).parts[0] == category
+                    for record in records
+                )
+                if actual_count != expected_count:
+                    raise ValueError(
+                        f"scripted200 {field} must contain {expected_count} "
+                        f"episodes from {category!r}"
+                    )
+
     if data_root is not None:
         discovered = discover_episodes(data_root)
+        if algorithm == SCRIPTED_BALANCED200_SELECTION_ALGORITHM:
+            discovered = tuple(
+                record
+                for record in discovered
+                if Path(record.relative_hdf5_path).parts[0]
+                in SCRIPTED_BALANCED200_CATEGORIES
+            )
         if _dataset_fingerprint(discovered) != manifest.get(
             "dataset_fingerprint"
         ):

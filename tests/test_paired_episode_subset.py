@@ -7,11 +7,14 @@ import pytest
 from force_aware_act.act_aligned_training import EpisodeRecord
 from force_aware_act.experiments.paired_episode_subset import (
     PAIRED_EPISODE_SUBSET_VERSION,
+    SCRIPTED_BALANCED200_CATEGORIES,
+    SCRIPTED_BALANCED200_SELECTION_ALGORITHM,
     SCRIPTED_COLLECTION_METHOD,
     SCRIPTED_FIXED50_SELECTION_ALGORITHM,
     SCRIPTED_REPLAY_SUCCESS_STATUS,
     EpisodeSelectionFeatures,
     LoadedPairedEpisodeSubset,
+    build_scripted200_balanced_paired_manifest,
     build_scripted50_train_validation_manifest,
     extract_episode_selection_features,
     load_paired_episode_subset_manifest,
@@ -84,6 +87,34 @@ def _manifest_from_selection(records, features, selection):
             item.episode_id: item.to_dict() for item in features
         },
     }
+
+
+def _scripted200_records_and_features():
+    records = []
+    features = []
+    for category_index, category in enumerate(SCRIPTED_BALANCED200_CATEGORIES):
+        category_records, category_features = _records_and_features(100)
+        for record, feature in zip(category_records, category_features):
+            episode_id = f"{category}/{record.episode_id}"
+            records.append(
+                replace(
+                    record,
+                    episode_id=episode_id,
+                    relative_hdf5_path=(
+                        f"{category}/{record.relative_hdf5_path}"
+                    ),
+                )
+            )
+            features.append(
+                replace(
+                    feature,
+                    episode_id=episode_id,
+                    force_norm_mean=(
+                        feature.force_norm_mean + category_index * 5.0
+                    ),
+                )
+            )
+    return tuple(records), tuple(features)
 
 
 def test_selection_is_deterministic_disjoint_and_stratified():
@@ -230,6 +261,61 @@ def test_scripted50_manifest_builder_locks_collection_contract(tmp_path):
         SCRIPTED_REPLAY_SUCCESS_STATUS
     )
     validate.assert_called_once_with(manifest, data_root=tmp_path)
+
+
+def test_scripted200_manifest_builder_is_balanced_and_strict(tmp_path):
+    records, features = _scripted200_records_and_features()
+
+    with (
+        patch(
+            "force_aware_act.experiments.paired_episode_subset.discover_episodes",
+            return_value=records,
+        ),
+        patch(
+            "force_aware_act.experiments.paired_episode_subset."
+            "extract_episode_selection_features",
+            return_value=features,
+        ) as extract,
+        patch(
+            "force_aware_act.experiments.paired_episode_subset."
+            "validate_paired_episode_subset_manifest"
+        ) as validate,
+    ):
+        manifest = build_scripted200_balanced_paired_manifest(tmp_path, seed=13)
+
+    extract.assert_called_once_with(
+        tmp_path,
+        records,
+        expected_success_status=SCRIPTED_REPLAY_SUCCESS_STATUS,
+        expected_collection_method=SCRIPTED_COLLECTION_METHOD,
+    )
+    validate.assert_called_once_with(manifest, data_root=tmp_path)
+    assert manifest["selection"]["algorithm"] == (
+        SCRIPTED_BALANCED200_SELECTION_ALGORITHM
+    )
+    assert manifest["train_episode_count"] == 80
+    assert manifest["validation_episode_count"] == 20
+    assert manifest["holdout_episode_count"] == 100
+    validate_paired_episode_subset_manifest(manifest)
+
+    for category in SCRIPTED_BALANCED200_CATEGORIES:
+        assert sum(
+            item["relative_hdf5_path"].startswith(f"{category}/")
+            for item in manifest["train_episodes"]
+        ) == 40
+        assert sum(
+            item["relative_hdf5_path"].startswith(f"{category}/")
+            for item in manifest["validation_episodes"]
+        ) == 10
+        assert sum(
+            item["relative_hdf5_path"].startswith(f"{category}/")
+            for item in manifest["holdout_episodes"]
+        ) == 50
+
+    invalid = json.loads(json.dumps(manifest))
+    invalid["selection"]["category_names"] = ["clean_100"]
+    with pytest.raises(ValueError, match="category_names"):
+        validate_paired_episode_subset_manifest(invalid)
 
 
 def test_legacy_paired50_manifest_protocol_remains_valid():

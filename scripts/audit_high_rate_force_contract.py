@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Sequence
 
 import h5py
 import numpy as np
@@ -100,8 +101,16 @@ def audit_episode(path: Path) -> dict[str, object]:
     }
 
 
-def audit_collection(data_root: Path) -> dict[str, object]:
-    episode_paths = sorted(data_root.glob("*/episode.hdf5"))
+def audit_collection(
+    data_root: Path,
+    *,
+    episode_paths: Sequence[Path] | None = None,
+) -> dict[str, object]:
+    episode_paths = (
+        sorted(data_root.rglob("episode.hdf5"))
+        if episode_paths is None
+        else sorted(Path(path) for path in episode_paths)
+    )
     if not episode_paths:
         raise FileNotFoundError(f"no episode.hdf5 files found below {data_root}")
     episodes = [audit_episode(path) for path in episode_paths]
