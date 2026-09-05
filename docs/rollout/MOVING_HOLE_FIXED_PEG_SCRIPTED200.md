@@ -143,6 +143,33 @@ revised common 1200-step limit, final terminal-hold acceptance occurred at
 dense), and 21.860 s (Contact episodic).  Therefore 1200, rather than 900, is
 the frozen maximum for subsequent center-point and offset comparisons.
 
+## Fixed-target XZ cardinal pilot
+
+The collection target itself was not randomized: all 200 episode metadata
+records place `fixed_peg_fixture` at its nominal position.  The collision
+controller instead imposed 4, 6, 8, or 10 mm lateral error on the robot-carried
+socket trajectory.  Moving the fixed peg at rollout is therefore a distinct,
+local target-location distribution-shift test; the training radii must not be
+misreported as target-position augmentation.
+
+The first offset pilot uses only the lower 4 mm radius at four world-XZ
+cardinal points: `(+4,0)`, `(-4,0)`, `(0,+4)`, and `(0,-4)` mm.  Every point is
+paired across all four policies with seed 0 and the same 1200-step center-point
+contract, for 16 closed-loop rollouts.  The default remains plan-only:
+
+```bash
+PYTHONPATH=src python scripts/run_sampling_ablation_xz_cardinal_pilot.py
+```
+
+Closed-loop execution requires the explicit flag:
+
+```bash
+PYTHONPATH=src python scripts/run_sampling_ablation_xz_cardinal_pilot.py --execute
+```
+
+Only after this directional preflight should the target-position test expand
+to additional radii or angular sectors.
+
 Do not enable `--enable-axial-push`: it adds a controller action not present in
 either learned policy and would invalidate the four-arm comparison.  Do not use
 the legacy `pangu_all_right.xml`, `peg_ft_*`, `wall_task`, or wall-hole ring
