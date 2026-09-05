@@ -99,18 +99,41 @@ The audited dry-run produced image shape `(1, 2, 3, 480, 640)`, force-history
 shape `(1, 7, 20, 6)`, exact zero deployment latent, the expected object
 bindings, and no applied policy action.
 
-## Formal rollout choices still to freeze
+## Frozen nominal center-point pilot
 
-Before any closed-loop command is started, freeze these choices in the
-experiment record:
+The first closed-loop stage is one deterministic center-point rollout for each
+of the four trained policies.  The launcher freezes the following common
+contract:
 
-1. action execution rule and temporal decay (the offline secondary metric uses
-   official temporal aggregation with decay 0.01);
-2. rollout horizon and whether success stops immediately;
-3. nominal-only pilot versus an XZ fixed-peg offset point set;
-4. paired simulation seeds/repeats and the primary success/safety endpoint;
-5. terminal-hold acceptance is required and is supplied by
-   `--terminal-hold-mode collector` through the task profile.
+- order: Official ACT episodic, Official ACT dense, Contact-CVAE dense,
+  Contact-CVAE episodic;
+- seed 0, fixed-target offset `(0, 0, 0)` m, maximum 900 policy steps (30 s);
+- official temporal aggregation with decay 0.01, a fresh query every 30 Hz
+  policy step, absolute joint-position actions, 0.02 rad per-step delta clip,
+  and no additional EMA (`alpha=1`);
+- zero deployment latent for Contact-CVAE (Official ACT has no deployment
+  latent);
+- collector terminal-hold acceptance, 40 N hard stop, physics-rate raw and
+  compensated force metrics, and both policy-camera videos;
+- no axial-push controller and no holdout-dataset evaluation.
+
+Plan-only inspection is the default and creates no rollout directory:
+
+```bash
+PYTHONPATH=src python scripts/run_sampling_ablation_nominal_rollout_pilot.py
+```
+
+The user starts the closed-loop pilot explicitly with:
+
+```bash
+PYTHONPATH=src python scripts/run_sampling_ablation_nominal_rollout_pilot.py --execute
+```
+
+The launcher runs the four models sequentially, rejects pre-existing per-model
+output directories rather than overwriting them, checks each completed summary
+against the frozen contract, and updates `aggregate.csv` after every completed
+model.  Only after reviewing this center-point pilot should an XZ offset grid
+and repeat count be frozen for the formal comparison.
 
 Do not enable `--enable-axial-push`: it adds a controller action not present in
 either learned policy and would invalidate the four-arm comparison.  Do not use
