@@ -8,10 +8,11 @@ from dataclasses import dataclass
 import numpy as np
 
 
-ROLLOUT_PROTOCOL_VERSION = "task_profile_wrench_contract_rollout_v4"
+ROLLOUT_PROTOCOL_VERSION = "collector_terminal_hold_rollout_v5"
 POLICY_STEP_SCHEDULER_VERSION = "cumulative_round_policy_clock_v1"
 CONTROL_POSTPROCESS_VERSION = "joint_target_delta_clip_ema_ctrlrange_v1"
 TASK_SUCCESS_VERSION = "collector_site_distance_force_speed_dwell_v2"
+TERMINAL_HOLD_VERSION = "collector_adaptive_terminal_hold_v1"
 
 DEFAULT_POLICY_RATE_HZ = 30.0
 DEFAULT_MAX_ROLLOUT_STEPS = 600
@@ -207,6 +208,206 @@ class TaskSuccessTracker:
             accumulated_time=self.accumulated_time,
             success=self.success,
             just_succeeded=just_succeeded,
+        )
+
+
+@dataclass(frozen=True)
+class TerminalHoldUpdate:
+    active: bool
+    stable: bool
+    force_over: bool
+    elapsed_time: float
+    stable_time: float
+    force_over_time: float
+    complete: bool
+    success: bool
+    reason: str
+    just_completed: bool
+
+
+class TerminalHoldTracker:
+    """Mirror the collector's adaptive post-success acceptance state machine."""
+
+    version = TERMINAL_HOLD_VERSION
+
+    def __init__(
+        self,
+        *,
+        min_time: float,
+        stable_dwell_time: float,
+        max_time: float,
+        max_force_norm: float,
+        max_lateral_force: float,
+        force_abort_dwell_time: float,
+        stable_max_force_norm: float,
+        stable_max_lateral_force: float,
+        stable_max_arm_speed: float,
+    ) -> None:
+        finite_nonnegative = (
+            ("min_time", min_time),
+            ("stable_dwell_time", stable_dwell_time),
+            ("max_time", max_time),
+            ("force_abort_dwell_time", force_abort_dwell_time),
+        )
+        for name, value in finite_nonnegative:
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        for name, value in (
+            ("max_force_norm", max_force_norm),
+            ("max_lateral_force", max_lateral_force),
+            ("stable_max_force_norm", stable_max_force_norm),
+            ("stable_max_lateral_force", stable_max_lateral_force),
+            ("stable_max_arm_speed", stable_max_arm_speed),
+        ):
+            if math.isnan(value) or value <= 0.0:
+                raise ValueError(f"{name} must be positive and not NaN")
+        if max_time < min_time:
+            raise ValueError("max_time must be greater than or equal to min_time")
+
+        self.min_time = float(min_time)
+        self.stable_dwell_time = float(stable_dwell_time)
+        self.max_time = float(max_time)
+        self.max_force_norm = float(max_force_norm)
+        self.max_lateral_force = float(max_lateral_force)
+        self.force_abort_dwell_time = float(force_abort_dwell_time)
+        self.stable_max_force_norm = float(stable_max_force_norm)
+        self.stable_max_lateral_force = float(stable_max_lateral_force)
+        self.stable_max_arm_speed = float(stable_max_arm_speed)
+        self.active = False
+        self.complete = False
+        self.success = False
+        self.reason = ""
+        self.start_time: float | None = None
+        self.stable_start_time: float | None = None
+        self.force_over_start_time: float | None = None
+        self.last_time: float | None = None
+        self.elapsed_time = 0.0
+        self.stable_time = 0.0
+        self.force_over_time = 0.0
+        self.max_stable_time = 0.0
+        self.max_force_over_time = 0.0
+
+    def start(self, timestamp: float) -> None:
+        if not math.isfinite(timestamp):
+            raise ValueError("timestamp must be finite")
+        if self.active or self.complete:
+            raise RuntimeError("terminal hold can only be started once")
+        self.active = True
+        self.start_time = float(timestamp)
+        self.last_time = float(timestamp)
+
+    def update(
+        self,
+        *,
+        timestamp: float,
+        force_norm: float,
+        lateral_force: float,
+        arm_speed: float,
+    ) -> TerminalHoldUpdate:
+        if not self.active or self.start_time is None:
+            raise RuntimeError("terminal hold must be started before update")
+        if not math.isfinite(timestamp):
+            raise ValueError("timestamp must be finite")
+        if self.last_time is not None and timestamp < self.last_time:
+            raise ValueError("timestamps must be monotonically non-decreasing")
+
+        if self.complete:
+            return self._result(
+                stable=False,
+                force_over=False,
+                just_completed=False,
+            )
+
+        values_finite = all(
+            math.isfinite(value)
+            for value in (force_norm, lateral_force, arm_speed)
+        )
+        force_over = bool(
+            values_finite
+            and (
+                force_norm > self.max_force_norm
+                or lateral_force > self.max_lateral_force
+            )
+        )
+        stable = bool(
+            values_finite
+            and force_norm <= self.stable_max_force_norm
+            and lateral_force <= self.stable_max_lateral_force
+            and arm_speed <= self.stable_max_arm_speed
+        )
+        now = float(timestamp)
+        self.elapsed_time = now - self.start_time
+
+        if force_over:
+            if self.force_over_start_time is None:
+                self.force_over_start_time = now
+            self.force_over_time = now - self.force_over_start_time
+        else:
+            self.force_over_start_time = None
+            self.force_over_time = 0.0
+        self.max_force_over_time = max(
+            self.max_force_over_time,
+            self.force_over_time,
+        )
+
+        if stable:
+            if self.stable_start_time is None:
+                self.stable_start_time = now
+            self.stable_time = now - self.stable_start_time
+        else:
+            self.stable_start_time = None
+            self.stable_time = 0.0
+        self.max_stable_time = max(self.max_stable_time, self.stable_time)
+
+        just_completed = False
+        tolerance = 1.0e-12
+        # This ordering is deliberate and matches the collector: force abort,
+        # stable acceptance, then timeout.
+        if self.force_over_time + tolerance >= self.force_abort_dwell_time:
+            self.complete = True
+            self.success = False
+            self.reason = "force_limit"
+            just_completed = True
+        elif (
+            self.elapsed_time + tolerance >= self.min_time
+            and stable
+            and self.stable_time + tolerance >= self.stable_dwell_time
+        ):
+            self.complete = True
+            self.success = True
+            self.reason = "stable"
+            just_completed = True
+        elif self.elapsed_time + tolerance >= self.max_time:
+            self.complete = True
+            self.success = False
+            self.reason = "stability_timeout"
+            just_completed = True
+
+        self.last_time = now
+        return self._result(
+            stable=stable,
+            force_over=force_over,
+            just_completed=just_completed,
+        )
+
+    def _result(
+        self,
+        *,
+        stable: bool,
+        force_over: bool,
+        just_completed: bool,
+    ) -> TerminalHoldUpdate:
+        return TerminalHoldUpdate(
+            active=self.active,
+            stable=stable,
+            force_over=force_over,
+            elapsed_time=self.elapsed_time,
+            stable_time=self.stable_time,
+            force_over_time=self.force_over_time,
+            complete=self.complete,
+            success=self.success,
+            reason=self.reason,
+            just_completed=just_completed,
         )
 
 

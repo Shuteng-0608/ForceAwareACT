@@ -49,11 +49,14 @@ from force_aware_act.inference.rollout_protocol import (
     POLICY_STEP_SCHEDULER_VERSION,
     ROLLOUT_PROTOCOL_VERSION,
     TASK_SUCCESS_VERSION,
+    TERMINAL_HOLD_VERSION,
     CumulativePolicyStepScheduler,
     JointPositionPostprocessResult,
     JointPositionPostprocessor,
     TaskSuccessTracker,
     TaskSuccessUpdate,
+    TerminalHoldTracker,
+    TerminalHoldUpdate,
 )
 
 __all__ = [
@@ -101,7 +104,10 @@ __all__ = [
     "TemporalAggregationResult",
     "TemporalEndpointActionChunkExecutor",
     "TASK_SUCCESS_VERSION",
+    "TERMINAL_HOLD_VERSION",
     "TaskSuccessTracker",
     "TaskSuccessUpdate",
+    "TerminalHoldTracker",
+    "TerminalHoldUpdate",
     "checkpoint_uses_rollout_adapter",
 ]

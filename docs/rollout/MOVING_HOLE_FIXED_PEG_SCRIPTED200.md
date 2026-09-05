@@ -61,10 +61,15 @@ This profile binds all scene-dependent values together:
 - rollout hard stop: 40 N compensated force, an intentionally conservative
   deployment guard shared by all four policies.
 
-The collector subsequently performs an adaptive 0.5--2.0 s terminal hold and
-can reject an episode if hold force is unstable.  The current policy runner
-stops at the first continuously stable task-success event; its `task_success`
-must therefore not be described as the collector's final manual acceptance.
+After the initial 0.10 s success dwell, the policy runner mirrors the
+collector's adaptive terminal hold.  It blends over 0.20 s from the last
+applied command to an inverse-dynamics, gravity-compensated static position
+target.  Final acceptance requires at least 0.50 s total hold and 0.25 s of
+continuous stability under the same 5 N / 3 N / 0.10 rad/s gates.  Continuous
+hold force above 8 N or lateral force above 5 N for 0.05 s rejects the rollout;
+failure to stabilize within 2.0 s also rejects it.  The summary records the
+initial `task_success_site_reached` event separately from final
+`terminal_hold_accepted` / `task_success`.
 
 Legacy output names such as `hole_offset_*` are retained for compatibility,
 but under this profile they mean the requested **fixed-target/peg** offset.
@@ -83,6 +88,7 @@ policy step without applying the predicted action:
 MUJOCO_GL=egl PYTHONPATH=src python scripts/run_mujoco_policy_rollout.py \
   --checkpoint outputs/moving_hole_fixed_peg_scripted200/sampling_ablation_b16_earlystop/03_contact_cvae_dense_seed0/best.pt \
   --task-profile moving_hole_fixed_peg \
+  --terminal-hold-mode collector \
   --contact-latent-mode zero \
   --max-rollout-steps 1 \
   --device cuda \
@@ -103,8 +109,8 @@ experiment record:
 2. rollout horizon and whether success stops immediately;
 3. nominal-only pilot versus an XZ fixed-peg offset point set;
 4. paired simulation seeds/repeats and the primary success/safety endpoint;
-5. whether the collector's terminal-hold acceptance is required in addition
-   to the policy runner's stable task-success event.
+5. terminal-hold acceptance is required and is supplied by
+   `--terminal-hold-mode collector` through the task profile.
 
 Do not enable `--enable-axial-push`: it adds a controller action not present in
 either learned policy and would invalidate the four-arm comparison.  Do not use

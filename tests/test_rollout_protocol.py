@@ -14,9 +14,11 @@ from force_aware_act.inference import (
     POLICY_STEP_SCHEDULER_VERSION,
     ROLLOUT_PROTOCOL_VERSION,
     TASK_SUCCESS_VERSION,
+    TERMINAL_HOLD_VERSION,
     CumulativePolicyStepScheduler,
     JointPositionPostprocessor,
     TaskSuccessTracker,
+    TerminalHoldTracker,
 )
 from scripts.run_mujoco_policy_rollout import (
     SUMMARY_REQUIRED_KEYS,
@@ -86,6 +88,89 @@ def test_task_success_resets_dwell_after_distance_failure():
     assert restarted.consecutive_observations == 1
     assert restarted.accumulated_time == 0.0
     assert not restarted.success
+
+
+def _terminal_hold_tracker() -> TerminalHoldTracker:
+    return TerminalHoldTracker(
+        min_time=0.5,
+        stable_dwell_time=0.25,
+        max_time=2.0,
+        max_force_norm=8.0,
+        max_lateral_force=5.0,
+        force_abort_dwell_time=0.05,
+        stable_max_force_norm=5.0,
+        stable_max_lateral_force=3.0,
+        stable_max_arm_speed=0.10,
+    )
+
+
+def test_terminal_hold_accepts_only_after_minimum_and_stable_dwell():
+    tracker = _terminal_hold_tracker()
+    tracker.start(10.0)
+    tracker.update(
+        timestamp=10.0, force_norm=4.0, lateral_force=2.0, arm_speed=0.05
+    )
+
+    before = tracker.update(
+        timestamp=10.49, force_norm=4.0, lateral_force=2.0, arm_speed=0.05
+    )
+    accepted = tracker.update(
+        timestamp=10.50, force_norm=4.0, lateral_force=2.0, arm_speed=0.05
+    )
+
+    assert not before.complete
+    assert accepted.complete and accepted.success
+    assert accepted.reason == "stable"
+    assert accepted.just_completed
+    assert accepted.stable_time == pytest.approx(0.50)
+
+
+def test_terminal_hold_resets_stability_but_allows_later_acceptance():
+    tracker = _terminal_hold_tracker()
+    tracker.start(0.0)
+    tracker.update(timestamp=0.0, force_norm=4.0, lateral_force=2.0, arm_speed=0.05)
+    tracker.update(timestamp=0.30, force_norm=4.0, lateral_force=2.0, arm_speed=0.11)
+    restarted = tracker.update(
+        timestamp=0.40, force_norm=4.0, lateral_force=2.0, arm_speed=0.05
+    )
+    accepted = tracker.update(
+        timestamp=0.65, force_norm=4.0, lateral_force=2.0, arm_speed=0.05
+    )
+
+    assert restarted.stable_time == 0.0
+    assert accepted.complete and accepted.success
+
+
+def test_terminal_hold_aborts_after_continuous_over_force_dwell():
+    tracker = _terminal_hold_tracker()
+    tracker.start(0.0)
+    tracker.update(timestamp=0.10, force_norm=8.1, lateral_force=1.0, arm_speed=0.0)
+    transient = tracker.update(
+        timestamp=0.149, force_norm=8.1, lateral_force=1.0, arm_speed=0.0
+    )
+    aborted = tracker.update(
+        timestamp=0.150, force_norm=8.1, lateral_force=1.0, arm_speed=0.0
+    )
+
+    assert not transient.complete
+    assert aborted.complete and not aborted.success
+    assert aborted.reason == "force_limit"
+
+
+def test_terminal_hold_transient_over_force_resets_and_timeout_rejects():
+    tracker = _terminal_hold_tracker()
+    tracker.start(0.0)
+    tracker.update(timestamp=0.10, force_norm=8.1, lateral_force=1.0, arm_speed=0.0)
+    reset = tracker.update(
+        timestamp=0.14, force_norm=6.0, lateral_force=4.0, arm_speed=0.11
+    )
+    timed_out = tracker.update(
+        timestamp=2.0, force_norm=6.0, lateral_force=4.0, arm_speed=0.11
+    )
+
+    assert reset.force_over_time == 0.0
+    assert timed_out.complete and not timed_out.success
+    assert timed_out.reason == "stability_timeout"
 
 
 def test_default_postprocessor_has_no_ema_and_applies_safety_delta_clip():
@@ -173,10 +258,12 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.force_hud_width == 1280
     assert args.force_hud_height == 720
     assert args.force_hud_primary_wrench == "compensated"
-    assert ROLLOUT_PROTOCOL_VERSION == "task_profile_wrench_contract_rollout_v4"
+    assert args.terminal_hold_mode == "disabled"
+    assert ROLLOUT_PROTOCOL_VERSION == "collector_terminal_hold_rollout_v5"
     assert POLICY_STEP_SCHEDULER_VERSION
     assert CONTROL_POSTPROCESS_VERSION
     assert TASK_SUCCESS_VERSION
+    assert TERMINAL_HOLD_VERSION
 
 
 def test_task_success_requires_force_lateral_force_and_speed_gates():
@@ -236,6 +323,14 @@ def test_moving_hole_profile_matches_collector_contract():
     assert args.success_lateral_threshold is None
     assert args.success_max_lateral_force == 3.0
     assert args.success_max_arm_speed == 0.10
+    assert args.terminal_hold_mode == "collector"
+    assert args.terminal_hold_min_time == 0.5
+    assert args.terminal_hold_stable_dwell_time == 0.25
+    assert args.terminal_hold_max_time == 2.0
+    assert args.terminal_hold_max_force_norm == 8.0
+    assert args.terminal_hold_max_lateral_force == 5.0
+    assert args.terminal_hold_force_abort_dwell_time == 0.05
+    assert args.terminal_hold_blend_time == 0.2
     assert args.task_profile_contract.sensor_names == (
         "hole_ft_force",
         "hole_ft_torque",
@@ -290,6 +385,10 @@ def test_rollout_csv_schema_contains_protocol_diagnostics():
         "ema_modified",
         "ctrlrange_clip_applied",
         "success_hold_time",
+        "task_success_site_reached",
+        "terminal_hold_active",
+        "terminal_hold_complete",
+        "terminal_hold_reason",
         "action_executor_version",
         "policy_queried",
         "policy_inference_time_ms",

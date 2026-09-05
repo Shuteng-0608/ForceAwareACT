@@ -46,6 +46,7 @@ from force_aware_act.inference import (  # noqa: E402
     POLICY_STEP_SCHEDULER_VERSION,
     ROLLOUT_PROTOCOL_VERSION,
     TASK_SUCCESS_VERSION,
+    TERMINAL_HOLD_VERSION,
     CumulativePolicyStepScheduler,
     HighRateForceRingBuffer,
     JointPositionPostprocessor,
@@ -55,6 +56,7 @@ from force_aware_act.inference import (  # noqa: E402
     RolloutPolicyAdapter,
     SignedAgeTemporalActionChunkExecutor,
     TaskSuccessTracker,
+    TerminalHoldTracker,
     TemporalEndpointActionChunkExecutor,
     checkpoint_uses_rollout_adapter,
 )
@@ -102,6 +104,14 @@ class RolloutTaskProfile:
     success_max_lateral_force: float
     success_max_arm_speed: float
     force_stop_threshold: float
+    terminal_hold_mode: str
+    terminal_hold_min_time: float
+    terminal_hold_stable_dwell_time: float
+    terminal_hold_max_time: float
+    terminal_hold_max_force_norm: float
+    terminal_hold_max_lateral_force: float
+    terminal_hold_force_abort_dwell_time: float
+    terminal_hold_blend_time: float
 
 
 TASK_PROFILES = {
@@ -122,6 +132,14 @@ TASK_PROFILES = {
         success_max_lateral_force=float("inf"),
         success_max_arm_speed=float("inf"),
         force_stop_threshold=DEFAULT_FORCE_STOP_THRESHOLD,
+        terminal_hold_mode="disabled",
+        terminal_hold_min_time=0.0,
+        terminal_hold_stable_dwell_time=0.0,
+        terminal_hold_max_time=0.0,
+        terminal_hold_max_force_norm=float("inf"),
+        terminal_hold_max_lateral_force=float("inf"),
+        terminal_hold_force_abort_dwell_time=0.05,
+        terminal_hold_blend_time=0.0,
     ),
     "moving_hole_fixed_peg": RolloutTaskProfile(
         name="moving_hole_fixed_peg",
@@ -143,6 +161,14 @@ TASK_PROFILES = {
         success_max_lateral_force=3.0,
         success_max_arm_speed=0.10,
         force_stop_threshold=40.0,
+        terminal_hold_mode="collector",
+        terminal_hold_min_time=0.5,
+        terminal_hold_stable_dwell_time=0.25,
+        terminal_hold_max_time=2.0,
+        terminal_hold_max_force_norm=8.0,
+        terminal_hold_max_lateral_force=5.0,
+        terminal_hold_force_abort_dwell_time=0.05,
+        terminal_hold_blend_time=0.2,
     ),
 }
 PUBLIC_INITIAL = np.asarray([-0.046, -0.2, 0.0, 1.6, -1.32, 0.005, 0.005])
@@ -177,6 +203,7 @@ SUMMARY_REQUIRED_KEYS = (
     "policy_step_scheduler_version",
     "control_postprocess_version",
     "task_success_version",
+    "terminal_hold_version",
     "task_profile",
     "task_site_names",
     "task_body_names",
@@ -276,6 +303,25 @@ SUMMARY_REQUIRED_KEYS = (
     "success_lateral_threshold_role",
     "success_force_threshold_role",
     "success_stop_enabled",
+    "task_success_site_reached",
+    "task_success_site_reached_step",
+    "task_success_site_reached_time",
+    "terminal_hold_mode",
+    "terminal_hold_entered",
+    "terminal_hold_accepted",
+    "terminal_hold_completion_reason",
+    "terminal_hold_completion_time",
+    "terminal_hold_elapsed_time",
+    "terminal_hold_stable_time_max",
+    "terminal_hold_force_over_time_max",
+    "terminal_hold_min_time",
+    "terminal_hold_stable_dwell_time",
+    "terminal_hold_max_time",
+    "terminal_hold_max_force_norm",
+    "terminal_hold_max_lateral_force",
+    "terminal_hold_force_abort_dwell_time",
+    "terminal_hold_blend_time",
+    "terminal_hold_command_semantics",
     "stop_reason",
     "steps_executed",
     "final_time",
@@ -907,6 +953,38 @@ def _success_stability_diagnostics(
     }
 
 
+def _gravity_compensated_hold_command(
+    mujoco,
+    model,
+    data,
+    *,
+    joint_ids: np.ndarray,
+    actuator_ids: np.ndarray,
+    qpos: np.ndarray,
+) -> np.ndarray:
+    """Port the collector's inverse-dynamics position-actuator hold target."""
+    joint_qposadr = np.asarray(model.jnt_qposadr[joint_ids], dtype=np.int64)
+    joint_dofadr = np.asarray(model.jnt_dofadr[joint_ids], dtype=np.int64)
+    target_qpos = np.asarray(qpos, dtype=np.float64)
+    if target_qpos.shape != joint_qposadr.shape:
+        raise ValueError("hold qpos shape must match controlled joints")
+
+    inverse_data = mujoco.MjData(model)
+    inverse_data.qpos[:] = data.qpos
+    inverse_data.qpos[joint_qposadr] = target_qpos
+    inverse_data.qvel[:] = 0.0
+    inverse_data.qacc[:] = 0.0
+    mujoco.mj_forward(model, inverse_data)
+    inverse_force = np.zeros(model.nv, dtype=np.float64)
+    mujoco.mj_rne(model, inverse_data, 0, inverse_force)
+
+    command = target_qpos.copy()
+    gains = np.asarray(model.actuator_gainprm[actuator_ids, 0], dtype=np.float64)
+    valid = np.abs(gains) > 1.0e-9
+    command[valid] += inverse_force[joint_dofadr[valid]] / gains[valid]
+    return command
+
+
 def _save_snapshots(snapshot_dir: Path, step: int, frames: np.ndarray) -> None:
     from PIL import Image
 
@@ -1414,6 +1492,16 @@ def _fieldnames(include_force_hud: bool = False) -> list[str]:
             "success_arm_speed",
             "success_hold_counter",
             "success_hold_time",
+            "task_success_site_reached",
+            "terminal_hold_active",
+            "terminal_hold_stable",
+            "terminal_hold_force_over",
+            "terminal_hold_elapsed_time",
+            "terminal_hold_stable_time",
+            "terminal_hold_force_over_time",
+            "terminal_hold_complete",
+            "terminal_hold_success",
+            "terminal_hold_reason",
             "stop_reason",
         ]
     )
@@ -1789,6 +1877,21 @@ def run_rollout(args: argparse.Namespace) -> int:
         max_arm_speed=args.success_max_arm_speed,
         force_axis_world=args.success_force_axis_world,
     )
+    terminal_hold_tracker = (
+        TerminalHoldTracker(
+            min_time=args.terminal_hold_min_time,
+            stable_dwell_time=args.terminal_hold_stable_dwell_time,
+            max_time=args.terminal_hold_max_time,
+            max_force_norm=args.terminal_hold_max_force_norm,
+            max_lateral_force=args.terminal_hold_max_lateral_force,
+            force_abort_dwell_time=args.terminal_hold_force_abort_dwell_time,
+            stable_max_force_norm=args.success_max_force_norm,
+            stable_max_lateral_force=args.success_max_lateral_force,
+            stable_max_arm_speed=args.success_max_arm_speed,
+        )
+        if args.terminal_hold_mode == "collector"
+        else None
+    )
     wrench_resolver = PolicyWrenchResolver(
         mj_model,
         sensor_names=task_profile.sensor_names,
@@ -1950,6 +2053,13 @@ def run_rollout(args: argparse.Namespace) -> int:
     success = False
     success_step: Optional[int] = None
     success_time: Optional[float] = None
+    task_success_site_reached = False
+    task_success_site_reached_step: Optional[int] = None
+    task_success_site_reached_time: Optional[float] = None
+    terminal_hold_command_start: Optional[np.ndarray] = None
+    terminal_hold_command_goal: Optional[np.ndarray] = None
+    terminal_hold_completion_time: Optional[float] = None
+    terminal_hold_last_update = None
     force_stop_time: Optional[float] = None
     safety_hold_applied = False
     initial_task: Optional[dict[str, np.ndarray | float]] = None
@@ -1963,6 +2073,61 @@ def run_rollout(args: argparse.Namespace) -> int:
     force_hud_video_writer = None
     force_hud_video_frame_count = 0
     force_metric_interval_peaks = []
+
+    def start_terminal_hold(*, timestamp: float, step: int) -> None:
+        nonlocal task_success_site_reached
+        nonlocal task_success_site_reached_step
+        nonlocal task_success_site_reached_time
+        nonlocal terminal_hold_command_start
+        nonlocal terminal_hold_command_goal
+        if task_success_site_reached:
+            return
+        task_success_site_reached = True
+        task_success_site_reached_step = int(step)
+        task_success_site_reached_time = float(timestamp)
+        if terminal_hold_tracker is None:
+            return
+        terminal_hold_tracker.start(float(timestamp))
+        terminal_hold_command_start = np.asarray(
+            data.ctrl[actuator_ids], dtype=np.float64
+        ).copy()
+        qpos_now = np.asarray(data.qpos[joint_qposadr], dtype=np.float64)
+        terminal_hold_command_goal = np.clip(
+            _gravity_compensated_hold_command(
+                mujoco,
+                mj_model,
+                data,
+                joint_ids=joint_ids,
+                actuator_ids=actuator_ids,
+                qpos=qpos_now,
+            ),
+            control_ranges[:, 0],
+            control_ranges[:, 1],
+        )
+
+    def apply_terminal_hold_command(timestamp: float) -> Optional[np.ndarray]:
+        if (
+            terminal_hold_tracker is None
+            or not terminal_hold_tracker.active
+            or terminal_hold_command_start is None
+            or terminal_hold_command_goal is None
+        ):
+            return None
+        elapsed = max(0.0, float(timestamp) - float(terminal_hold_tracker.start_time))
+        blend_time = max(args.terminal_hold_blend_time, 1.0e-6)
+        alpha = min(1.0, elapsed / blend_time)
+        hold_command = (
+            (1.0 - alpha) * terminal_hold_command_start
+            + alpha * terminal_hold_command_goal
+        )
+        hold_command = np.clip(
+            hold_command,
+            control_ranges[:, 0],
+            control_ranges[:, 1],
+        )
+        if args.execute_actions:
+            data.ctrl[actuator_ids] = hold_command
+        return hold_command
 
     try:
         if args.save_videos:
@@ -2090,9 +2255,11 @@ def run_rollout(args: argparse.Namespace) -> int:
             success_hold_counter = success_update.consecutive_observations
             success_hold_time = success_update.accumulated_time
             if success_update.just_succeeded:
-                success = True
-                success_step = step
-                success_time = float(data.time)
+                start_terminal_hold(timestamp=float(data.time), step=step)
+                if terminal_hold_tracker is None:
+                    success = True
+                    success_step = step
+                    success_time = float(data.time)
             if adapter is None:
                 qpos_tensor = normalize_tensor(
                     torch.from_numpy(qpos).to(inference_device).unsqueeze(0),
@@ -2478,7 +2645,9 @@ def run_rollout(args: argparse.Namespace) -> int:
                     ctrlrange_clip_applied_steps += int(ctrlrange_clip_applied)
 
             if args.execute_actions and not row_stop_reason:
-                data.ctrl[actuator_ids] = ctrl_clipped_action
+                hold_command = apply_terminal_hold_command(float(data.time))
+                if hold_command is None:
+                    data.ctrl[actuator_ids] = ctrl_clipped_action
             qcmd = np.asarray(data.ctrl[actuator_ids], dtype=np.float64).copy()
             policy_step_compute_time_ms = (
                 time.perf_counter() - policy_step_compute_start
@@ -2599,6 +2768,50 @@ def run_rollout(args: argparse.Namespace) -> int:
                 **success_stability,
                 "success_hold_counter": success_hold_counter,
                 "success_hold_time": success_hold_time,
+                "task_success_site_reached": task_success_site_reached,
+                "terminal_hold_active": bool(
+                    terminal_hold_tracker is not None
+                    and terminal_hold_tracker.active
+                    and not terminal_hold_tracker.complete
+                ),
+                "terminal_hold_stable": (
+                    terminal_hold_last_update.stable
+                    if terminal_hold_last_update is not None
+                    else False
+                ),
+                "terminal_hold_force_over": (
+                    terminal_hold_last_update.force_over
+                    if terminal_hold_last_update is not None
+                    else False
+                ),
+                "terminal_hold_elapsed_time": (
+                    terminal_hold_tracker.elapsed_time
+                    if terminal_hold_tracker is not None
+                    else 0.0
+                ),
+                "terminal_hold_stable_time": (
+                    terminal_hold_tracker.stable_time
+                    if terminal_hold_tracker is not None
+                    else 0.0
+                ),
+                "terminal_hold_force_over_time": (
+                    terminal_hold_tracker.force_over_time
+                    if terminal_hold_tracker is not None
+                    else 0.0
+                ),
+                "terminal_hold_complete": bool(
+                    terminal_hold_tracker is not None
+                    and terminal_hold_tracker.complete
+                ),
+                "terminal_hold_success": bool(
+                    terminal_hold_tracker is not None
+                    and terminal_hold_tracker.success
+                ),
+                "terminal_hold_reason": (
+                    terminal_hold_tracker.reason
+                    if terminal_hold_tracker is not None
+                    else ""
+                ),
                 "stop_reason": row_stop_reason,
             }
             row.update({f"qpos_{index}": float(value) for index, value in enumerate(qpos)})
@@ -2777,6 +2990,7 @@ def run_rollout(args: argparse.Namespace) -> int:
             physics_task_success = False
             interval_peak_force_norm = force_norm
             for _ in range(scheduled_physics_steps_this_policy):
+                apply_terminal_hold_command(float(data.time))
                 mujoco.mj_step(mj_model, data)
                 executed_physics_steps += 1
                 sampled_raw_wrench = _read_wrench(
@@ -2844,27 +3058,104 @@ def run_rollout(args: argparse.Namespace) -> int:
                     sampled_qvel,
                     args.success_force_axis_world,
                 )
-                physics_success_update = task_success_tracker.update(
-                    timestamp=float(data.time),
-                    distance=float(sampled_task["peg_to_hole_dist"]),
-                    force_world=sampled_success_force_world,
-                    arm_speed=sampled_success_stability["success_arm_speed"],
-                )
-                if physics_success_update.just_succeeded:
-                    success = True
-                    success_step = step
-                    success_time = float(data.time)
-                if success and args.success_stop_enabled:
+                physics_success_update = None
+                if not task_success_site_reached:
+                    physics_success_update = task_success_tracker.update(
+                        timestamp=float(data.time),
+                        distance=float(sampled_task["peg_to_hole_dist"]),
+                        force_world=sampled_success_force_world,
+                        arm_speed=sampled_success_stability["success_arm_speed"],
+                    )
+                    if physics_success_update.just_succeeded:
+                        start_terminal_hold(timestamp=float(data.time), step=step)
+                        if terminal_hold_tracker is None:
+                            success = True
+                            success_step = step
+                            success_time = float(data.time)
+
+                if terminal_hold_tracker is not None and terminal_hold_tracker.active:
+                    terminal_hold_last_update = terminal_hold_tracker.update(
+                        timestamp=float(data.time),
+                        force_norm=sampled_success_stability["success_force_norm"],
+                        lateral_force=sampled_success_stability[
+                            "success_lateral_force"
+                        ],
+                        arm_speed=sampled_success_stability["success_arm_speed"],
+                    )
+                    row.update(
+                        {
+                            "task_success_site_reached": task_success_site_reached,
+                            "terminal_hold_active": not terminal_hold_last_update.complete,
+                            "terminal_hold_stable": terminal_hold_last_update.stable,
+                            "terminal_hold_force_over": terminal_hold_last_update.force_over,
+                            "terminal_hold_elapsed_time": terminal_hold_last_update.elapsed_time,
+                            "terminal_hold_stable_time": terminal_hold_last_update.stable_time,
+                            "terminal_hold_force_over_time": (
+                                terminal_hold_last_update.force_over_time
+                            ),
+                            "terminal_hold_complete": terminal_hold_last_update.complete,
+                            "terminal_hold_success": terminal_hold_last_update.success,
+                            "terminal_hold_reason": terminal_hold_last_update.reason,
+                        }
+                    )
+                    if terminal_hold_last_update.just_completed:
+                        terminal_hold_completion_time = float(data.time)
+                        success = terminal_hold_last_update.success
+                        if success:
+                            success_step = step
+                            success_time = float(data.time)
+                            stop_reason = "terminal_hold_success"
+                        else:
+                            stop_reason = (
+                                "terminal_hold_"
+                                + terminal_hold_last_update.reason
+                            )
+                            if args.execute_actions:
+                                release_qpos = np.asarray(
+                                    data.qpos[joint_qposadr], dtype=np.float64
+                                )
+                                release_command = np.clip(
+                                    _gravity_compensated_hold_command(
+                                        mujoco,
+                                        mj_model,
+                                        data,
+                                        joint_ids=joint_ids,
+                                        actuator_ids=actuator_ids,
+                                        qpos=release_qpos,
+                                    ),
+                                    control_ranges[:, 0],
+                                    control_ranges[:, 1],
+                                )
+                                data.ctrl[actuator_ids] = release_command
+                                safety_hold_applied = True
+                                row["safety_hold_applied"] = True
+                                row.update(
+                                    {
+                                        f"safety_hold_ctrl_{index}": float(value)
+                                        for index, value in enumerate(release_command)
+                                    }
+                                )
+                        physics_task_success = True
+                        row["stop_reason"] = stop_reason
+                        row.update(sampled_success_stability)
+                        break
+
+                if (
+                    terminal_hold_tracker is None
+                    and success
+                    and args.success_stop_enabled
+                ):
                     physics_task_success = True
                     stop_reason = "success"
                     row["stop_reason"] = stop_reason
-                    row["success_condition"] = physics_success_update.condition
-                    row["success_hold_counter"] = (
-                        physics_success_update.consecutive_observations
-                    )
-                    row["success_hold_time"] = (
-                        physics_success_update.accumulated_time
-                    )
+                    if physics_success_update is not None:
+                        row["success_condition"] = physics_success_update.condition
+                        row["success_hold_counter"] = (
+                            physics_success_update.consecutive_observations
+                        )
+                        row["success_hold_time"] = (
+                            physics_success_update.accumulated_time
+                        )
                     row.update(sampled_success_stability)
                     if args.execute_actions:
                         hold_qpos = np.asarray(
@@ -3023,6 +3314,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         "policy_step_scheduler_version": POLICY_STEP_SCHEDULER_VERSION,
         "control_postprocess_version": CONTROL_POSTPROCESS_VERSION,
         "task_success_version": TASK_SUCCESS_VERSION,
+        "terminal_hold_version": TERMINAL_HOLD_VERSION,
         "task_profile": task_profile.name,
         "task_site_names": task_profile.task_site_names,
         "task_body_names": task_profile.task_body_names,
@@ -3249,6 +3541,62 @@ def run_rollout(args: argparse.Namespace) -> int:
             else "not_used_for_task_success"
         ),
         "success_stop_enabled": args.success_stop_enabled,
+        "task_success_site_reached": task_success_site_reached,
+        "task_success_site_reached_step": task_success_site_reached_step,
+        "task_success_site_reached_time": task_success_site_reached_time,
+        "terminal_hold_mode": args.terminal_hold_mode,
+        "terminal_hold_entered": bool(
+            terminal_hold_tracker is not None and terminal_hold_tracker.active
+        ),
+        "terminal_hold_accepted": bool(
+            terminal_hold_tracker is not None
+            and terminal_hold_tracker.complete
+            and terminal_hold_tracker.success
+        ),
+        "terminal_hold_completion_reason": (
+            terminal_hold_tracker.reason
+            if terminal_hold_tracker is not None
+            else "not_enabled"
+        ),
+        "terminal_hold_completion_time": terminal_hold_completion_time,
+        "terminal_hold_elapsed_time": (
+            terminal_hold_tracker.elapsed_time
+            if terminal_hold_tracker is not None
+            else 0.0
+        ),
+        "terminal_hold_stable_time_max": (
+            terminal_hold_tracker.max_stable_time
+            if terminal_hold_tracker is not None
+            else 0.0
+        ),
+        "terminal_hold_force_over_time_max": (
+            terminal_hold_tracker.max_force_over_time
+            if terminal_hold_tracker is not None
+            else 0.0
+        ),
+        "terminal_hold_min_time": args.terminal_hold_min_time,
+        "terminal_hold_stable_dwell_time": args.terminal_hold_stable_dwell_time,
+        "terminal_hold_max_time": args.terminal_hold_max_time,
+        "terminal_hold_max_force_norm": (
+            args.terminal_hold_max_force_norm
+            if np.isfinite(args.terminal_hold_max_force_norm)
+            else None
+        ),
+        "terminal_hold_max_lateral_force": (
+            args.terminal_hold_max_lateral_force
+            if np.isfinite(args.terminal_hold_max_lateral_force)
+            else None
+        ),
+        "terminal_hold_force_abort_dwell_time": (
+            args.terminal_hold_force_abort_dwell_time
+        ),
+        "terminal_hold_blend_time": args.terminal_hold_blend_time,
+        "terminal_hold_command_semantics": (
+            "blend_from_last_applied_command_to_inverse_dynamics_gravity_"
+            "compensated_static_position_target"
+            if args.terminal_hold_mode == "collector"
+            else "disabled"
+        ),
         "stop_reason": stop_reason,
         "steps_executed": len(rows),
         "final_time": float(data.time),
@@ -3388,6 +3736,7 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"policy_step_scheduler_version={POLICY_STEP_SCHEDULER_VERSION}")
     print(f"control_postprocess_version={CONTROL_POSTPROCESS_VERSION}")
     print(f"task_success_version={TASK_SUCCESS_VERSION}")
+    print(f"terminal_hold_version={TERMINAL_HOLD_VERSION}")
     print(f"task_profile={task_profile.name}")
     print(f"force_sensor_names={task_profile.sensor_names}")
     print(f"policy_wrench_source={args.policy_wrench_source}")
@@ -3548,6 +3897,16 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"success_distance_threshold={args.success_distance_threshold:.9g}")
     print(f"success_dwell_time={args.success_dwell_time:.9g}")
     print(f"success_stop_enabled={args.success_stop_enabled}")
+    print(f"task_success_site_reached={task_success_site_reached}")
+    print(f"task_success_site_reached_step={task_success_site_reached_step}")
+    print(f"task_success_site_reached_time={task_success_site_reached_time}")
+    print(f"terminal_hold_mode={args.terminal_hold_mode}")
+    print(f"terminal_hold_entered={summary['terminal_hold_entered']}")
+    print(f"terminal_hold_accepted={summary['terminal_hold_accepted']}")
+    print(
+        "terminal_hold_completion_reason="
+        f"{summary['terminal_hold_completion_reason']}"
+    )
     print(f"snapshots_saved={snapshots_saved}")
     if snapshots_saved:
         print(f"snapshot_dir={snapshot_dir}")
@@ -3694,6 +4053,21 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--disable-success-stop", action="store_true")
+    parser.add_argument(
+        "--terminal-hold-mode",
+        choices=("disabled", "collector"),
+        help=(
+            "Post-site-success acceptance behavior. Defaults to the audited "
+            "task profile; moving_hole_fixed_peg uses collector semantics."
+        ),
+    )
+    parser.add_argument("--terminal-hold-min-time", type=float)
+    parser.add_argument("--terminal-hold-stable-dwell-time", type=float)
+    parser.add_argument("--terminal-hold-max-time", type=float)
+    parser.add_argument("--terminal-hold-max-force-norm", type=float)
+    parser.add_argument("--terminal-hold-max-lateral-force", type=float)
+    parser.add_argument("--terminal-hold-force-abort-dwell-time", type=float)
+    parser.add_argument("--terminal-hold-blend-time", type=float)
     parser.add_argument("--hole-site-name")
     parser.add_argument("--hole-body-name")
     parser.add_argument("--hole-offset-x", type=float, default=0.0)
@@ -3779,6 +4153,19 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         args.hole_body_name = profile.offset_body_name
     if args.policy_wrench_source is None:
         args.policy_wrench_source = profile.policy_wrench_source
+    if args.terminal_hold_mode is None:
+        args.terminal_hold_mode = profile.terminal_hold_mode
+    for name in (
+        "terminal_hold_min_time",
+        "terminal_hold_stable_dwell_time",
+        "terminal_hold_max_time",
+        "terminal_hold_max_force_norm",
+        "terminal_hold_max_lateral_force",
+        "terminal_hold_force_abort_dwell_time",
+        "terminal_hold_blend_time",
+    ):
+        if getattr(args, name) is None:
+            setattr(args, name, getattr(profile, name))
     return args
 
 
@@ -3892,6 +4279,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if np.isnan(value) or value <= 0.0:
             print(f"error: --{name.replace('_', '-')} must be positive", file=sys.stderr)
             return 2
+    terminal_nonnegative = (
+        "terminal_hold_min_time",
+        "terminal_hold_stable_dwell_time",
+        "terminal_hold_max_time",
+        "terminal_hold_force_abort_dwell_time",
+        "terminal_hold_blend_time",
+    )
+    for name in terminal_nonnegative:
+        value = float(getattr(args, name))
+        if not np.isfinite(value) or value < 0.0:
+            print(
+                f"error: --{name.replace('_', '-')} must be finite and non-negative",
+                file=sys.stderr,
+            )
+            return 2
+    for name in (
+        "terminal_hold_max_force_norm",
+        "terminal_hold_max_lateral_force",
+    ):
+        value = float(getattr(args, name))
+        if np.isnan(value) or value <= 0.0:
+            print(f"error: --{name.replace('_', '-')} must be positive", file=sys.stderr)
+            return 2
+    if (
+        args.terminal_hold_mode == "collector"
+        and args.terminal_hold_max_time < args.terminal_hold_min_time
+    ):
+        print(
+            "error: --terminal-hold-max-time must be at least the minimum time",
+            file=sys.stderr,
+        )
+        return 2
     args.success_force_axis_world = np.asarray(
         args.success_force_axis_world, dtype=np.float64
     )
