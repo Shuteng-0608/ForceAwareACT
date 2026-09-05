@@ -107,7 +107,7 @@ contract:
 
 - order: Official ACT episodic, Official ACT dense, Contact-CVAE dense,
   Contact-CVAE episodic;
-- seed 0, fixed-target offset `(0, 0, 0)` m, maximum 900 policy steps (30 s);
+- seed 0, fixed-target offset `(0, 0, 0)` m, maximum 1200 policy steps (40 s);
 - official temporal aggregation with decay 0.01, a fresh query every 30 Hz
   policy step, absolute joint-position actions, 0.02 rad per-step delta clip,
   and no additional EMA (`alpha=1`);
@@ -134,6 +134,14 @@ output only when its completed summary matches the frozen contract, and refuses
 to overwrite incomplete or mismatched output.  It updates `aggregate.csv` after
 every completed model.  Only after reviewing this center-point pilot should an
 XZ offset grid and repeat count be frozen for the formal comparison.
+
+The initial 900-step pilot was retained as a horizon audit.  Both Official ACT
+variants were right-censored by the 30 s limit: episodic entered the 1 mm region
+only at the final two policy steps, while dense completed later.  Under the
+revised common 1200-step limit, final terminal-hold acceptance occurred at
+30.516 s (Official episodic), 36.552 s (Official dense), 21.773 s (Contact
+dense), and 21.860 s (Contact episodic).  Therefore 1200, rather than 900, is
+the frozen maximum for subsequent center-point and offset comparisons.
 
 Do not enable `--enable-axial-push`: it adds a controller action not present in
 either learned policy and would invalidate the four-arm comparison.  Do not use

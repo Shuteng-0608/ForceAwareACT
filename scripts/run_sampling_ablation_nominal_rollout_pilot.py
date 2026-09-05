@@ -17,7 +17,7 @@ from typing import Any, Optional, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT_SCRIPT = REPO_ROOT / "scripts" / "run_mujoco_policy_rollout.py"
-PILOT_VERSION = "sampling_ablation_nominal_center_pilot_v1"
+PILOT_VERSION = "sampling_ablation_nominal_center_pilot_v2"
 ROLLOUT_PROTOCOL_VERSION = "collector_terminal_hold_rollout_v5"
 DEFAULT_CHECKPOINT_ROOT = (
     REPO_ROOT
@@ -28,7 +28,7 @@ DEFAULT_CHECKPOINT_ROOT = (
 DEFAULT_OUTPUT_DIR = (
     REPO_ROOT
     / "runs"
-    / "moving_hole_fixed_peg_sampling_ablation_nominal_pilot_seed0"
+    / "moving_hole_fixed_peg_sampling_ablation_nominal_pilot_h1200_seed0"
 )
 MODEL_CONTRACTS = (
     (
@@ -249,7 +249,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
-    parser.add_argument("--max-rollout-steps", type=int, default=900)
+    parser.add_argument("--max-rollout-steps", type=int, default=1200)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--save-videos",

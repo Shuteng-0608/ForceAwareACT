@@ -7,6 +7,7 @@ from scripts.run_sampling_ablation_nominal_rollout_pilot import (
     build_rollout_command,
     build_specs,
     main,
+    parse_args,
     validate_completed_summary,
     validate_spec_files,
 )
@@ -51,6 +52,13 @@ def test_four_model_order_and_contracts_are_frozen(tmp_path):
         "dense_windows",
         "episodic_uniform",
     ]
+
+
+def test_default_horizon_avoids_observed_thirty_second_right_censoring():
+    args = parse_args([])
+
+    assert args.max_rollout_steps == 1200
+    assert args.output_dir.name.endswith("nominal_pilot_h1200_seed0")
 
 
 def test_plan_command_freezes_center_point_and_does_not_execute(tmp_path):
