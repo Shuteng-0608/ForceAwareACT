@@ -183,9 +183,7 @@ def validate_completed_summary(
         "action_select_mode": "temporal",
         "temporal_agg_decay": 0.01,
         "contact_latent_mode": "zero",
-        "deployment_latent_source": (
-            "none" if spec.model_id.startswith("official") else "zero"
-        ),
+        "deployment_latent_source": "zero",
         "policy_rate_hz": 30.0,
         "max_rollout_steps": args.max_rollout_steps,
         "ema_alpha": 1.0,
@@ -317,18 +315,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("plan_only=true; no rollout actions were executed")
         return 0
 
-    occupied = [
-        args.output_dir / spec.model_id
-        for spec in specs
-        if (args.output_dir / spec.model_id).exists()
-    ]
-    if occupied:
-        print(
-            "error: refusing to overwrite existing model output directories:\n- "
-            + "\n- ".join(str(path) for path in occupied),
-            file=sys.stderr,
-        )
-        return 2
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "pilot_plan.json").write_text(
         json.dumps(plan, indent=2, sort_keys=True) + "\n",
@@ -345,6 +331,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     rows: list[dict[str, Any]] = []
     for index, (spec, command) in enumerate(zip(specs, commands), start=1):
+        model_output_dir = args.output_dir / spec.model_id
+        summary_path = model_output_dir / "summary.json"
+        if model_output_dir.exists():
+            if not summary_path.is_file():
+                print(
+                    "error: refusing to overwrite incomplete model output "
+                    f"directory: {model_output_dir}",
+                    file=sys.stderr,
+                )
+                return 2
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            errors = validate_completed_summary(summary, args, spec)
+            if errors:
+                print(
+                    f"error: existing {spec.model_id} summary contract mismatch:\n- "
+                    + "\n- ".join(errors),
+                    file=sys.stderr,
+                )
+                return 2
+            rows.append(_aggregate_row(spec, summary))
+            _write_aggregate(args.output_dir / "aggregate.csv", rows)
+            print(
+                f"[{index}/{len(specs)}] reusing completed {spec.model_id}",
+                flush=True,
+            )
+            continue
         print(f"[{index}/{len(specs)}] starting {spec.model_id}", flush=True)
         completed = subprocess.run(command, cwd=REPO_ROOT, env=environment)
         if completed.returncode != 0:
@@ -353,7 +365,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 file=sys.stderr,
             )
             return completed.returncode
-        summary_path = args.output_dir / spec.model_id / "summary.json"
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         errors = validate_completed_summary(summary, args, spec)
         if errors:

@@ -130,6 +130,37 @@ def test_summary_validator_requires_terminal_hold_and_force_metrics(tmp_path):
     assert "terminal_hold_mode" in validate_completed_summary(summary, args, spec)[0]
 
 
+def test_official_summary_uses_explicit_zero_mode_for_uniform_adapter(tmp_path):
+    args = _args(tmp_path, execute=True)
+    spec = build_specs(args.checkpoint_root)[0]
+    summary = {
+        "rollout_protocol_version": "collector_terminal_hold_rollout_v5",
+        "checkpoint": str(spec.checkpoint.resolve()),
+        "rollout_mode": "execute",
+        "task_profile": "moving_hole_fixed_peg",
+        "policy_wrench_source": "compensated",
+        "terminal_hold_mode": "collector",
+        "seed": 0,
+        "action_mode": "joint_pos",
+        "action_select_mode": "temporal",
+        "temporal_agg_decay": 0.01,
+        "contact_latent_mode": "zero",
+        "deployment_latent_source": "zero",
+        "policy_rate_hz": 30.0,
+        "max_rollout_steps": 900,
+        "ema_alpha": 1.0,
+        "max_delta_q": 0.02,
+        "force_stop_threshold": 40.0,
+        "safe_force_threshold": 40.0,
+        "hole_offset_x": 0.0,
+        "hole_offset_y": 0.0,
+        "hole_offset_z": 0.0,
+        "force_metrics_recorded": True,
+    }
+
+    assert validate_completed_summary(summary, args, spec) == []
+
+
 def test_main_defaults_to_plan_only_without_creating_output(tmp_path, capsys):
     _make_specs(tmp_path)
     output_dir = tmp_path / "planned-output"

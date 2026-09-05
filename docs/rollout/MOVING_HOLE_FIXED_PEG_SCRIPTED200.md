@@ -129,11 +129,11 @@ The user starts the closed-loop pilot explicitly with:
 PYTHONPATH=src python scripts/run_sampling_ablation_nominal_rollout_pilot.py --execute
 ```
 
-The launcher runs the four models sequentially, rejects pre-existing per-model
-output directories rather than overwriting them, checks each completed summary
-against the frozen contract, and updates `aggregate.csv` after every completed
-model.  Only after reviewing this center-point pilot should an XZ offset grid
-and repeat count be frozen for the formal comparison.
+The launcher runs the four models sequentially, reuses a pre-existing model
+output only when its completed summary matches the frozen contract, and refuses
+to overwrite incomplete or mismatched output.  It updates `aggregate.csv` after
+every completed model.  Only after reviewing this center-point pilot should an
+XZ offset grid and repeat count be frozen for the formal comparison.
 
 Do not enable `--enable-axial-push`: it adds a controller action not present in
 either learned policy and would invalidate the four-arm comparison.  Do not use
