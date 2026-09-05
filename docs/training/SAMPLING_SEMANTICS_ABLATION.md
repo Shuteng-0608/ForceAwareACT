@@ -177,6 +177,48 @@ interruption, and its checkpoint lineage audit also passes.  These validation
 numbers are useful for checkpoint selection only: they are not the final
 holdout comparison.
 
+## Unified four-arm offline evaluation
+
+Use `scripts/evaluate_sampling_ablation.py` instead of running independent
+two-model comparisons.  It evaluates the same ordered timestep windows for all
+four frozen checkpoints, always uses the deployment zero latent, and reports:
+
+- the primary all-valid-action-chunk physical L1 and horizons 1/10/25/50/100;
+- official temporal aggregation with the frozen decay 0.01 as a secondary
+  metric;
+- Contact-CVAE endpoint and native-rate wrench errors;
+- clean/collision episode-stratified results;
+- all six paired model comparisons and the model-by-sampling interaction;
+- paired episode bootstrap 95% intervals, checkpoint hashes, and the dataset
+  fingerprint.
+
+The evaluator requires `--split` explicitly.  Holdout additionally requires
+`--confirm-holdout-evaluation`, which prevents a validation smoke test from
+accidentally consuming the untouched test set.  A safe preflight is:
+
+```bash
+ROOT=outputs/moving_hole_fixed_peg_scripted200/sampling_ablation_b16_earlystop
+PYTHONPATH=src python scripts/evaluate_sampling_ablation.py "$DATA_ROOT" \
+  --experiment-manifest "$MANIFEST" \
+  --official-episodic-checkpoint "$ROOT/01_official_act_episodic_seed0/best_policy.pt" \
+  --official-dense-checkpoint "$ROOT/02_official_act_dense_seed0/best_policy.pt" \
+  --contact-dense-checkpoint "$ROOT/03_contact_cvae_dense_seed0/best.pt" \
+  --contact-episodic-checkpoint "$ROOT/04_contact_cvae_episodic_seed0/best.pt" \
+  --split validation \
+  --max-samples 16 \
+  --output-dir "$ROOT/evaluation/validation_smoke16" \
+  --device cuda \
+  --batch-size 4 \
+  --num-workers 0 \
+  --bootstrap-resamples 100
+```
+
+After the rollout protocol and all analysis choices are frozen, the user may
+start the one-shot formal holdout run by removing `--max-samples`, selecting
+`--split holdout`, using a fresh output directory, and adding
+`--confirm-holdout-evaluation`.  Do not tune any model, execution rule, or
+threshold from the resulting holdout metrics.
+
 ## Acceptance checks before holdout evaluation
 
 For every arm:
