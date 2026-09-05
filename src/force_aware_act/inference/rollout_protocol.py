@@ -8,10 +8,10 @@ from dataclasses import dataclass
 import numpy as np
 
 
-ROLLOUT_PROTOCOL_VERSION = "paired_action_executor_rollout_v3"
+ROLLOUT_PROTOCOL_VERSION = "task_profile_wrench_contract_rollout_v4"
 POLICY_STEP_SCHEDULER_VERSION = "cumulative_round_policy_clock_v1"
 CONTROL_POSTPROCESS_VERSION = "joint_target_delta_clip_ema_ctrlrange_v1"
-TASK_SUCCESS_VERSION = "collector_site_distance_dwell_v1"
+TASK_SUCCESS_VERSION = "collector_site_distance_force_speed_dwell_v2"
 
 DEFAULT_POLICY_RATE_HZ = 30.0
 DEFAULT_MAX_ROLLOUT_STEPS = 600
@@ -76,17 +76,43 @@ class TaskSuccessUpdate:
 
 
 class TaskSuccessTracker:
-    """Match the collector's site-distance and continuous-dwell semantics."""
+    """Match collector distance, stability-gate, and continuous-dwell semantics."""
 
     version = TASK_SUCCESS_VERSION
 
-    def __init__(self, *, distance_threshold: float, dwell_time: float) -> None:
+    def __init__(
+        self,
+        *,
+        distance_threshold: float,
+        dwell_time: float,
+        max_force_norm: float = float("inf"),
+        max_lateral_force: float = float("inf"),
+        max_arm_speed: float = float("inf"),
+        force_axis_world=(0.0, 1.0, 0.0),
+    ) -> None:
         if not math.isfinite(distance_threshold) or distance_threshold <= 0.0:
             raise ValueError("distance_threshold must be finite and positive")
         if not math.isfinite(dwell_time) or dwell_time <= 0.0:
             raise ValueError("dwell_time must be finite and positive")
+        for name, value in (
+            ("max_force_norm", max_force_norm),
+            ("max_lateral_force", max_lateral_force),
+            ("max_arm_speed", max_arm_speed),
+        ):
+            if math.isnan(value) or value <= 0.0:
+                raise ValueError(f"{name} must be positive and not NaN")
+        force_axis = np.asarray(force_axis_world, dtype=np.float64)
+        if force_axis.shape != (3,) or not np.isfinite(force_axis).all():
+            raise ValueError("force_axis_world must be a finite 3-vector")
+        force_axis_norm = float(np.linalg.norm(force_axis))
+        if force_axis_norm <= 0.0:
+            raise ValueError("force_axis_world must be nonzero")
         self.distance_threshold = float(distance_threshold)
         self.dwell_time = float(dwell_time)
+        self.max_force_norm = float(max_force_norm)
+        self.max_lateral_force = float(max_lateral_force)
+        self.max_arm_speed = float(max_arm_speed)
+        self.force_axis_world = force_axis / force_axis_norm
         self.accumulated_time = 0.0
         self.max_accumulated_time = 0.0
         self.consecutive_observations = 0
@@ -95,14 +121,60 @@ class TaskSuccessTracker:
         self._previous_time: float | None = None
         self._previous_condition = False
 
-    def update(self, *, timestamp: float, distance: float) -> TaskSuccessUpdate:
+    def update(
+        self,
+        *,
+        timestamp: float,
+        distance: float,
+        force_world=None,
+        arm_speed: float | None = None,
+    ) -> TaskSuccessUpdate:
         if not math.isfinite(timestamp):
             raise ValueError("timestamp must be finite")
         if self._previous_time is not None and timestamp < self._previous_time:
             raise ValueError("timestamps must be monotonically non-decreasing")
-        condition = bool(
-            math.isfinite(distance) and distance <= self.distance_threshold
+        force_required = bool(
+            math.isfinite(self.max_force_norm)
+            or math.isfinite(self.max_lateral_force)
         )
+        if force_world is None:
+            force_ok = not force_required
+        else:
+            force = np.asarray(force_world, dtype=np.float64)
+            if force.shape != (3,) or not np.isfinite(force).all():
+                force_ok = False
+            else:
+                axial_force = float(np.dot(force, self.force_axis_world))
+                lateral_force = force - axial_force * self.force_axis_world
+                force_ok = bool(
+                    np.linalg.norm(force) <= self.max_force_norm
+                    and np.linalg.norm(lateral_force) <= self.max_lateral_force
+                )
+        speed_required = math.isfinite(self.max_arm_speed)
+        speed_ok = bool(
+            (arm_speed is not None and math.isfinite(arm_speed)
+             and arm_speed <= self.max_arm_speed)
+            if speed_required
+            else True
+        )
+        condition = bool(
+            math.isfinite(distance)
+            and distance <= self.distance_threshold
+            and force_ok
+            and speed_ok
+        )
+        if (
+            self._previous_time is not None
+            and timestamp == self._previous_time
+            and condition == self._previous_condition
+        ):
+            return TaskSuccessUpdate(
+                condition=condition,
+                consecutive_observations=self.consecutive_observations,
+                accumulated_time=self.accumulated_time,
+                success=self.success,
+                just_succeeded=False,
+            )
         if condition:
             self.consecutive_observations += 1
             if self._previous_condition and self._previous_time is not None:

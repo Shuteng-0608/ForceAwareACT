@@ -164,6 +164,7 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.success_distance_threshold == DEFAULT_SUCCESS_DISTANCE_THRESHOLD
     assert args.success_dwell_time == DEFAULT_SUCCESS_DWELL_TIME
     assert args.success_lateral_threshold is None
+    assert np.isinf(args.success_max_lateral_force)
     assert args.success_hold_steps is None
     assert args.receding_query_interval is None
     assert args.save_force_hud_video is False
@@ -172,10 +173,73 @@ def test_rollout_cli_defaults_match_standard_protocol():
     assert args.force_hud_width == 1280
     assert args.force_hud_height == 720
     assert args.force_hud_primary_wrench == "compensated"
-    assert ROLLOUT_PROTOCOL_VERSION == "paired_action_executor_rollout_v3"
+    assert ROLLOUT_PROTOCOL_VERSION == "task_profile_wrench_contract_rollout_v4"
     assert POLICY_STEP_SCHEDULER_VERSION
     assert CONTROL_POSTPROCESS_VERSION
     assert TASK_SUCCESS_VERSION
+
+
+def test_task_success_requires_force_lateral_force_and_speed_gates():
+    tracker = TaskSuccessTracker(
+        distance_threshold=0.001,
+        dwell_time=0.10,
+        max_force_norm=5.0,
+        max_lateral_force=3.0,
+        max_arm_speed=0.10,
+        force_axis_world=(0.0, 1.0, 0.0),
+    )
+
+    high_lateral = tracker.update(
+        timestamp=0.0,
+        distance=0.0005,
+        force_world=np.asarray([3.1, 0.0, 0.0]),
+        arm_speed=0.0,
+    )
+    high_speed = tracker.update(
+        timestamp=0.05,
+        distance=0.0005,
+        force_world=np.asarray([0.0, 1.0, 0.0]),
+        arm_speed=0.11,
+    )
+    stable = tracker.update(
+        timestamp=0.10,
+        distance=0.0005,
+        force_world=np.asarray([0.0, 4.0, 0.0]),
+        arm_speed=0.05,
+    )
+
+    assert not high_lateral.condition
+    assert not high_speed.condition
+    assert stable.condition
+    assert stable.accumulated_time == 0.0
+
+
+def test_moving_hole_profile_matches_collector_contract():
+    args = parse_args(
+        [
+            "--checkpoint",
+            "model.pt",
+            "--output-dir",
+            "rollout",
+            "--task-profile",
+            "moving_hole_fixed_peg",
+        ]
+    )
+
+    assert args.model_xml.name == "pangu_moving_hole_fixed_peg.xml"
+    assert args.hole_site_name == "fixed_peg_tip_site"
+    assert args.hole_body_name == "fixed_peg_fixture"
+    assert args.policy_wrench_source == "compensated"
+    assert args.force_stop_threshold == 40.0
+    assert args.success_distance_threshold == 0.001
+    assert args.success_max_force_norm == 5.0
+    assert args.success_lateral_threshold is None
+    assert args.success_max_lateral_force == 3.0
+    assert args.success_max_arm_speed == 0.10
+    assert args.task_profile_contract.sensor_names == (
+        "hole_ft_force",
+        "hole_ft_torque",
+    )
 
 
 def test_rollout_cli_accepts_explicit_receding_chunk_interval():

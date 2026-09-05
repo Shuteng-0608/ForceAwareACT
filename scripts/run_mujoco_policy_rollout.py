@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import sys
 import time
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence
 
@@ -80,6 +82,69 @@ DEFAULT_HOLE_BODY_NAME = "wall_task"
 EXPECTED_HOLE_GEOM_NAMES = tuple(
     f"wall_hole_ring_{index:02d}" for index in range(24)
 ) + ("hole_back_stop",)
+
+
+@dataclass(frozen=True)
+class RolloutTaskProfile:
+    name: str
+    model_xml: Path
+    sensor_names: tuple[str, str]
+    task_site_names: tuple[str, str]
+    task_body_names: tuple[str, str]
+    moving_site_index: int
+    offset_site_name: str
+    offset_body_name: str
+    expected_offset_geom_names: tuple[str, ...]
+    gravity_tool_body_names: tuple[str, ...]
+    policy_wrench_source: str
+    success_distance_threshold: float
+    success_max_force_norm: float
+    success_max_lateral_force: float
+    success_max_arm_speed: float
+    force_stop_threshold: float
+
+
+TASK_PROFILES = {
+    "legacy_moving_peg_fixed_hole": RolloutTaskProfile(
+        name="legacy_moving_peg_fixed_hole",
+        model_xml=REPO_ROOT.parent / "arm_teleop/model/pangu_all_right.xml",
+        sensor_names=SENSOR_NAMES,
+        task_site_names=TASK_SITE_NAMES,
+        task_body_names=TASK_BODY_NAMES,
+        moving_site_index=0,
+        offset_site_name=DEFAULT_HOLE_SITE_NAME,
+        offset_body_name=DEFAULT_HOLE_BODY_NAME,
+        expected_offset_geom_names=EXPECTED_HOLE_GEOM_NAMES,
+        gravity_tool_body_names=("peg_tool",),
+        policy_wrench_source="raw",
+        success_distance_threshold=DEFAULT_SUCCESS_DISTANCE_THRESHOLD,
+        success_max_force_norm=float("inf"),
+        success_max_lateral_force=float("inf"),
+        success_max_arm_speed=float("inf"),
+        force_stop_threshold=DEFAULT_FORCE_STOP_THRESHOLD,
+    ),
+    "moving_hole_fixed_peg": RolloutTaskProfile(
+        name="moving_hole_fixed_peg",
+        model_xml=(
+            REPO_ROOT.parent
+            / "arm_teleop/model/pangu_moving_hole_fixed_peg.xml"
+        ),
+        sensor_names=("hole_ft_force", "hole_ft_torque"),
+        task_site_names=("fixed_peg_tip_site", "hole_goal_site"),
+        task_body_names=("hole_tool", "fixed_peg_fixture"),
+        moving_site_index=1,
+        offset_site_name="fixed_peg_tip_site",
+        offset_body_name="fixed_peg_fixture",
+        expected_offset_geom_names=("fixed_cylindrical_peg",),
+        gravity_tool_body_names=("hole_tool",),
+        policy_wrench_source="compensated",
+        success_distance_threshold=0.001,
+        success_max_force_norm=5.0,
+        success_max_lateral_force=3.0,
+        success_max_arm_speed=0.10,
+        force_stop_threshold=40.0,
+    ),
+}
 PUBLIC_INITIAL = np.asarray([-0.046, -0.2, 0.0, 1.6, -1.32, 0.005, 0.005])
 ARM_SIGN = np.asarray([-1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0])
 ACTION_CHUNK_DIAGNOSTIC_NAMES = (
@@ -112,11 +177,17 @@ SUMMARY_REQUIRED_KEYS = (
     "policy_step_scheduler_version",
     "control_postprocess_version",
     "task_success_version",
+    "task_profile",
+    "task_site_names",
+    "task_body_names",
+    "force_sensor_names",
+    "policy_wrench_source",
     "output_dir",
     "seed",
     "checkpoint",
     "normalization_stats",
     "model_xml",
+    "model_xml_sha256",
     "inference_device",
     "rollout_mode",
     "action_mode",
@@ -196,6 +267,8 @@ SUMMARY_REQUIRED_KEYS = (
     "success_distance_threshold",
     "success_lateral_threshold",
     "success_force_threshold",
+    "success_max_lateral_force",
+    "success_max_arm_speed",
     "success_hold_steps",
     "success_dwell_time",
     "success_dwell_source",
@@ -255,6 +328,14 @@ def _resolve_inference_device(requested_device: str) -> torch.device:
     if requested_device == "cuda" and not cuda_available:
         raise RuntimeError("--device=cuda was requested, but CUDA is not available")
     return torch.device(requested_device)
+
+
+def _sha256_file(path: Path, block_size: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while block := handle.read(block_size):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _synchronize_inference_device(device: torch.device) -> None:
@@ -670,6 +751,73 @@ def _read_wrench(data, force_slice: slice, torque_slice: slice) -> np.ndarray:
     )
 
 
+class PolicyWrenchResolver:
+    """Resolve the exact sensor-frame wrench contract used by the dataset."""
+
+    def __init__(
+        self,
+        model,
+        *,
+        sensor_names: tuple[str, str],
+        gravity_tool_body_names: tuple[str, ...],
+        source: str,
+    ) -> None:
+        from force_aware_act.visualization.ft_wrench_utils import (
+            body_ids,
+            ft_sensor_site_id,
+        )
+
+        if source not in {"raw", "compensated"}:
+            raise ValueError(f"unsupported policy wrench source: {source!r}")
+        self.model = model
+        self.sensor_names = sensor_names
+        self.source = source
+        self.sensor_site_id = ft_sensor_site_id(
+            model,
+            force_sensor_name=sensor_names[0],
+            torque_sensor_name=sensor_names[1],
+        )
+        self.tool_body_ids = body_ids(model, gravity_tool_body_names)
+        if source == "compensated":
+            if self.sensor_site_id < 0:
+                raise ValueError("force/torque sensor site is unavailable")
+            if len(self.tool_body_ids) != len(gravity_tool_body_names):
+                raise ValueError(
+                    "gravity-compensation tool bodies are unavailable: "
+                    f"{gravity_tool_body_names}"
+                )
+
+    def sensor_frame(self, data, raw_wrench: np.ndarray) -> np.ndarray:
+        raw = np.asarray(raw_wrench, dtype=np.float64)
+        if raw.shape != (6,) or not np.isfinite(raw).all():
+            raise ValueError("raw wrench must be a finite 6-vector")
+        if self.source == "raw":
+            return raw.copy()
+        from force_aware_act.visualization.ft_wrench_utils import (
+            compensated_ft_wrench,
+            gravity_wrench_sensor_frame,
+        )
+
+        gravity = gravity_wrench_sensor_frame(
+            model=self.model,
+            data=data,
+            ft_site_id=self.sensor_site_id,
+            tool_body_ids=self.tool_body_ids,
+            gravity_world=self.model.opt.gravity,
+            sensor_sign=-1.0,
+        )
+        compensated = compensated_ft_wrench(raw, gravity, "gravity")
+        if compensated is None or not np.isfinite(compensated).all():
+            raise ValueError("gravity-compensated policy wrench is unavailable")
+        return np.asarray(compensated, dtype=np.float64)
+
+    def world_frame_force(self, data, sensor_wrench: np.ndarray) -> np.ndarray:
+        from force_aware_act.visualization.ft_wrench_utils import ft_sensor_pose_world
+
+        _, rotation_world_sensor = ft_sensor_pose_world(data, self.sensor_site_id)
+        return rotation_world_sensor @ np.asarray(sensor_wrench[:3], dtype=np.float64)
+
+
 def _render_images(
     renderer,
     data,
@@ -740,6 +888,22 @@ def _task_diagnostics(
         "peg_to_hole_lateral_error": lateral_error,
         "peg_tool": _position_or_nan(data.xpos, int(body_ids[0])),
         "wall_task": _position_or_nan(data.xpos, int(body_ids[1])),
+    }
+
+
+def _success_stability_diagnostics(
+    force_world: np.ndarray,
+    arm_qvel: np.ndarray,
+    force_axis_world: np.ndarray,
+) -> dict[str, float]:
+    force = np.asarray(force_world, dtype=np.float64)
+    axis = np.asarray(force_axis_world, dtype=np.float64)
+    axial = float(np.dot(force, axis))
+    lateral = force - axial * axis
+    return {
+        "success_force_norm": float(np.linalg.norm(force)),
+        "success_lateral_force": float(np.linalg.norm(lateral)),
+        "success_arm_speed": float(np.linalg.norm(arm_qvel)),
     }
 
 
@@ -1152,6 +1316,7 @@ def _fieldnames(include_force_hud: bool = False) -> list[str]:
     fields.extend(f"qpos_{index}" for index in range(7))
     fields.extend(f"qvel_{index}" for index in range(7))
     fields.extend(f"ft_{index}" for index in range(6))
+    fields.extend(f"raw_ft_{index}" for index in range(6))
     fields.extend(f"qcmd_{index}" for index in range(7))
     fields.extend(
         [
@@ -1244,6 +1409,9 @@ def _fieldnames(include_force_hud: bool = False) -> list[str]:
             "prior_vs_zero_action_mean_abs_diff",
             "prior_vs_zero_force_mean_abs_diff",
             "success_condition",
+            "success_force_norm",
+            "success_lateral_force",
+            "success_arm_speed",
             "success_hold_counter",
             "success_hold_time",
             "stop_reason",
@@ -1470,6 +1638,7 @@ def _resolve_checkpoint_contract(
 
 
 def run_rollout(args: argparse.Namespace) -> int:
+    task_profile: RolloutTaskProfile = args.task_profile_contract
     inference_device = _resolve_inference_device(args.device)
     cuda_available = torch.cuda.is_available()
     print(f"requested_device={args.device}")
@@ -1534,19 +1703,34 @@ def run_rollout(args: argparse.Namespace) -> int:
             )[0]
         )
     sensor_ids = _resolve_ids(
-        mujoco, mj_model, mujoco.mjtObj.mjOBJ_SENSOR, SENSOR_NAMES, "sensors"
+        mujoco,
+        mj_model,
+        mujoco.mjtObj.mjOBJ_SENSOR,
+        task_profile.sensor_names,
+        "sensors",
     )
-    task_site_names = (TASK_SITE_NAMES[0], args.hole_site_name)
     site_ids = _resolve_optional_ids(
-        mujoco, mj_model, mujoco.mjtObj.mjOBJ_SITE, task_site_names, "sites"
+        mujoco,
+        mj_model,
+        mujoco.mjtObj.mjOBJ_SITE,
+        task_profile.task_site_names,
+        "sites",
     )
     body_ids = _resolve_optional_ids(
-        mujoco, mj_model, mujoco.mjtObj.mjOBJ_BODY, TASK_BODY_NAMES, "bodies"
+        mujoco,
+        mj_model,
+        mujoco.mjtObj.mjOBJ_BODY,
+        task_profile.task_body_names,
+        "bodies",
     )
     joint_qposadr = np.asarray(mj_model.jnt_qposadr[joint_ids], dtype=np.int64)
     joint_dofadr = np.asarray(mj_model.jnt_dofadr[joint_ids], dtype=np.int64)
-    force_slice = _sensor_slice(mj_model, int(sensor_ids[0]), 3, SENSOR_NAMES[0])
-    torque_slice = _sensor_slice(mj_model, int(sensor_ids[1]), 3, SENSOR_NAMES[1])
+    force_slice = _sensor_slice(
+        mj_model, int(sensor_ids[0]), 3, task_profile.sensor_names[0]
+    )
+    torque_slice = _sensor_slice(
+        mj_model, int(sensor_ids[1]), 3, task_profile.sensor_names[1]
+    )
 
     internal_initial = PUBLIC_INITIAL * ARM_SIGN
     mujoco.mj_resetData(mj_model, data)
@@ -1560,7 +1744,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         mj_model,
         hole_body_id,
         hole_site_id,
-        EXPECTED_HOLE_GEOM_NAMES,
+        task_profile.expected_offset_geom_names,
     )
     hole_offset = np.asarray(
         [args.hole_offset_x, args.hole_offset_y, args.hole_offset_z],
@@ -1600,8 +1784,19 @@ def run_rollout(args: argparse.Namespace) -> int:
     task_success_tracker = TaskSuccessTracker(
         distance_threshold=args.success_distance_threshold,
         dwell_time=args.success_dwell_time,
+        max_force_norm=args.success_max_force_norm,
+        max_lateral_force=args.success_max_lateral_force,
+        max_arm_speed=args.success_max_arm_speed,
+        force_axis_world=args.success_force_axis_world,
     )
-    current_wrench = _read_wrench(data, force_slice, torque_slice)
+    wrench_resolver = PolicyWrenchResolver(
+        mj_model,
+        sensor_names=task_profile.sensor_names,
+        gravity_tool_body_names=task_profile.gravity_tool_body_names,
+        source=args.policy_wrench_source,
+    )
+    current_raw_wrench = _read_wrench(data, force_slice, torque_slice)
+    current_wrench = wrench_resolver.sensor_frame(data, current_raw_wrench)
     force_history: deque[tuple[float, np.ndarray]] = deque(
         [(float(data.time), current_wrench.copy())],
     )
@@ -1686,7 +1881,10 @@ def run_rollout(args: argparse.Namespace) -> int:
             force_hud_feedback_config,
             RolloutForceHUDConfig(
                 camera_name=args.force_hud_camera,
+                force_sensor_name=task_profile.sensor_names[0],
+                torque_sensor_name=task_profile.sensor_names[1],
                 primary_wrench=args.force_hud_primary_wrench,
+                gravity_tool_body_names=task_profile.gravity_tool_body_names,
                 gravity_world=tuple(
                     np.asarray(mj_model.opt.gravity, dtype=np.float64).tolist()
                 ),
@@ -1698,6 +1896,7 @@ def run_rollout(args: argparse.Namespace) -> int:
 
     rows: list[dict[str, object]] = []
     force_norm_history: list[float] = []
+    raw_force_norm_history: list[float] = []
     distance_history: list[tuple[int, float]] = []
     axial_error_history: list[tuple[int, float]] = []
     lateral_error_history: list[tuple[int, float]] = []
@@ -1782,7 +1981,12 @@ def run_rollout(args: argparse.Namespace) -> int:
             )
             qpos = np.asarray(data.qpos[joint_qposadr], dtype=np.float32).copy()
             qvel = np.asarray(data.qvel[joint_dofadr], dtype=np.float32).copy()
-            wrench = _read_wrench(data, force_slice, torque_slice).astype(np.float32)
+            raw_wrench = _read_wrench(
+                data, force_slice, torque_slice
+            ).astype(np.float32)
+            wrench = wrench_resolver.sensor_frame(
+                data, raw_wrench
+            ).astype(np.float32)
             force_norm = float(np.linalg.norm(wrench[:3]))
             force_hud_snapshot = None
             force_hud_frame_rgb = None
@@ -1790,7 +1994,7 @@ def run_rollout(args: argparse.Namespace) -> int:
             if force_hud_adapter is not None:
                 force_hud_snapshot = force_hud_adapter.update(
                     data,
-                    wrench,
+                    raw_wrench,
                     timestamp=float(data.time),
                 )
                 force_hud_peak_tracker = RolloutForceHUDIntervalPeakTracker(
@@ -1808,6 +2012,9 @@ def run_rollout(args: argparse.Namespace) -> int:
                     )
             if not force_norm_history:
                 force_norm_history.append(force_norm)
+                raw_force_norm_history.append(
+                    float(np.linalg.norm(raw_wrench[:3]))
+                )
             high_rate_tensors = None
             high_rate_window_span = float("nan")
             high_rate_latest_force_age = float("nan")
@@ -1867,9 +2074,17 @@ def run_rollout(args: argparse.Namespace) -> int:
             if initial_task is None:
                 initial_task = task
             final_task = task
+            success_force_world = wrench_resolver.world_frame_force(data, wrench)
+            success_stability = _success_stability_diagnostics(
+                success_force_world,
+                qvel,
+                args.success_force_axis_world,
+            )
             success_update = task_success_tracker.update(
                 timestamp=float(data.time),
                 distance=float(task["peg_to_hole_dist"]),
+                force_world=success_force_world,
+                arm_speed=success_stability["success_arm_speed"],
             )
             step_success_condition = success_update.condition
             success_hold_counter = success_update.consecutive_observations
@@ -2193,8 +2408,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                 )
             axial_push_active = bool(
                 args.enable_axial_push
-                and int(site_ids[0]) >= 0
-                and int(site_ids[1]) >= 0
+                and int(site_ids[task_profile.moving_site_index]) >= 0
                 and np.isfinite(float(task["peg_to_hole_dist"]))
                 and float(task["peg_to_hole_dist"]) <= args.axial_push_start_dist
                 and force_norm < args.axial_push_stop_force
@@ -2209,7 +2423,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                     mujoco,
                     mj_model,
                     data,
-                    int(site_ids[0]),
+                    int(site_ids[task_profile.moving_site_index]),
                     joint_dofadr,
                     axial_push_dx,
                 )
@@ -2382,6 +2596,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                     else ""
                 ),
                 "success_condition": step_success_condition,
+                **success_stability,
                 "success_hold_counter": success_hold_counter,
                 "success_hold_time": success_hold_time,
                 "stop_reason": row_stop_reason,
@@ -2390,6 +2605,12 @@ def run_rollout(args: argparse.Namespace) -> int:
             row.update({f"current_qpos_{index}": float(value) for index, value in enumerate(qpos)})
             row.update({f"qvel_{index}": float(value) for index, value in enumerate(qvel)})
             row.update({f"ft_{index}": float(value) for index, value in enumerate(wrench)})
+            row.update(
+                {
+                    f"raw_ft_{index}": float(value)
+                    for index, value in enumerate(raw_wrench)
+                }
+            )
             row.update({f"qcmd_{index}": float(value) for index, value in enumerate(qcmd)})
             row.update({f"applied_ctrl_{index}": float(value) for index, value in enumerate(qcmd)})
             row.update(
@@ -2553,11 +2774,17 @@ def run_rollout(args: argparse.Namespace) -> int:
 
             executed_physics_steps = 0
             physics_force_stop = False
+            physics_task_success = False
             interval_peak_force_norm = force_norm
             for _ in range(scheduled_physics_steps_this_policy):
                 mujoco.mj_step(mj_model, data)
                 executed_physics_steps += 1
-                sampled_wrench = _read_wrench(data, force_slice, torque_slice)
+                sampled_raw_wrench = _read_wrench(
+                    data, force_slice, torque_slice
+                )
+                sampled_wrench = wrench_resolver.sensor_frame(
+                    data, sampled_raw_wrench
+                )
                 force_history.append((float(data.time), sampled_wrench.copy()))
                 if high_rate_force_buffer is not None:
                     high_rate_force_buffer.observe_physics_step(
@@ -2566,11 +2793,14 @@ def run_rollout(args: argparse.Namespace) -> int:
                 if force_hud_peak_tracker is not None:
                     force_hud_peak_tracker.observe(
                         data,
-                        sampled_wrench,
+                        sampled_raw_wrench,
                         timestamp=float(data.time),
                     )
                 sampled_force_norm = float(np.linalg.norm(sampled_wrench[:3]))
                 force_norm_history.append(sampled_force_norm)
+                raw_force_norm_history.append(
+                    float(np.linalg.norm(sampled_raw_wrench[:3]))
+                )
                 interval_peak_force_norm = max(
                     interval_peak_force_norm,
                     sampled_force_norm,
@@ -2598,6 +2828,52 @@ def run_rollout(args: argparse.Namespace) -> int:
                                 f"safety_hold_ctrl_{index}": float(value)
                                 for index, value in enumerate(data.ctrl[actuator_ids])
                             }
+                        )
+                    break
+                sampled_task = _task_diagnostics(
+                    data, site_ids, body_ids, args.hole_axis_world
+                )
+                sampled_qvel = np.asarray(
+                    data.qvel[joint_dofadr], dtype=np.float64
+                )
+                sampled_success_force_world = wrench_resolver.world_frame_force(
+                    data, sampled_wrench
+                )
+                sampled_success_stability = _success_stability_diagnostics(
+                    sampled_success_force_world,
+                    sampled_qvel,
+                    args.success_force_axis_world,
+                )
+                physics_success_update = task_success_tracker.update(
+                    timestamp=float(data.time),
+                    distance=float(sampled_task["peg_to_hole_dist"]),
+                    force_world=sampled_success_force_world,
+                    arm_speed=sampled_success_stability["success_arm_speed"],
+                )
+                if physics_success_update.just_succeeded:
+                    success = True
+                    success_step = step
+                    success_time = float(data.time)
+                if success and args.success_stop_enabled:
+                    physics_task_success = True
+                    stop_reason = "success"
+                    row["stop_reason"] = stop_reason
+                    row["success_condition"] = physics_success_update.condition
+                    row["success_hold_counter"] = (
+                        physics_success_update.consecutive_observations
+                    )
+                    row["success_hold_time"] = (
+                        physics_success_update.accumulated_time
+                    )
+                    row.update(sampled_success_stability)
+                    if args.execute_actions:
+                        hold_qpos = np.asarray(
+                            data.qpos[joint_qposadr], dtype=np.float64
+                        )
+                        data.ctrl[actuator_ids] = np.clip(
+                            hold_qpos,
+                            control_ranges[:, 0],
+                            control_ranges[:, 1],
                         )
                     break
             row["physics_steps_this_policy"] = executed_physics_steps
@@ -2637,7 +2913,7 @@ def run_rollout(args: argparse.Namespace) -> int:
                         args.force_hud_height,
                     )
                     force_hud_video_frame_count += 1
-            if physics_force_stop:
+            if physics_force_stop or physics_task_success:
                 final_qcmd = np.asarray(
                     data.ctrl[actuator_ids],
                     dtype=np.float64,
@@ -2715,8 +2991,18 @@ def run_rollout(args: argparse.Namespace) -> int:
         and np.isfinite(max_force_norm)
         and max_force_norm <= args.safe_force_threshold
     )
-    compensated_max_force_norm = _finite_max(
-        [peak.compensated_force_norm for peak in force_metric_interval_peaks]
+    raw_max_force_norm = _finite_max(raw_force_norm_history)
+    safe_success_raw = bool(
+        success
+        and np.isfinite(raw_max_force_norm)
+        and raw_max_force_norm <= args.safe_force_threshold
+    )
+    compensated_max_force_norm = (
+        max_force_norm
+        if args.policy_wrench_source == "compensated"
+        else _finite_max(
+            [peak.compensated_force_norm for peak in force_metric_interval_peaks]
+        )
     )
     safe_success_compensated = bool(
         success
@@ -2724,7 +3010,12 @@ def run_rollout(args: argparse.Namespace) -> int:
         and compensated_max_force_norm <= args.safe_force_threshold
     )
     nominal_success_hold_steps = (
-        math.ceil(args.success_dwell_time * args.policy_rate_hz) + 1
+        math.ceil(args.success_dwell_time / float(mj_model.opt.timestep)) + 1
+    )
+    success_stability_gates_enabled = bool(
+        np.isfinite(args.success_max_force_norm)
+        or np.isfinite(args.success_max_lateral_force)
+        or np.isfinite(args.success_max_arm_speed)
     )
     summary_path = args.output_dir / "summary.json"
     summary = {
@@ -2732,6 +3023,11 @@ def run_rollout(args: argparse.Namespace) -> int:
         "policy_step_scheduler_version": POLICY_STEP_SCHEDULER_VERSION,
         "control_postprocess_version": CONTROL_POSTPROCESS_VERSION,
         "task_success_version": TASK_SUCCESS_VERSION,
+        "task_profile": task_profile.name,
+        "task_site_names": task_profile.task_site_names,
+        "task_body_names": task_profile.task_body_names,
+        "force_sensor_names": task_profile.sensor_names,
+        "policy_wrench_source": args.policy_wrench_source,
         "output_dir": args.output_dir,
         "seed": args.seed,
         "checkpoint": args.checkpoint,
@@ -2755,6 +3051,7 @@ def run_rollout(args: argparse.Namespace) -> int:
             )
         ),
         "model_xml": args.model_xml,
+        "model_xml_sha256": _sha256_file(args.model_xml),
         "inference_device": str(inference_device),
         "rollout_mode": "execute" if args.execute_actions else "dry_run",
         "action_mode": args.action_mode,
@@ -2907,7 +3204,7 @@ def run_rollout(args: argparse.Namespace) -> int:
         "success": success,
         "task_success": success,
         "safe_success": safe_success,
-        "safe_success_raw": safe_success,
+        "safe_success_raw": safe_success_raw,
         "safe_force_threshold": args.safe_force_threshold,
         "success_step": success_step,
         "success_time": success_time,
@@ -2917,18 +3214,46 @@ def run_rollout(args: argparse.Namespace) -> int:
         "success_hold_time_observed": task_success_tracker.max_accumulated_time,
         "success_distance_threshold": args.success_distance_threshold,
         "success_lateral_threshold": None,
-        "success_force_threshold": args.safe_force_threshold,
+        "success_force_threshold": (
+            args.success_max_force_norm
+            if np.isfinite(args.success_max_force_norm)
+            else None
+        ),
+        "success_max_lateral_force": (
+            args.success_max_lateral_force
+            if np.isfinite(args.success_max_lateral_force)
+            else None
+        ),
+        "success_max_arm_speed": (
+            args.success_max_arm_speed
+            if np.isfinite(args.success_max_arm_speed)
+            else None
+        ),
         "success_hold_steps": nominal_success_hold_steps,
         "success_dwell_time": args.success_dwell_time,
         "success_dwell_source": args.success_dwell_source,
-        "task_success_definition": "site_distance_le_threshold_continuous_dwell",
-        "success_lateral_threshold_role": "not_used_for_task_success",
-        "success_force_threshold_role": "safe_success_only",
+        "task_success_definition": (
+            "site_distance_and_compensated_world_force_and_arm_speed_"
+            "continuous_dwell"
+            if success_stability_gates_enabled
+            else "site_distance_continuous_dwell"
+        ),
+        "success_lateral_threshold_role": (
+            "task_success_gate"
+            if np.isfinite(args.success_max_lateral_force)
+            else "not_used_for_task_success"
+        ),
+        "success_force_threshold_role": (
+            "task_success_gate"
+            if np.isfinite(args.success_max_force_norm)
+            else "not_used_for_task_success"
+        ),
         "success_stop_enabled": args.success_stop_enabled,
         "stop_reason": stop_reason,
         "steps_executed": len(rows),
         "final_time": float(data.time),
         "max_force_norm": max_force_norm,
+        "max_raw_force_norm": raw_max_force_norm,
         "mean_force_norm": mean_force_norm,
         "initial_peg_tip_position": initial_task["peg_tip"],
         "final_peg_tip_position": final_task["peg_tip"],
@@ -2970,6 +3295,10 @@ def run_rollout(args: argparse.Namespace) -> int:
         "actual_hole_goal_position": hole_offset_metadata["actual_hole_goal_position"],
         "nominal_hole_body_local_position": hole_offset_metadata["nominal_hole_body_local_position"],
         "actual_hole_body_local_position": hole_offset_metadata["actual_hole_body_local_position"],
+        "offset_target_site_name": hole_offset_metadata["hole_site_name"],
+        "offset_target_body_name": hole_offset_metadata["hole_body_name"],
+        "requested_target_offset": hole_offset_metadata["requested_hole_offset"],
+        "actual_target_offset": hole_offset_metadata["actual_hole_offset"],
     }
     if force_metrics_enabled:
         summary.update(
@@ -3059,6 +3388,9 @@ def run_rollout(args: argparse.Namespace) -> int:
     print(f"policy_step_scheduler_version={POLICY_STEP_SCHEDULER_VERSION}")
     print(f"control_postprocess_version={CONTROL_POSTPROCESS_VERSION}")
     print(f"task_success_version={TASK_SUCCESS_VERSION}")
+    print(f"task_profile={task_profile.name}")
+    print(f"force_sensor_names={task_profile.sensor_names}")
+    print(f"policy_wrench_source={args.policy_wrench_source}")
     print(
         "policy_inference_time_ms="
         f"mean={inference_latency['mean']:.9g},"
@@ -3245,6 +3577,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run ForceAwareACT in a local MuJoCo environment.")
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument(
+        "--task-profile",
+        choices=tuple(TASK_PROFILES),
+        default="legacy_moving_peg_fixed_hole",
+        help=(
+            "Bind model objects, wrench semantics, offset target, and success "
+            "gates to one audited collection environment."
+        ),
+    )
+    parser.add_argument(
         "--normalization-stats",
         type=Path,
         help=(
@@ -3256,7 +3597,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--model-xml",
         type=Path,
-        default=Path("../arm_teleop/model/pangu_all_right.xml"),
     )
     parser.add_argument("--contact-latent-mode", choices=("zero", "prior"), default="zero")
     parser.add_argument("--action-mode", choices=ACTION_MODE_CHOICES, default="joint_pos")
@@ -3311,12 +3651,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--force-stop-threshold",
         type=float,
-        default=DEFAULT_FORCE_STOP_THRESHOLD,
     )
     parser.add_argument(
         "--success-distance-threshold",
         type=float,
-        default=DEFAULT_SUCCESS_DISTANCE_THRESHOLD,
     )
     parser.add_argument(
         "--success-dwell-time",
@@ -3328,7 +3666,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--success-force-threshold",
         dest="safe_force_threshold",
         type=float,
-        default=DEFAULT_SAFE_FORCE_THRESHOLD,
         help=(
             "Measured-force threshold for safe_success only. The legacy "
             "--success-force-threshold spelling remains an alias."
@@ -3337,7 +3674,16 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--success-lateral-threshold",
         type=float,
-        help="Deprecated and ignored; task success uses total site distance.",
+        help="Deprecated and ignored legacy geometric threshold.",
+    )
+    parser.add_argument("--success-max-force-norm", type=float)
+    parser.add_argument("--success-max-lateral-force", type=float)
+    parser.add_argument("--success-max-arm-speed", type=float)
+    parser.add_argument(
+        "--success-force-axis-world",
+        type=float,
+        nargs=3,
+        default=(0.0, 1.0, 0.0),
     )
     parser.add_argument(
         "--success-hold-steps",
@@ -3348,12 +3694,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--disable-success-stop", action="store_true")
-    parser.add_argument("--hole-site-name", default=DEFAULT_HOLE_SITE_NAME)
-    parser.add_argument("--hole-body-name", default=DEFAULT_HOLE_BODY_NAME)
+    parser.add_argument("--hole-site-name")
+    parser.add_argument("--hole-body-name")
     parser.add_argument("--hole-offset-x", type=float, default=0.0)
     parser.add_argument("--hole-offset-y", type=float, default=0.0)
     parser.add_argument("--hole-offset-z", type=float, default=0.0)
     parser.add_argument("--hole-offset-frame", choices=("world", "body"), default="world")
+    parser.add_argument(
+        "--policy-wrench-source",
+        choices=("raw", "compensated"),
+        help="Sensor-frame wrench passed to force-aware policies.",
+    )
     parser.add_argument("--enable-axial-push", action="store_true")
     parser.add_argument("--axial-push-speed", type=float, default=0.0)
     parser.add_argument("--axial-push-start-dist", type=float, default=0.05)
@@ -3405,7 +3756,30 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default="compensated",
     )
     parser.add_argument("--seed", type=int, default=0)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    profile = TASK_PROFILES[args.task_profile]
+    args.task_profile_contract = profile
+    if args.model_xml is None:
+        args.model_xml = profile.model_xml
+    if args.force_stop_threshold is None:
+        args.force_stop_threshold = profile.force_stop_threshold
+    if args.success_distance_threshold is None:
+        args.success_distance_threshold = profile.success_distance_threshold
+    if args.safe_force_threshold is None:
+        args.safe_force_threshold = DEFAULT_SAFE_FORCE_THRESHOLD
+    if args.success_max_force_norm is None:
+        args.success_max_force_norm = profile.success_max_force_norm
+    if args.success_max_lateral_force is None:
+        args.success_max_lateral_force = profile.success_max_lateral_force
+    if args.success_max_arm_speed is None:
+        args.success_max_arm_speed = profile.success_max_arm_speed
+    if args.hole_site_name is None:
+        args.hole_site_name = profile.offset_site_name
+    if args.hole_body_name is None:
+        args.hole_body_name = profile.offset_body_name
+    if args.policy_wrench_source is None:
+        args.policy_wrench_source = profile.policy_wrench_source
+    return args
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -3428,7 +3802,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.success_lateral_threshold is not None:
         print(
             "warning: --success-lateral-threshold is deprecated and ignored; "
-            "task success uses total site distance and dwell time",
+            "use --success-max-lateral-force for the force gate",
             file=sys.stderr,
         )
     for key in ("checkpoint", "model_xml"):
@@ -3509,6 +3883,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
+    for name in (
+        "success_max_force_norm",
+        "success_max_lateral_force",
+        "success_max_arm_speed",
+    ):
+        value = float(getattr(args, name))
+        if np.isnan(value) or value <= 0.0:
+            print(f"error: --{name.replace('_', '-')} must be positive", file=sys.stderr)
+            return 2
+    args.success_force_axis_world = np.asarray(
+        args.success_force_axis_world, dtype=np.float64
+    )
+    success_force_axis_norm = float(np.linalg.norm(args.success_force_axis_world))
+    if (
+        not np.isfinite(args.success_force_axis_world).all()
+        or success_force_axis_norm <= 0.0
+    ):
+        print(
+            "error: --success-force-axis-world must be a finite nonzero vector",
+            file=sys.stderr,
+        )
+        return 2
+    args.success_force_axis_world = (
+        args.success_force_axis_world / success_force_axis_norm
+    )
     args.success_stop_enabled = not args.disable_success_stop
     hole_offset = np.asarray(
         [args.hole_offset_x, args.hole_offset_y, args.hole_offset_z],

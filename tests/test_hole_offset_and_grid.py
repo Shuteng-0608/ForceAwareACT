@@ -22,6 +22,8 @@ from scripts.run_mujoco_hole_grid import (
     wilson_ci,
 )
 from scripts.run_mujoco_policy_rollout import (
+    TASK_PROFILES,
+    PolicyWrenchResolver,
     SUMMARY_REQUIRED_KEYS,
     apply_hole_body_offset,
     resolve_hole_body,
@@ -164,6 +166,85 @@ def test_wrong_body_produces_clear_error_without_fallback():
             site_id,
             expected_hole_geom_names=("hole_geom",),
         )
+
+
+def test_moving_hole_profile_offsets_fixed_peg_without_moving_robot_hole():
+    mujoco = _load_mujoco()
+    profile = TASK_PROFILES["moving_hole_fixed_peg"]
+    model = mujoco.MjModel.from_xml_path(str(profile.model_xml))
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    fixed_tip_id = resolve_named_site(model, profile.offset_site_name)
+    hole_goal_id = resolve_named_site(model, "hole_goal_site")
+    fixed_body_id = resolve_hole_body(
+        model, fixed_tip_id, profile.offset_body_name
+    )
+    nominal_fixed_tip = data.site_xpos[fixed_tip_id].copy()
+    nominal_hole_goal = data.site_xpos[hole_goal_id].copy()
+
+    structure = validate_hole_assembly_structure(
+        model,
+        fixed_body_id,
+        fixed_tip_id,
+        profile.expected_offset_geom_names,
+    )
+    metadata = apply_hole_body_offset(
+        model,
+        data,
+        fixed_body_id,
+        fixed_tip_id,
+        np.asarray([0.001, 0.0, -0.002]),
+        "world",
+    )
+
+    assert structure["hole_body_name"] == "fixed_peg_fixture"
+    assert structure["hole_geom_names"] == ["fixed_cylindrical_peg"]
+    np.testing.assert_allclose(
+        data.site_xpos[fixed_tip_id] - nominal_fixed_tip,
+        [0.001, 0.0, -0.002],
+        atol=1e-9,
+    )
+    np.testing.assert_allclose(data.site_xpos[hole_goal_id], nominal_hole_goal)
+    np.testing.assert_allclose(
+        metadata["actual_hole_offset"], [0.001, 0.0, -0.002], atol=1e-9
+    )
+
+
+def test_moving_hole_profile_resolves_dataset_gravity_compensated_wrench():
+    mujoco = _load_mujoco()
+    profile = TASK_PROFILES["moving_hole_fixed_peg"]
+    model = mujoco.MjModel.from_xml_path(str(profile.model_xml))
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    sensor_ids = [
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, name)
+        for name in profile.sensor_names
+    ]
+    force_slice = slice(
+        int(model.sensor_adr[sensor_ids[0]]),
+        int(model.sensor_adr[sensor_ids[0]]) + 3,
+    )
+    torque_slice = slice(
+        int(model.sensor_adr[sensor_ids[1]]),
+        int(model.sensor_adr[sensor_ids[1]]) + 3,
+    )
+    raw = np.concatenate(
+        [data.sensordata[force_slice], data.sensordata[torque_slice]]
+    )
+    resolver = PolicyWrenchResolver(
+        model,
+        sensor_names=profile.sensor_names,
+        gravity_tool_body_names=profile.gravity_tool_body_names,
+        source="compensated",
+    )
+
+    compensated = resolver.sensor_frame(data, raw)
+    world_force = resolver.world_frame_force(data, compensated)
+
+    assert compensated.shape == (6,)
+    assert world_force.shape == (3,)
+    assert np.isfinite(compensated).all()
+    assert np.isfinite(world_force).all()
 
 
 def test_summary_required_keys_include_hole_offset_metadata():
