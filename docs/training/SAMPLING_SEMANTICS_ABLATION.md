@@ -219,6 +219,48 @@ start the one-shot formal holdout run by removing `--max-samples`, selecting
 `--confirm-holdout-evaluation`.  Do not tune any model, execution rule, or
 threshold from the resulting holdout metrics.
 
+### Completed validation audit
+
+The unified evaluator is versioned
+`scripted200_sampling_ablation_all_timesteps_v2`.  Version 1 incorrectly fed
+images already normalized by the shared high-rate dataset into Official ACT,
+whose policy performs ImageNet normalization internally.  This double
+normalization affected only the Official ACT arms.  Version 1 output
+directories must not be used for model comparison.
+
+The corrected full validation run evaluated all 20 validation episodes and
+12,641 timestep windows with deployment-zero latents.  Its primary and
+secondary action metrics are:
+
+| arm | all-chunk physical L1 | temporal physical L1 |
+| --- | ---: | ---: |
+| Official ACT / episodic | 0.0023619782 | 0.0018696601 |
+| Official ACT / dense | 0.0025896796 | 0.0021914625 |
+| Contact-CVAE / dense | 0.0026402107 | 0.0024914698 |
+| Contact-CVAE / episodic | 0.0026680049 | 0.0025079681 |
+
+The corrected primary values reproduce all four best-checkpoint validation
+metrics (the largest absolute discrepancy is below `5e-9`).  Within Official
+ACT, episodic sampling is better on 19 of 20 episodes; the episode-equal
+`dense - episodic` difference is `0.00022642`, with paired bootstrap 95% CI
+`[0.00014960, 0.00031731]`.  Within Contact-CVAE, dense is better on 15 of 20
+episodes, but the difference is small and its CI crosses zero: `0.00003253`,
+95% CI `[-0.00012590, 0.00017017]`.
+
+The clean/collision episode-equal primary metrics show why only a paired,
+stratified comparison is appropriate:
+
+| arm | clean | collision |
+| --- | ---: | ---: |
+| Official ACT / episodic | 0.00084764 | 0.00380352 |
+| Official ACT / dense | 0.00100148 | 0.00410251 |
+| Contact-CVAE / dense | 0.00151512 | 0.00371198 |
+| Contact-CVAE / episodic | 0.00175112 | 0.00354104 |
+
+These are validation results used during checkpoint selection, not untouched
+holdout estimates.  They freeze and verify the evaluation implementation but
+must not be reported as the final generalization result.
+
 ## Acceptance checks before holdout evaluation
 
 For every arm:

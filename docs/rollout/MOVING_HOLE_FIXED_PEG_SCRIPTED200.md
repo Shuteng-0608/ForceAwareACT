@@ -170,6 +170,22 @@ PYTHONPATH=src python scripts/run_sampling_ablation_xz_cardinal_pilot.py --execu
 Only after this directional preflight should the target-position test expand
 to additional radii or angular sectors.
 
+The completed seed-0, 4 mm preflight produced zero successes for every arm
+(`0/4` each).  Hard 40 N stops occurred in three Official-ACT episodic runs,
+one Official-ACT dense run, no Contact-CVAE dense runs, and one Contact-CVAE
+episodic run.  Absence of a hard stop is not evidence of safer task execution:
+most non-stopped runs remained about 44--49 mm away in the axial direction.
+The closest exception was Official ACT / dense at `(0,-4)` mm, which reached
+2.229 mm total distance (0.850 mm axial, 2.061 mm lateral) but did not satisfy
+the 1 mm success threshold.
+
+All four arms succeeded at the nominal center point, while the collection
+target position was never randomized.  The cardinal result therefore records
+a shared target-location OOD failure, not a useful ranking of training-window
+sampling modes.  Do not expand this fixed-target test to the 6, 8, or 10 mm
+collection trajectory radii: those radii describe the robot-carried socket's
+scripted rim-contact path, not fixed-target translations.
+
 Do not enable `--enable-axial-push`: it adds a controller action not present in
 either learned policy and would invalidate the four-arm comparison.  Do not use
 the legacy `pangu_all_right.xml`, `peg_ft_*`, `wall_task`, or wall-hole ring
