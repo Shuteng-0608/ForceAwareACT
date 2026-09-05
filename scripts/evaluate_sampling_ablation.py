@@ -52,7 +52,7 @@ from scripts.evaluate_paired50_holdout import (  # noqa: E402
 )
 
 
-EVALUATION_VERSION = "scripted200_sampling_ablation_all_timesteps_v1"
+EVALUATION_VERSION = "scripted200_sampling_ablation_all_timesteps_v2"
 PRIMARY_METRIC = "action_chunk_l1_physical"
 POLICY_ORDER = (
     "official_episodic",
@@ -166,6 +166,30 @@ def _same_numeric_contract(
         ):
             return False
     return True
+
+
+def _official_act_images(
+    images: torch.Tensor,
+    *,
+    dataset_applied_imagenet_normalization: bool,
+) -> torch.Tensor:
+    """Return the 0-1 image contract expected by Official ACT.
+
+    The shared high-rate dataset applies ImageNet normalization for the
+    Contact-CVAE before returning a batch.  OfficialACTPolicy performs that
+    normalization internally, so its evaluation path must first recover the
+    original 0-1 tensor instead of normalizing the same image twice.
+    """
+
+    if not dataset_applied_imagenet_normalization:
+        return images
+    mean = images.new_tensor((0.485, 0.456, 0.406)).view(
+        1, 1, 3, 1, 1
+    )
+    std = images.new_tensor((0.229, 0.224, 0.225)).view(
+        1, 1, 3, 1, 1
+    )
+    return images * std + mean
 
 
 def _validate_policy_contracts(
@@ -404,6 +428,12 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             action_valid = ~batch.action_padding_mask
             physical_predictions: dict[str, torch.Tensor] = {}
             contact_outputs: dict[str, Mapping[str, Any]] = {}
+            official_images = _official_act_images(
+                batch.images,
+                dataset_applied_imagenet_normalization=(
+                    contact.config.imagenet_normalize
+                ),
+            )
             with torch.inference_mode():
                 for policy_id in POLICY_ORDER:
                     adapter = adapters[policy_id]
@@ -413,7 +443,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                             adapter.normalization["qpos_mean"],
                             adapter.normalization["qpos_std"],
                         )
-                        output = adapter.model(batch.images, normalized_qpos)
+                        output = adapter.model(official_images, normalized_qpos)
                     else:
                         output = _contact_output(adapter, batch)
                         contact_outputs[policy_id] = output

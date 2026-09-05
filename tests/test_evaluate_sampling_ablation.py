@@ -1,14 +1,43 @@
 from pathlib import Path
 
 import pytest
+import torch
 
 from scripts.evaluate_sampling_ablation import (
     POLICY_ORDER,
     _comparison_report,
+    _official_act_images,
     interaction_difference,
     paired_bootstrap_summary,
     parse_args,
 )
+
+
+def test_official_act_images_undo_shared_dataset_imagenet_normalization():
+    raw = torch.tensor(
+        [[[[[0.0]], [[0.5]], [[1.0]]]]], dtype=torch.float32
+    )
+    mean = raw.new_tensor((0.485, 0.456, 0.406)).view(1, 1, 3, 1, 1)
+    std = raw.new_tensor((0.229, 0.224, 0.225)).view(1, 1, 3, 1, 1)
+    dataset_images = (raw - mean) / std
+
+    official_images = _official_act_images(
+        dataset_images,
+        dataset_applied_imagenet_normalization=True,
+    )
+
+    assert torch.allclose(official_images, raw)
+
+
+def test_official_act_images_preserve_unnormalized_dataset_images():
+    images = torch.rand(2, 2, 3, 4, 5)
+
+    official_images = _official_act_images(
+        images,
+        dataset_applied_imagenet_normalization=False,
+    )
+
+    assert official_images is images
 
 
 def test_paired_bootstrap_is_deterministic_and_preserves_constant_difference():
