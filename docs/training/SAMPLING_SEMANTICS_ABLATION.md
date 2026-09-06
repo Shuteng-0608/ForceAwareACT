@@ -179,6 +179,15 @@ holdout comparison.
 
 ## Unified four-arm offline evaluation
 
+Status (2026-09-06): the first full seed-0 holdout evaluation is complete using
+evaluator v2. It covers 100 episodes (50 clean / 50 collision), 63,175 windows,
+and the same four frozen best checkpoints. See the
+[formal holdout report](../experiments/MOVING_HOLE_FIXED_PEG_SCRIPTED200_SAMPLING_HOLDOUT_SEED0_REPORT.md)
+for results, paired intervals, provenance checks, and the executed command.
+The holdout is now evaluated; the historical first-run instructions below
+must not be interpreted as an invitation to tune against it and repeat the
+final test.
+
 Use `scripts/evaluate_sampling_ablation.py` instead of running independent
 two-model comparisons.  It evaluates the same ordered timestep windows for all
 four frozen checkpoints, always uses the deployment zero latent, and reports:
