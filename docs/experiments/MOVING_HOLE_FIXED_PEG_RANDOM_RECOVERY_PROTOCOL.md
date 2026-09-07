@@ -91,6 +91,18 @@ incomplete cases are never silently overwritten. Process logs sit beside each
 model directory. Per-case results and counts update after every validated run.
 Output: `runs/moving_hole_fixed_peg_random_recovery_v1_seed0/`.
 
+After all 100 cases finish, independently audit the fingerprints, numeric states,
+fixed target positions, physics-step pulse waveform/impulse, recovery labels,
+video/CSV counts and aggregate counts without running any new simulation:
+
+```bash
+FORCEACT_RECOVERY_ARTIFACT_DIR="$PWD/runs/moving_hole_fixed_peg_random_recovery_v1_seed0" \
+  PYTHONPATH=src python -m pytest -q tests/test_recovery_suite_artifacts.py
+```
+
+This artifact test is skipped by default unless its output directory is explicitly
+selected. Incomplete or different-protocol results are rejected, not repaired.
+
 This is a small single-training-seed, deterministic-policy test. Direction cases
 are designed conditions, not independent training replicates. Do not infer broad
 statistical superiority or tune on the already-evaluated holdout set.
