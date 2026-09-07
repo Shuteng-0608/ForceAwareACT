@@ -13,12 +13,15 @@ The suite contains **25 cases × 4 models = 100 paired rollouts**:
 | Cases | Count per model | Definition |
 | --- | ---: | --- |
 | Nominal control | 1 | Original fixed target, no external force |
-| Random target | 8 | Four uniform-area XZ points per annulus: 0–1.5 mm, 1.5–3 mm; uniform azimuth; Python RNG seed 20260907 |
+| Random target | 8 | One uniform-area XZ point per annulus/quadrant cell: 0–1.5 mm, 1.5–3 mm × four quadrants; uniform angle within quadrant; Python RNG seed 20260907 |
 | Near-mouth pulse | 8 | Remaining axial distance first reaches 45 mm; peak 2 or 6 N × ±X/±Z |
 | Mid-insertion pulse | 8 | Remaining axial distance first reaches 25 mm; peak 2 or 6 N × ±X/±Z |
 
 The eight target points are a **balanced stratified sample**, not uniform over
 the whole disk; do not report their unweighted average as a uniform-disk estimate.
+Before any rollout, a plan audit found that unrestricted azimuth sampling with
+this seed put all eight points on +X. Quadrant stratification was added solely
+to ensure directional coverage; no model outputs informed this change.
 All cases use policy seed 0 and deployment latent zero. Pairing means the same
 case and trigger rule, not identical physical state: each policy reaches the
 trigger on its own trajectory. This is an end-to-end robustness/recovery test,

@@ -21,6 +21,8 @@ def test_frozen_paired_matrix_and_random_strata():
     for i, c in enumerate(cases[1:9]):
         radius = math.hypot(c.x_m, c.z_m)
         assert (0 <= radius <= .0015) if i < 4 else (.0015 <= radius <= .003)
+        angle = math.atan2(c.z_m, c.x_m) % (2 * math.pi)
+        assert int(angle / (math.pi / 2)) == i % 4
     assert {c.direction for c in cases[9:]} == {"xp", "xm", "zp", "zm"}
     assert {c.peak_n for c in cases[9:]} == {2, 6}
     assert {c.remaining_m for c in cases[9:]} == {.025, .045}

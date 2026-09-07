@@ -53,12 +53,12 @@ class Case:
 def build_cases(point_seed=20260907):
     rng = random.Random(point_seed)
     cases = [Case("control", "control")]
-    # Four uniform-area points per annulus, independent uniform azimuth. These
-    # strata are equally weighted in reports, NOT a uniform sample of the disk.
+    # One uniform-area point per annulus/quadrant cell. These strata are equally
+    # weighted in reports, NOT a uniform sample of the whole disk.
     for lo, hi in ((0., 1.5), (1.5, 3.)):
-        for _ in range(4):
+        for quadrant in range(4):
             radius = math.sqrt(rng.uniform(lo**2, hi**2)) / 1000
-            angle = rng.uniform(0., 2 * math.pi)
+            angle = (quadrant + rng.random()) * math.pi / 2
             cases.append(Case(f"random_{len(cases):02d}", "random_target",
                               radius * math.cos(angle), radius * math.sin(angle)))
     for phase, remaining in (("rim", .045), ("mid", .025)):
