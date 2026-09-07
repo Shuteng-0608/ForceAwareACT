@@ -26,6 +26,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from force_aware_act.data import denormalize_tensor, normalize_tensor  # noqa: E402
 from force_aware_act.high_rate_force import HighRateForceContract  # noqa: E402
+from force_aware_act.rollout_disturbance import MujocoPulse, PulseConfig  # noqa: E402
 from force_aware_act.inference import (  # noqa: E402
     ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ROLLOUT_KIND,
     ACT_ALIGNED_HIGH_RATE_MOTION_ROLLOUT_KIND,
@@ -2129,6 +2130,10 @@ def run_rollout(args: argparse.Namespace) -> int:
             data.ctrl[actuator_ids] = hold_command
         return hold_command
 
+    disturbance = (
+        MujocoPulse(mj_model, data, PulseConfig.from_args(args))
+        if args.disturbance_peak_n > 0 else None
+    )
     try:
         if args.save_videos:
             video_writers = _open_video_writers(video_dir, args.video_fps)
@@ -2991,6 +2996,11 @@ def run_rollout(args: argparse.Namespace) -> int:
             interval_peak_force_norm = force_norm
             for _ in range(scheduled_physics_steps_this_policy):
                 apply_terminal_hold_command(float(data.time))
+                if disturbance is not None:
+                    disturbance.apply(
+                        _task_diagnostics(data, site_ids, body_ids, args.hole_axis_world),
+                        allowed=not task_success_site_reached,
+                    )
                 mujoco.mj_step(mj_model, data)
                 executed_physics_steps += 1
                 sampled_raw_wrench = _read_wrench(
@@ -3011,6 +3021,11 @@ def run_rollout(args: argparse.Namespace) -> int:
                         timestamp=float(data.time),
                     )
                 sampled_force_norm = float(np.linalg.norm(sampled_wrench[:3]))
+                if disturbance is not None:
+                    disturbance.observe(
+                        _task_diagnostics(data, site_ids, body_ids, args.hole_axis_world),
+                        sampled_force_norm,
+                    )
                 force_norm_history.append(sampled_force_norm)
                 raw_force_norm_history.append(
                     float(np.linalg.norm(sampled_raw_wrench[:3]))
@@ -3214,6 +3229,8 @@ def run_rollout(args: argparse.Namespace) -> int:
             while len(force_history) > 1 and force_history[1][0] < oldest_needed:
                 force_history.popleft()
     finally:
+        if disturbance is not None:
+            disturbance.close()
         renderer.close()
         for video_writer in video_writers.values():
             video_writer.close()
@@ -3706,6 +3723,11 @@ def run_rollout(args: argparse.Namespace) -> int:
                 ),
             }
         )
+    if disturbance is not None:
+        trace_path = args.output_dir / "disturbance_trace.csv"
+        disturbance.pulse.write_trace(trace_path)
+        summary["disturbance"] = disturbance.pulse.summary(success, success_time)
+        summary["disturbance"]["trace_csv"] = str(trace_path) if trace_path.exists() else None
     _validate_summary_schema(summary)
     with summary_path.open("w") as summary_file:
         json.dump(_json_safe(summary), summary_file, indent=2, sort_keys=True)
@@ -4074,6 +4096,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--hole-offset-y", type=float, default=0.0)
     parser.add_argument("--hole-offset-z", type=float, default=0.0)
     parser.add_argument("--hole-offset-frame", choices=("world", "body"), default="world")
+    parser.add_argument("--disturbance-peak-n", type=float, default=0.0)
+    parser.add_argument("--disturbance-duration-s", type=float, default=0.5)
+    parser.add_argument("--disturbance-remaining-m", type=float, default=0.025)
+    parser.add_argument("--disturbance-direction", choices=("xp", "xm", "zp", "zm"), default="xp")
     parser.add_argument(
         "--policy-wrench-source",
         choices=("raw", "compensated"),
@@ -4131,6 +4157,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args(argv)
+    try:
+        pulse_config = PulseConfig.from_args(args)
+    except ValueError as error:
+        parser.error(str(error))
+    if pulse_config.peak_n > 0:
+        if args.task_profile != "moving_hole_fixed_peg" or not args.execute_actions:
+            parser.error("physical disturbance requires moving_hole_fixed_peg and --execute-actions")
+        if args.enable_axial_push or any((args.hole_offset_x, args.hole_offset_y, args.hole_offset_z)):
+            parser.error("physical disturbance requires fixed nominal target and no axial push")
+        if not np.allclose(args.hole_axis_world, (0., -1., 0.)):
+            parser.error("physical XZ disturbance requires the audited world -Y insertion axis")
     profile = TASK_PROFILES[args.task_profile]
     args.task_profile_contract = profile
     if args.model_xml is None:
