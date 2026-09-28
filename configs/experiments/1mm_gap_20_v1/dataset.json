@@ -1,0 +1,6 @@
+{
+  "data_root": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2",
+  "conversion_manifest": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/conversion_manifest.json",
+  "conversion_manifest_sha256": "dc2b71d778ab66f17ef70dae053f688193f98612e69a13fe3d2a55486c2ce1ed",
+  "split": "/home/stw/ForceAwareACT_workspace/ForceAwareACT/configs/experiments/1mm_gap_20_v1/split.json"
+}

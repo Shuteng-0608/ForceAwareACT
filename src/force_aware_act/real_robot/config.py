@@ -1,0 +1,122 @@
+"""Versioned sampling contract for untouched asynchronous right-arm recordings."""
+
+from dataclasses import asdict, dataclass
+import math
+
+
+RAW_SCHEMA_VERSION = "real_robot_right_arm_raw_v2"
+EXTERNAL_TORQUE_TOPIC = "/tianji_marvin_teleop_bridge/estimated_joint_disturbance"
+EXTERNAL_TORQUE_FIELD = "effort"
+LEGACY_REAL_ROBOT_SAMPLING_VERSION = "right_arm_available_clock_100hz_torque300hz_v1"
+REAL_ROBOT_SAMPLING_VERSION = "right_arm_available_clock_100hz_torque300hz_phase_v2"
+
+
+@dataclass(frozen=True)
+class RealRobotDataConfig:
+    timestamp_key: str = "log_ns"
+    action_rate_hz: int = 100
+    action_grid_phase_mode: str = "circular_mean_initial_window"
+    action_grid_phase_window_s: float = 2.0
+    torque_rate_hz: int = 300
+    history_duration_s: float = 0.2
+    camera_names: tuple[str, ...] = ("d455", "d405")
+    joint_names: tuple[str, ...] = tuple(f"Joint{i}_R" for i in range(1, 8))
+    image_height: int = 480
+    image_width: int = 640
+    state_max_age_ms: float = 20.0
+    camera_max_age_ms: float = 100.0
+    action_match_tolerance_ms: float = 5.0
+    torque_match_tolerance_ms: float = 1.666666
+    max_samples_per_interval: int = 8
+
+    def __post_init__(self):
+        if self.timestamp_key != "log_ns":
+            raise ValueError("real-robot sampling requires log_ns availability; header clocks need an explicit synchronized availability mapping")
+        if self.action_grid_phase_mode not in {"first_action", "circular_mean_initial_window"}:
+            raise ValueError("unsupported action grid phase mode")
+        if not math.isfinite(self.action_grid_phase_window_s) or self.action_grid_phase_window_s <= 0:
+            raise ValueError("action grid phase window must be finite and positive")
+        for name in ("action_rate_hz", "torque_rate_hz"):
+            if type(getattr(self, name)) is not int:
+                raise ValueError(f"{name} must be an integer to preserve nanosecond arithmetic")
+        if self.action_rate_hz != 100 or self.torque_rate_hz != 300:
+            raise ValueError("this version requires 100 Hz actions and 300 Hz torque slots")
+        if tuple(self.joint_names) != tuple(f"Joint{i}_R" for i in range(1, 8)):
+            raise ValueError("joint_names must retain Joint1_R through Joint7_R order")
+        if len(self.camera_names) != 2 or len(set(self.camera_names)) != 2:
+            raise ValueError("exactly two distinct camera names are required")
+        for name in ("image_height", "image_width", "max_samples_per_interval"):
+            if type(getattr(self, name)) is not int or getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.max_samples_per_interval < self.samples_per_action:
+            raise ValueError("sample capacity must include all three future torque slots")
+        for name in ("history_duration_s", "state_max_age_ms", "camera_max_age_ms",
+                     "action_match_tolerance_ms", "torque_match_tolerance_ms"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if not math.isclose(self.history_duration_s * self.action_rate_hz,
+                            round(self.history_duration_s * self.action_rate_hz), abs_tol=1e-8):
+            raise ValueError("history duration must contain a whole number of action intervals")
+        if self.history_intervals < 1:
+            raise ValueError("history duration must include at least one action interval")
+        if self.action_match_tolerance_ms * 1e6 > self.action_period_ns / 2:
+            raise ValueError("action tolerance must not exceed half an action period")
+        if self.torque_match_tolerance_ms * 1e6 > 1e9 / self.torque_rate_hz / 2:
+            raise ValueError("torque tolerance must not exceed half a torque period")
+
+    @property
+    def action_period_ns(self):
+        return 1_000_000_000 // self.action_rate_hz
+
+    @property
+    def history_intervals(self):
+        return round(self.history_duration_s * self.action_rate_hz)
+
+    @property
+    def samples_per_action(self):
+        return self.torque_rate_hz // self.action_rate_hz
+
+    @property
+    def state_max_age_ns(self):
+        return round(self.state_max_age_ms * 1e6)
+
+    @property
+    def camera_max_age_ns(self):
+        return round(self.camera_max_age_ms * 1e6)
+
+    def to_dict(self):
+        values = asdict(self)
+        if self.action_grid_phase_mode == "first_action":
+            # Preserve the exact serialized v1 config for existing checkpoints.
+            values.pop("action_grid_phase_mode")
+            values.pop("action_grid_phase_window_s")
+        return values
+
+    @classmethod
+    def from_dict(cls, values):
+        values = dict(values)
+        if "action_grid_phase_mode" not in values:
+            values["action_grid_phase_mode"] = "first_action"
+        for name in ("camera_names", "joint_names"):
+            if name in values:
+                values[name] = tuple(values[name])
+        return cls(**values)
+
+    def contract_dict(self):
+        version = (LEGACY_REAL_ROBOT_SAMPLING_VERSION if self.action_grid_phase_mode == "first_action"
+                   else REAL_ROBOT_SAMPLING_VERSION)
+        return {"sampling_version": version,
+                "raw_schema_version": RAW_SCHEMA_VERSION,
+                "contact_representation": "joint_external_torque",
+                "force_source_topic": EXTERNAL_TORQUE_TOPIC,
+                "force_source_field": EXTERNAL_TORQUE_FIELD,
+                "force_timestamp_stream": "disturbance",
+                "gravity_compensation": "unverified", "internal_torque_input": False,
+                "qvel_input": False,
+                "qpos_unit": "rad", "action_unit": "rad", "torque_unit": "N*m",
+                "joint_names": tuple(self.joint_names), "camera_names": tuple(self.camera_names),
+                "image_preprocessing": "RGB uint8 / 255; bilinear antialias resize to model dimensions; optional ImageNet normalization from model config",
+                "synthetic_terminal_hold": False,
+                "input_clock_semantics": "recorder availability proxy; headers are diagnostics only",
+                "config": self.to_dict()}

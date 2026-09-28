@@ -1,0 +1,2027 @@
+{
+  "version": "1mm_gap_conversion_v2",
+  "status": "ready",
+  "episodes": [
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_141421_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_141421_0_x16y08",
+      "group": "x16y08",
+      "created_at": "Fri Sep 25 2026 06:15:12 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "5739fec712cd0a02cc77d32623e3fdbfd00ade0480ee504ad5634a58e4f90524",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_141421_0_x16y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "b203c74bb4687170d7d79e6409b2e86f4df0344928aa3e12141278148f730a9c",
+        "bytes": 1564646698
+      },
+      "valid_anchors": 3864,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 6951949,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790316863632813396,
+        "window_end_ns": 1790316865629581159,
+        "sample_count": 201,
+        "resultant_length": 0.9146498670011819,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790316863639765345,
+        "last_anchor_ns": 1790316902289765345
+      },
+      "previous_valid_anchors": 3864,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 11587,
+          "duration_s": 38.661594416,
+          "max_interval_ms": 13.379401999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.9242549999999999
+        },
+        "disturbance": {
+          "count": 11585,
+          "duration_s": 38.661296629,
+          "max_interval_ms": 13.385527,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.0167819999999999
+        },
+        "action": {
+          "count": 3867,
+          "duration_s": 38.657089991,
+          "max_interval_ms": 13.970951999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.823948
+        },
+        "d455": {
+          "count": 1159,
+          "duration_s": 38.644662279,
+          "max_interval_ms": 39.338052999999995,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.902451
+        },
+        "d405": {
+          "count": 1148,
+          "duration_s": 38.607138228000004,
+          "max_interval_ms": 100.37593199999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.163184999999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 11587,
+          "action": 3867,
+          "disturbance": 11585,
+          "d455": 1159,
+          "d405": 1148
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1159,
+          "d405": 1148
+        }
+      },
+      "preparation_seconds": 55.04945792001672
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_142724_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_142724_0_x16y08",
+      "group": "x16y08",
+      "created_at": "Fri Sep 25 2026 06:28:02 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "f5406d1488c82fe4e78bf993d237f60621f47256c93abd2769c9562850c3b83b",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_142724_0_x16y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "5148ee039d6be5831de9e9a8f783cd4d1a8a0910f1a1652c86775061a15d7cd4",
+        "bytes": 1350624835
+      },
+      "valid_anchors": 3352,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 4347833,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790317646472036007,
+        "window_end_ns": 1790317648466498625,
+        "sample_count": 201,
+        "resultant_length": 0.9335724788408065,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790317646476383840,
+        "last_anchor_ns": 1790317680016383840
+      },
+      "previous_valid_anchors": 3352,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 10057,
+          "duration_s": 33.544306066000004,
+          "max_interval_ms": 9.651716,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.019499
+        },
+        "disturbance": {
+          "count": 10054,
+          "duration_s": 33.544278067,
+          "max_interval_ms": 9.772757,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.1017664999999999
+        },
+        "action": {
+          "count": 3356,
+          "duration_s": 33.544796353,
+          "max_interval_ms": 16.96517,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8723664999999999
+        },
+        "d455": {
+          "count": 1006,
+          "duration_s": 33.529229415,
+          "max_interval_ms": 37.670629,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.9019255
+        },
+        "d405": {
+          "count": 991,
+          "duration_s": 33.505749961,
+          "max_interval_ms": 100.111452,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.349039
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 10057,
+          "action": 3356,
+          "disturbance": 10054,
+          "d455": 1006,
+          "d405": 991
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1006,
+          "d405": 991
+        }
+      },
+      "preparation_seconds": 50.60738877195399
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_143208_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_143208_0_x16y08",
+      "group": "x16y08",
+      "created_at": "Fri Sep 25 2026 06:32:45 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "test",
+      "source_sha256": "04b7150346eff99935af160f9ff83dfda4e4d70d75b4426161f0c6c043f50100",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_143208_0_x16y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "ece8f649559ce823bfd537d2625cd465e2f2eeed5e77e2f673ab9efd1276d524",
+        "bytes": 1328155984
+      },
+      "valid_anchors": 3286,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 8757836,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790317931243021188,
+        "window_end_ns": 1790317933241218622,
+        "sample_count": 201,
+        "resultant_length": 0.943229443789192,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790317931251779024,
+        "last_anchor_ns": 1790317964111779024
+      },
+      "previous_valid_anchors": 3286,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 9855,
+          "duration_s": 32.873866406000005,
+          "max_interval_ms": 8.638161,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.774739
+        },
+        "disturbance": {
+          "count": 9852,
+          "duration_s": 32.873736908000005,
+          "max_interval_ms": 8.582454,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.866713
+        },
+        "action": {
+          "count": 3288,
+          "duration_s": 32.86882911,
+          "max_interval_ms": 14.915607999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8176745
+        },
+        "d455": {
+          "count": 986,
+          "duration_s": 32.864183808,
+          "max_interval_ms": 39.223033,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.697642
+        },
+        "d405": {
+          "count": 973,
+          "duration_s": 32.840667691,
+          "max_interval_ms": 100.06961299999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.079675
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 9855,
+          "action": 3288,
+          "disturbance": 9852,
+          "d455": 986,
+          "d405": 973
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 986,
+          "d405": 973
+        }
+      },
+      "preparation_seconds": 49.597309886012226
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_143349_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_143349_0_x16y08",
+      "group": "x16y08",
+      "created_at": "Fri Sep 25 2026 06:34:24 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "validation",
+      "source_sha256": "ac21633cb5faf44ba6d5d4e22e731655b13d430e7800e65dfe137adca0a8aa89",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_143349_0_x16y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "e397bcd3c5485473beb70875559f31f54b573ee031c5fb2dee733ddabed7ceee",
+        "bytes": 1221255607
+      },
+      "valid_anchors": 3011,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 5051446,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790318032221451645,
+        "window_end_ns": 1790318034216957529,
+        "sample_count": 201,
+        "resultant_length": 0.9226806693673711,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790318032226503091,
+        "last_anchor_ns": 1790318062346503091
+      },
+      "previous_valid_anchors": 3011,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 9037,
+          "duration_s": 30.137534989000002,
+          "max_interval_ms": 8.992234,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.541727
+        },
+        "disturbance": {
+          "count": 9032,
+          "duration_s": 30.137384784,
+          "max_interval_ms": 8.970070999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.637196
+        },
+        "action": {
+          "count": 3015,
+          "duration_s": 30.134531451,
+          "max_interval_ms": 14.432905,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8566119999999999
+        },
+        "d455": {
+          "count": 903,
+          "duration_s": 30.102660940000003,
+          "max_interval_ms": 37.262181,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.389554
+        },
+        "d405": {
+          "count": 893,
+          "duration_s": 30.107259294000002,
+          "max_interval_ms": 100.618462,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 11.773823
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 9037,
+          "action": 3015,
+          "disturbance": 9032,
+          "d455": 903,
+          "d405": 893
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 903,
+          "d405": 893
+        }
+      },
+      "preparation_seconds": 45.689818589016795
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_143703_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_143703_0_x16y08",
+      "group": "x16y08",
+      "created_at": "Fri Sep 25 2026 06:37:37 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "6bc3936de73c4e0799ba9166bf1810b65839c395403fd00212cdd7340707d74a",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_143703_0_x16y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "e32107af641d818b5375df9e08d24d97bab461b0b0c6875b3a08892615cfbebc",
+        "bytes": 1204356083
+      },
+      "valid_anchors": 2972,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 3706161,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790318226067736554,
+        "window_end_ns": 1790318228061952702,
+        "sample_count": 201,
+        "resultant_length": 0.9299593742144019,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790318226071442715,
+        "last_anchor_ns": 1790318255811442715
+      },
+      "previous_valid_anchors": 2972,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 8917,
+          "duration_s": 29.744369719,
+          "max_interval_ms": 7.514688,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.081747
+        },
+        "disturbance": {
+          "count": 8917,
+          "duration_s": 29.744322178,
+          "max_interval_ms": 7.506812,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.1710589999999999
+        },
+        "action": {
+          "count": 2976,
+          "duration_s": 29.744232638000003,
+          "max_interval_ms": 15.593159,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.9059054999999999
+        },
+        "d455": {
+          "count": 892,
+          "duration_s": 29.723200555000002,
+          "max_interval_ms": 38.14897,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.0331105
+        },
+        "d405": {
+          "count": 886,
+          "duration_s": 29.706793334,
+          "max_interval_ms": 69.429231,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.305337999999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 8917,
+          "action": 2976,
+          "disturbance": 8917,
+          "d455": 892,
+          "d405": 886
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 892,
+          "d405": 886
+        }
+      },
+      "preparation_seconds": 46.181808841996826
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_144649_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_144649_0_x15y08",
+      "group": "x15y08",
+      "created_at": "Fri Sep 25 2026 06:47:29 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "test",
+      "source_sha256": "f514c9319f98ca7c560afc68181c1cbd5c9109db753c9d02028067c1ac0531d5",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_144649_0_x15y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "f2b4db0949568fee97dbf0721afe28551909e0c31944b108d8deb487eaf0ccea",
+        "bytes": 1433582769
+      },
+      "valid_anchors": 3581,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 9473338,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790318811623294717,
+        "window_end_ns": 1790318813622931852,
+        "sample_count": 201,
+        "resultant_length": 0.9326092783378744,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790318811632768055,
+        "last_anchor_ns": 1790318847442768055
+      },
+      "previous_valid_anchors": 3581,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 10745,
+          "duration_s": 35.836621876,
+          "max_interval_ms": 8.954037999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.9513619999999999
+        },
+        "disturbance": {
+          "count": 10745,
+          "duration_s": 35.837018537,
+          "max_interval_ms": 8.989037999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.0497699999999999
+        },
+        "action": {
+          "count": 3584,
+          "duration_s": 35.828726271,
+          "max_interval_ms": 15.266198,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.82978
+        },
+        "d455": {
+          "count": 1074,
+          "duration_s": 35.807922257,
+          "max_interval_ms": 41.385208,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.8121475
+        },
+        "d405": {
+          "count": 1067,
+          "duration_s": 35.806250154000004,
+          "max_interval_ms": 68.867935,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.302107
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 0,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 10745,
+          "action": 3584,
+          "disturbance": 10745,
+          "d455": 1074,
+          "d405": 1067
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1074,
+          "d405": 1067
+        }
+      },
+      "preparation_seconds": 54.13028108904837
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_144912_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_144912_0_x15y08",
+      "group": "x15y08",
+      "created_at": "Fri Sep 25 2026 06:49:43 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "c7681ab3110259168499ff54997b2f2d9e49ad09ce9567ec268072ef7908e946",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_144912_0_x15y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "627f6de144c0058d6d96932f610a79293b970d8681b8b129961da7fd6c3c5734",
+        "bytes": 1070623328
+      },
+      "valid_anchors": 2686,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 2249575,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790318954645787263,
+        "window_end_ns": 1790318956637669852,
+        "sample_count": 201,
+        "resultant_length": 0.9423000362863863,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790318954648036838,
+        "last_anchor_ns": 1790318981538036838
+      },
+      "previous_valid_anchors": 2686,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 8062,
+          "duration_s": 26.910000308,
+          "max_interval_ms": 7.512357,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.027415
+        },
+        "disturbance": {
+          "count": 8061,
+          "duration_s": 26.910174722,
+          "max_interval_ms": 7.453441,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.1203619999999999
+        },
+        "action": {
+          "count": 2692,
+          "duration_s": 26.901392757,
+          "max_interval_ms": 17.01298,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8319679999999999
+        },
+        "d455": {
+          "count": 807,
+          "duration_s": 26.883136419000003,
+          "max_interval_ms": 37.538745999999996,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.85906
+        },
+        "d405": {
+          "count": 800,
+          "duration_s": 26.873594962000002,
+          "max_interval_ms": 68.149925,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.284385499999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 2,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 8062,
+          "action": 2692,
+          "disturbance": 8061,
+          "d455": 807,
+          "d405": 800
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 807,
+          "d405": 800
+        }
+      },
+      "preparation_seconds": 39.86265914601972
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_145214_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_145214_0_x15y08",
+      "group": "x15y08",
+      "created_at": "Fri Sep 25 2026 06:52:48 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "41bd3ce15d4ac07f448d2f6b6abbb4a56db4ae81042676747b978d0eabd5475a",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_145214_0_x15y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "c611f9233b996c2b28246d527b71f998d5d6baea2f0f0e849cd5ab54b9244509",
+        "bytes": 1178821923
+      },
+      "valid_anchors": 2981,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 2856449,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790319136793100858,
+        "window_end_ns": 1790319138785870331,
+        "sample_count": 201,
+        "resultant_length": 0.9296025909184717,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790319136795957307,
+        "last_anchor_ns": 1790319166615957307
+      },
+      "previous_valid_anchors": 2981,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 8945,
+          "duration_s": 29.838925165000003,
+          "max_interval_ms": 13.733229999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.106415
+        },
+        "disturbance": {
+          "count": 8940,
+          "duration_s": 29.838907957000004,
+          "max_interval_ms": 13.610149,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.2075215
+        },
+        "action": {
+          "count": 2985,
+          "duration_s": 29.832302381,
+          "max_interval_ms": 16.599982999999998,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.82453
+        },
+        "d455": {
+          "count": 895,
+          "duration_s": 29.822674014,
+          "max_interval_ms": 37.400192,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.887135
+        },
+        "d405": {
+          "count": 883,
+          "duration_s": 29.805030175000002,
+          "max_interval_ms": 98.555747,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.333658999999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 8945,
+          "action": 2985,
+          "disturbance": 8940,
+          "d455": 895,
+          "d405": 883
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 895,
+          "d405": 883
+        }
+      },
+      "preparation_seconds": 44.84927195799537
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_145347_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_145347_0_x15y08",
+      "group": "x15y08",
+      "created_at": "Fri Sep 25 2026 06:54:24 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "validation",
+      "source_sha256": "edd35c55741dc14856e3e5f7fba0fc6dee76dff1cf57525326a00786a33eb8fd",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_145347_0_x15y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "a707763ca4270d4441ab4b7f4d2d9f741354f92e0b2c447511f5df28ad4379c6",
+        "bytes": 1311716842
+      },
+      "valid_anchors": 3303,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 3842325,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790319229988551360,
+        "window_end_ns": 1790319231982708156,
+        "sample_count": 200,
+        "resultant_length": 0.9234633070209524,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790319229992393685,
+        "last_anchor_ns": 1790319263032393685
+      },
+      "previous_valid_anchors": 3303,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 9907,
+          "duration_s": 33.047817327000004,
+          "max_interval_ms": 7.371487999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.159006
+        },
+        "disturbance": {
+          "count": 9904,
+          "duration_s": 33.047842703,
+          "max_interval_ms": 7.275822,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.250399
+        },
+        "action": {
+          "count": 3305,
+          "duration_s": 33.04596556,
+          "max_interval_ms": 22.382497,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.82424
+        },
+        "d455": {
+          "count": 991,
+          "duration_s": 33.040995917000004,
+          "max_interval_ms": 37.985001,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.01258
+        },
+        "d405": {
+          "count": 979,
+          "duration_s": 33.03749742,
+          "max_interval_ms": 67.897956,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.419525
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 9907,
+          "action": 3305,
+          "disturbance": 9904,
+          "d405": 979,
+          "d455": 991
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 991,
+          "d405": 979
+        }
+      },
+      "preparation_seconds": 50.547408387006726
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_145659_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_145659_0_x15y08",
+      "group": "x15y08",
+      "created_at": "Fri Sep 25 2026 06:57:39 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "b783fa1e1283233c0fd116185b69b8e5b2d30be67376eec989df9af0b35602c1",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_145659_0_x15y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "f85aca1c011e21d2a1fe06a6f1fd8a1a4acf95f730a6832dfa7e002d2badeb25",
+        "bytes": 1403055267
+      },
+      "valid_anchors": 3550,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 3956534,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790319422250830527,
+        "window_end_ns": 1790319424245104554,
+        "sample_count": 201,
+        "resultant_length": 0.9227569337427007,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790319422254787061,
+        "last_anchor_ns": 1790319457764787061
+      },
+      "previous_valid_anchors": 3550,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 10649,
+          "duration_s": 35.529391191,
+          "max_interval_ms": 9.594522999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.381023
+        },
+        "disturbance": {
+          "count": 10645,
+          "duration_s": 35.52942969,
+          "max_interval_ms": 9.665981,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.4772539999999998
+        },
+        "action": {
+          "count": 3554,
+          "duration_s": 35.522880997,
+          "max_interval_ms": 14.889069999999998,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.826863
+        },
+        "d455": {
+          "count": 1065,
+          "duration_s": 35.507316433,
+          "max_interval_ms": 37.697061999999995,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.130399
+        },
+        "d405": {
+          "count": 1047,
+          "duration_s": 35.507952835000005,
+          "max_interval_ms": 100.74132999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.622784
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 10649,
+          "action": 3554,
+          "disturbance": 10645,
+          "d455": 1065,
+          "d405": 1047
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1065,
+          "d405": 1047
+        }
+      },
+      "preparation_seconds": 53.71167646400863
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_150735_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_150735_0_x14y08",
+      "group": "x14y08",
+      "created_at": "Fri Sep 25 2026 07:08:14 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "a9b00b5bfedc2449dc04383d19c937b8079f64d262076e9bcb2246dfb62087ac",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_150735_0_x14y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "1f7a1404413894630709ab4258eb0d6283d673f7c79aab10cefadbb89071d2c2",
+        "bytes": 1361680230
+      },
+      "valid_anchors": 3464,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 9599451,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790320058010215737,
+        "window_end_ns": 1790320060009215867,
+        "sample_count": 201,
+        "resultant_length": 0.9524487980811261,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790320058019815188,
+        "last_anchor_ns": 1790320092659815188
+      },
+      "previous_valid_anchors": 3464,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 10386,
+          "duration_s": 34.659861734,
+          "max_interval_ms": 10.813983,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.531296
+        },
+        "disturbance": {
+          "count": 10377,
+          "duration_s": 34.659928232,
+          "max_interval_ms": 10.635194,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.63612
+        },
+        "action": {
+          "count": 3467,
+          "duration_s": 34.658697416,
+          "max_interval_ms": 15.341166,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.892488
+        },
+        "d455": {
+          "count": 1039,
+          "duration_s": 34.64168852,
+          "max_interval_ms": 38.210164,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.295264
+        },
+        "d405": {
+          "count": 1017,
+          "duration_s": 34.639881962000004,
+          "max_interval_ms": 99.529648,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.894665
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 10386,
+          "action": 3467,
+          "disturbance": 10377,
+          "d405": 1017,
+          "d455": 1039
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1039,
+          "d405": 1017
+        }
+      },
+      "preparation_seconds": 51.48579283297295
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_150909_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_150909_0_x14y08",
+      "group": "x14y08",
+      "created_at": "Fri Sep 25 2026 07:09:45 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "f8051adcf87247fdec7d1806207e624beb66ed69e6fd9b37fc5597167a40cccf",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_150909_0_x14y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "af675cf68723cce47130590c63c5ce0447a16c1fb31a64d2c1356688a4004237",
+        "bytes": 1222606455
+      },
+      "valid_anchors": 3105,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 5335191,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790320152218680027,
+        "window_end_ns": 1790320154213952706,
+        "sample_count": 201,
+        "resultant_length": 0.9363681275084622,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790320152224015218,
+        "last_anchor_ns": 1790320183294015218
+      },
+      "previous_valid_anchors": 3105,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 9300,
+          "duration_s": 31.082362991000004,
+          "max_interval_ms": 10.262454,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.3322545
+        },
+        "disturbance": {
+          "count": 9293,
+          "duration_s": 31.082261199,
+          "max_interval_ms": 10.318454,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.428755
+        },
+        "action": {
+          "count": 3109,
+          "duration_s": 31.075854820000004,
+          "max_interval_ms": 14.394445,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.845239
+        },
+        "d455": {
+          "count": 931,
+          "duration_s": 31.035787568000003,
+          "max_interval_ms": 38.067564999999995,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.172538
+        },
+        "d405": {
+          "count": 921,
+          "duration_s": 31.041264406000003,
+          "max_interval_ms": 68.858138,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.414437
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 9300,
+          "action": 3109,
+          "disturbance": 9293,
+          "d455": 931,
+          "d405": 921
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 931,
+          "d405": 921
+        }
+      },
+      "preparation_seconds": 47.77836787898559
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_151036_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_151036_0_x14y08",
+      "group": "x14y08",
+      "created_at": "Fri Sep 25 2026 07:11:11 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "validation",
+      "source_sha256": "883323230127c3f74085688cb2070c8c9c765b5dcc468a8c3d7953597ca21617",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_151036_0_x14y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "3a6f1a72d03e61706ce08f5a734e3d2c99c1ab68ad20cd1f622f11fe1b689a4b",
+        "bytes": 1228566656
+      },
+      "valid_anchors": 3104,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 1538655,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790320239131467432,
+        "window_end_ns": 1790320241123239845,
+        "sample_count": 201,
+        "resultant_length": 0.9336947541473102,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790320239133006087,
+        "last_anchor_ns": 1790320270183006087
+      },
+      "previous_valid_anchors": 3104,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 9308,
+          "duration_s": 31.068490605,
+          "max_interval_ms": 7.8399779999999994,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.6632135
+        },
+        "disturbance": {
+          "count": 9305,
+          "duration_s": 31.068457061000004,
+          "max_interval_ms": 7.7688109999999995,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.7564609999999998
+        },
+        "action": {
+          "count": 3108,
+          "duration_s": 31.061412011,
+          "max_interval_ms": 17.635866,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8720684999999999
+        },
+        "d455": {
+          "count": 931,
+          "duration_s": 31.035285515,
+          "max_interval_ms": 37.264371,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.583026
+        },
+        "d405": {
+          "count": 920,
+          "duration_s": 31.037807072000003,
+          "max_interval_ms": 67.866265,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.941581999999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 9308,
+          "action": 3108,
+          "disturbance": 9305,
+          "d405": 920,
+          "d455": 931
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 931,
+          "d405": 920
+        }
+      },
+      "preparation_seconds": 47.86012282199226
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_151227_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_151227_0_x14y08",
+      "group": "x14y08",
+      "created_at": "Fri Sep 25 2026 07:13:09 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "test",
+      "source_sha256": "df8138ae3984708d40ae53ef7074cc37a6c959ce215b360306698ab32f9ea3f9",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_151227_0_x14y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "dea71e21c5c182318eb3b368da287b0b934e63ba7183525382240d7c2784d7c5",
+        "bytes": 1501059723
+      },
+      "valid_anchors": 3797,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 4113285,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790320350215248359,
+        "window_end_ns": 1790320352209405517,
+        "sample_count": 201,
+        "resultant_length": 0.9274564205092007,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790320350219361644,
+        "last_anchor_ns": 1790320388189361644
+      },
+      "previous_valid_anchors": 3797,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 11381,
+          "duration_s": 37.980408619,
+          "max_interval_ms": 9.228805,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.708952
+        },
+        "disturbance": {
+          "count": 11371,
+          "duration_s": 37.980500493,
+          "max_interval_ms": 9.213346999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.803956
+        },
+        "action": {
+          "count": 3799,
+          "duration_s": 37.974224486000004,
+          "max_interval_ms": 15.345269,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.858073
+        },
+        "d455": {
+          "count": 1139,
+          "duration_s": 37.967552984,
+          "max_interval_ms": 39.733269,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.44715
+        },
+        "d405": {
+          "count": 1122,
+          "duration_s": 37.942215926,
+          "max_interval_ms": 69.891802,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.862046
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 11381,
+          "action": 3799,
+          "disturbance": 11371,
+          "d455": 1139,
+          "d405": 1122
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1139,
+          "d405": 1122
+        }
+      },
+      "preparation_seconds": 57.42928496701643
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_151431_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_151431_0_x14y08",
+      "group": "x14y08",
+      "created_at": "Fri Sep 25 2026 07:15:14 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "6344e6c43dba79dcabe40a2c802a7dfed6cd2ce5df132b81c33119516ec5d94c",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_151431_0_x14y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "73f434c2017aa9d55dfeae650404b649bf4e262a574205266776fd0fd96b2f28",
+        "bytes": 1526152421
+      },
+      "valid_anchors": 3880,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 5564502,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790320473552179125,
+        "window_end_ns": 1790320475547203789,
+        "sample_count": 201,
+        "resultant_length": 0.9188411501215924,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790320473557743627,
+        "last_anchor_ns": 1790320512367743627
+      },
+      "previous_valid_anchors": 3880,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 11627,
+          "duration_s": 38.820854494,
+          "max_interval_ms": 11.392631999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.533451
+        },
+        "disturbance": {
+          "count": 11622,
+          "duration_s": 38.820966784,
+          "max_interval_ms": 11.429674,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.6332875
+        },
+        "action": {
+          "count": 3883,
+          "duration_s": 38.816040603000005,
+          "max_interval_ms": 18.612168999999998,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.841155
+        },
+        "d455": {
+          "count": 1164,
+          "duration_s": 38.810837064000005,
+          "max_interval_ms": 42.469572,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 19.222196999999998
+        },
+        "d405": {
+          "count": 1143,
+          "duration_s": 38.807101729,
+          "max_interval_ms": 103.327897,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.708483
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 11627,
+          "action": 3883,
+          "disturbance": 11622,
+          "d405": 1143,
+          "d455": 1164
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1164,
+          "d405": 1143
+        }
+      },
+      "preparation_seconds": 57.956312060006894
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_153238_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_153238_0_x13y08",
+      "group": "x13y08",
+      "created_at": "Fri Sep 25 2026 07:33:14 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "validation",
+      "source_sha256": "9c84c1aaa7c2f61a5fdfb15635b6756127c0a709a6632fcf30d8977f100794b4",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_153238_0_x13y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "40bb01a7dc646f9cca6c89c5d931a8fbbb874bfc3c5431540ed400ce30c36b0f",
+        "bytes": 1296977608
+      },
+      "valid_anchors": 3272,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 5355544,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790321560389835884,
+        "window_end_ns": 1790321562384813025,
+        "sample_count": 201,
+        "resultant_length": 0.9306976493760507,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790321560395191428,
+        "last_anchor_ns": 1790321593125191428
+      },
+      "previous_valid_anchors": 3272,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 9821,
+          "duration_s": 32.748375161000006,
+          "max_interval_ms": 8.401918,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.026627
+        },
+        "disturbance": {
+          "count": 9818,
+          "duration_s": 32.748025458,
+          "max_interval_ms": 8.462292,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.122242
+        },
+        "action": {
+          "count": 3276,
+          "duration_s": 32.745292289000005,
+          "max_interval_ms": 15.537436999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8259879999999999
+        },
+        "d455": {
+          "count": 982,
+          "duration_s": 32.737446569,
+          "max_interval_ms": 38.779135,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.934694999999998
+        },
+        "d405": {
+          "count": 976,
+          "duration_s": 32.70944755,
+          "max_interval_ms": 67.842123,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.429615499999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 9821,
+          "action": 3276,
+          "disturbance": 9818,
+          "d455": 982,
+          "d405": 976
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 982,
+          "d405": 976
+        }
+      },
+      "preparation_seconds": 50.24134806502843
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_153434_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_153434_0_x13y08",
+      "group": "x13y08",
+      "created_at": "Fri Sep 25 2026 07:35:09 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "test",
+      "source_sha256": "9c21d767ea58d49a0a775d196c0e13d067eda0fcfbc1199e879cfbac54e55f89",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_153434_0_x13y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "390a7b555fd678d1db58a11699281fc41e39327fd9da015ecf37746ac1b78818",
+        "bytes": 1227940696
+      },
+      "valid_anchors": 3120,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 7916434,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790321676946019684,
+        "window_end_ns": 1790321678944184637,
+        "sample_count": 201,
+        "resultant_length": 0.9371837063080268,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790321676953936118,
+        "last_anchor_ns": 1790321708183936118
+      },
+      "previous_valid_anchors": 3120,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 9369,
+          "duration_s": 31.251244727000003,
+          "max_interval_ms": 8.723602999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.032112
+        },
+        "disturbance": {
+          "count": 9362,
+          "duration_s": 31.251385600000003,
+          "max_interval_ms": 9.528907,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.133826
+        },
+        "action": {
+          "count": 3126,
+          "duration_s": 31.247161464,
+          "max_interval_ms": 16.653011,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8774655
+        },
+        "d455": {
+          "count": 936,
+          "duration_s": 31.201439931000003,
+          "max_interval_ms": 38.541934,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.935926
+        },
+        "d405": {
+          "count": 923,
+          "duration_s": 31.207294159000003,
+          "max_interval_ms": 69.74788699999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.191512999999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 2,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 2,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 9369,
+          "action": 3126,
+          "disturbance": 9362,
+          "d455": 936,
+          "d405": 923
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 936,
+          "d405": 923
+        }
+      },
+      "preparation_seconds": 46.73487391299568
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_153600_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_153600_0_x13y08",
+      "group": "x13y08",
+      "created_at": "Fri Sep 25 2026 07:36:43 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "1620b4795252c2b7940aefc0e997e4c35bfda78ecd35214b467d26bf965b5b77",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_153600_0_x13y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "0ca059dd2c5a5b776961e3b086dab71ba7d0482f42fd656128e83011291a5b11",
+        "bytes": 1506628330
+      },
+      "valid_anchors": 3847,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 8704291,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790321763345009688,
+        "window_end_ns": 1790321765343898057,
+        "sample_count": 201,
+        "resultant_length": 0.9219212495800938,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790321763353713979,
+        "last_anchor_ns": 1790321801833713979
+      },
+      "previous_valid_anchors": 3847,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 11538,
+          "duration_s": 38.490104305,
+          "max_interval_ms": 7.807225,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.0038495
+        },
+        "disturbance": {
+          "count": 11535,
+          "duration_s": 38.490125596000006,
+          "max_interval_ms": 7.876348999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.0924129999999999
+        },
+        "action": {
+          "count": 3850,
+          "duration_s": 38.488876988,
+          "max_interval_ms": 15.904071,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.840572
+        },
+        "d455": {
+          "count": 1154,
+          "duration_s": 38.46683721,
+          "max_interval_ms": 38.309303,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.8917645
+        },
+        "d405": {
+          "count": 1145,
+          "duration_s": 38.474979538,
+          "max_interval_ms": 67.18081699999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.250508
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 1,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 11538,
+          "action": 3850,
+          "disturbance": 11535,
+          "d455": 1154,
+          "d405": 1145
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1154,
+          "d405": 1145
+        }
+      },
+      "preparation_seconds": 58.10226502799196
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_153734_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_153734_0_x13y08",
+      "group": "x13y08",
+      "created_at": "Fri Sep 25 2026 07:38:18 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "39e86220881d77267f33f22f8c63b34cc5396c3a889860486cf68dbcb81a0e09",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_153734_0_x13y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "9b6723dab48e24012d3830f37fd17a6b8e8ee4f944a508cd9dd7f6d0ab3bb334",
+        "bytes": 1598656629
+      },
+      "valid_anchors": 4055,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 9462761,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790321856581428001,
+        "window_end_ns": 1790321858581049296,
+        "sample_count": 201,
+        "resultant_length": 0.9503763604192929,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790321856590890762,
+        "last_anchor_ns": 1790321897140890762
+      },
+      "previous_valid_anchors": 4055,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 12162,
+          "duration_s": 40.569821065,
+          "max_interval_ms": 7.790598999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.024017
+        },
+        "disturbance": {
+          "count": 12157,
+          "duration_s": 40.56972015,
+          "max_interval_ms": 7.69785,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.118924
+        },
+        "action": {
+          "count": 4058,
+          "duration_s": 40.568195046,
+          "max_interval_ms": 15.371784,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.8440715
+        },
+        "d455": {
+          "count": 1216,
+          "duration_s": 40.544264133000006,
+          "max_interval_ms": 37.592386999999995,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.7604275
+        },
+        "d405": {
+          "count": 1201,
+          "duration_s": 40.569297531000004,
+          "max_interval_ms": 67.867836,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.192758999999999
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 1,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 0,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 12162,
+          "action": 4058,
+          "disturbance": 12157,
+          "d455": 1216,
+          "d405": 1201
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 1216,
+          "d405": 1201
+        }
+      },
+      "preparation_seconds": 64.96492056001443
+    },
+    {
+      "mcap_file": "Tianji_Marvin_M6CCS_260925_153913_0.mcap",
+      "dataset_name": "Tianji_Marvin_M6CCS_260925_153913_0_x13y08",
+      "group": "x13y08",
+      "created_at": "Fri Sep 25 2026 07:39:48 GMT+0000 (Coordinated Universal Time)",
+      "task_success": "true",
+      "success_source": "user_confirmed_2026-09-25",
+      "split": "train",
+      "source_sha256": "c053cbdbbf1f47d2351e98108be4ac852252ee149e165df3c66183a1b9d86fca",
+      "output": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/Tianji_Marvin_M6CCS_260925_153913_0_x13y08/episode.hdf5",
+      "output_fingerprint": {
+        "sha256": "53ac240d31ae4866273409b48f966e11f938e112ab682b5c4019b59486ff9bba",
+        "bytes": 1165401622
+      },
+      "valid_anchors": 2963,
+      "action_grid": {
+        "method": "circular_mean_initial_window",
+        "phase_ns": 9644802,
+        "period_ns": 10000000,
+        "window_ns": 2000000000,
+        "window_start_ns": 1790321956503249664,
+        "window_end_ns": 1790321958492903154,
+        "sample_count": 200,
+        "resultant_length": 0.9439545789842206,
+        "timestamp_key": "log_ns",
+        "first_anchor_ns": 1790321956512894466,
+        "last_anchor_ns": 1790321986132894466
+      },
+      "previous_valid_anchors": 2963,
+      "valid_anchor_change": 0,
+      "stream_diagnostics": {
+        "state": {
+          "count": 8889,
+          "duration_s": 29.634745027,
+          "max_interval_ms": 7.568084,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.074182
+        },
+        "disturbance": {
+          "count": 8888,
+          "duration_s": 29.63479461,
+          "max_interval_ms": 7.640708,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 1.1560949999999999
+        },
+        "action": {
+          "count": 2964,
+          "duration_s": 29.629811552000003,
+          "max_interval_ms": 13.547766999999999,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 0.836781
+        },
+        "d455": {
+          "count": 889,
+          "duration_s": 29.629225311000003,
+          "max_interval_ms": 37.498588,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 18.859101
+        },
+        "d405": {
+          "count": 882,
+          "duration_s": 29.636000635000002,
+          "max_interval_ms": 67.955659,
+          "header_nonincreasing_count": 0,
+          "log_minus_header_median_ms": 12.2173505
+        }
+      },
+      "excluded_anchor_reasons": {
+        "missing_current_action": 0,
+        "stale_or_missing_state": 0,
+        "stale_or_missing_camera": 0,
+        "empty_torque_history": 0
+      },
+      "verification": {
+        "status": "passed",
+        "all_selected_timestamps_exact": true,
+        "all_selected_numeric_float64_bytes_exact": true,
+        "all_original_jpeg_bytes_exact": true,
+        "all_rgb_pixels_exact": true,
+        "counts": {
+          "state": 8889,
+          "action": 2964,
+          "disturbance": 8888,
+          "d455": 889,
+          "d405": 882
+        },
+        "unique_decoded_rgb_frames": {
+          "d455": 889,
+          "d405": 882
+        }
+      },
+      "preparation_seconds": 48.27852381695993
+    }
+  ],
+  "raw_schema_version": "real_robot_right_arm_raw_v2",
+  "data_contract": {
+    "sampling_version": "right_arm_available_clock_100hz_torque300hz_phase_v2",
+    "raw_schema_version": "real_robot_right_arm_raw_v2",
+    "contact_representation": "joint_external_torque",
+    "force_source_topic": "/tianji_marvin_teleop_bridge/estimated_joint_disturbance",
+    "force_source_field": "effort",
+    "force_timestamp_stream": "disturbance",
+    "gravity_compensation": "unverified",
+    "internal_torque_input": false,
+    "qvel_input": false,
+    "qpos_unit": "rad",
+    "action_unit": "rad",
+    "torque_unit": "N*m",
+    "joint_names": [
+      "Joint1_R",
+      "Joint2_R",
+      "Joint3_R",
+      "Joint4_R",
+      "Joint5_R",
+      "Joint6_R",
+      "Joint7_R"
+    ],
+    "camera_names": [
+      "d455",
+      "d405"
+    ],
+    "image_preprocessing": "RGB uint8 / 255; bilinear antialias resize to model dimensions; optional ImageNet normalization from model config",
+    "synthetic_terminal_hold": false,
+    "input_clock_semantics": "recorder availability proxy; headers are diagnostics only",
+    "config": {
+      "timestamp_key": "log_ns",
+      "action_rate_hz": 100,
+      "action_grid_phase_mode": "circular_mean_initial_window",
+      "action_grid_phase_window_s": 2.0,
+      "torque_rate_hz": 300,
+      "history_duration_s": 0.2,
+      "camera_names": [
+        "d455",
+        "d405"
+      ],
+      "joint_names": [
+        "Joint1_R",
+        "Joint2_R",
+        "Joint3_R",
+        "Joint4_R",
+        "Joint5_R",
+        "Joint6_R",
+        "Joint7_R"
+      ],
+      "image_height": 480,
+      "image_width": 640,
+      "state_max_age_ms": 20.0,
+      "camera_max_age_ms": 100.0,
+      "action_match_tolerance_ms": 5.0,
+      "torque_match_tolerance_ms": 1.666666,
+      "max_samples_per_interval": 8
+    }
+  },
+  "correction": {
+    "reason": "User clarified external estimate source",
+    "external_torque": "/tianji_marvin_teleop_bridge/estimated_joint_disturbance.effort",
+    "internal_torque": "io_teleop/joint_states.effort; preserved, excluded from training",
+    "supersedes_data_root": "/home/stw/Downloads/1mm_gap_hdf5_raw_v1",
+    "old_force_model_results_valid": false
+  },
+  "source_root": "/home/stw/Downloads/1mm_gap_mcap",
+  "output_root": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2",
+  "label_sha256": "695976dab7c8a10fffdea24c28986f95910910d0b3abaf4d9481c29e1bf0c9a7",
+  "approved_alignment_sha256": "9e65bce770eab996f0c5b4e399748de9d1369f6609d8af638b2489c08be598a7",
+  "data_config": {
+    "timestamp_key": "log_ns",
+    "action_rate_hz": 100,
+    "action_grid_phase_mode": "circular_mean_initial_window",
+    "action_grid_phase_window_s": 2.0,
+    "torque_rate_hz": 300,
+    "history_duration_s": 0.2,
+    "camera_names": [
+      "d455",
+      "d405"
+    ],
+    "joint_names": [
+      "Joint1_R",
+      "Joint2_R",
+      "Joint3_R",
+      "Joint4_R",
+      "Joint5_R",
+      "Joint6_R",
+      "Joint7_R"
+    ],
+    "image_height": 480,
+    "image_width": 640,
+    "state_max_age_ms": 20.0,
+    "camera_max_age_ms": 100.0,
+    "action_match_tolerance_ms": 5.0,
+    "torque_match_tolerance_ms": 1.666666,
+    "max_samples_per_interval": 8
+  },
+  "split_manifest": {
+    "version": "real_robot_recording_split_v2",
+    "seed": 20260928,
+    "train_episode_ids": [
+      "Tianji_Marvin_M6CCS_260925_141421_0_x16y08",
+      "Tianji_Marvin_M6CCS_260925_142724_0_x16y08",
+      "Tianji_Marvin_M6CCS_260925_143703_0_x16y08",
+      "Tianji_Marvin_M6CCS_260925_144912_0_x15y08",
+      "Tianji_Marvin_M6CCS_260925_145214_0_x15y08",
+      "Tianji_Marvin_M6CCS_260925_145659_0_x15y08",
+      "Tianji_Marvin_M6CCS_260925_150735_0_x14y08",
+      "Tianji_Marvin_M6CCS_260925_150909_0_x14y08",
+      "Tianji_Marvin_M6CCS_260925_151431_0_x14y08",
+      "Tianji_Marvin_M6CCS_260925_153600_0_x13y08",
+      "Tianji_Marvin_M6CCS_260925_153734_0_x13y08",
+      "Tianji_Marvin_M6CCS_260925_153913_0_x13y08"
+    ],
+    "validation_episode_ids": [
+      "Tianji_Marvin_M6CCS_260925_143349_0_x16y08",
+      "Tianji_Marvin_M6CCS_260925_145347_0_x15y08",
+      "Tianji_Marvin_M6CCS_260925_151036_0_x14y08",
+      "Tianji_Marvin_M6CCS_260925_153238_0_x13y08"
+    ],
+    "test_episode_ids": [
+      "Tianji_Marvin_M6CCS_260925_143208_0_x16y08",
+      "Tianji_Marvin_M6CCS_260925_144649_0_x15y08",
+      "Tianji_Marvin_M6CCS_260925_151227_0_x14y08",
+      "Tianji_Marvin_M6CCS_260925_153434_0_x13y08"
+    ],
+    "condition_groups": {
+      "Tianji_Marvin_M6CCS_260925_153913_0_x13y08": "x13y08",
+      "Tianji_Marvin_M6CCS_260925_153734_0_x13y08": "x13y08",
+      "Tianji_Marvin_M6CCS_260925_153600_0_x13y08": "x13y08",
+      "Tianji_Marvin_M6CCS_260925_153434_0_x13y08": "x13y08",
+      "Tianji_Marvin_M6CCS_260925_153238_0_x13y08": "x13y08",
+      "Tianji_Marvin_M6CCS_260925_151431_0_x14y08": "x14y08",
+      "Tianji_Marvin_M6CCS_260925_151227_0_x14y08": "x14y08",
+      "Tianji_Marvin_M6CCS_260925_151036_0_x14y08": "x14y08",
+      "Tianji_Marvin_M6CCS_260925_150909_0_x14y08": "x14y08",
+      "Tianji_Marvin_M6CCS_260925_150735_0_x14y08": "x14y08",
+      "Tianji_Marvin_M6CCS_260925_145659_0_x15y08": "x15y08",
+      "Tianji_Marvin_M6CCS_260925_145347_0_x15y08": "x15y08",
+      "Tianji_Marvin_M6CCS_260925_145214_0_x15y08": "x15y08",
+      "Tianji_Marvin_M6CCS_260925_144912_0_x15y08": "x15y08",
+      "Tianji_Marvin_M6CCS_260925_144649_0_x15y08": "x15y08",
+      "Tianji_Marvin_M6CCS_260925_143703_0_x16y08": "x16y08",
+      "Tianji_Marvin_M6CCS_260925_143349_0_x16y08": "x16y08",
+      "Tianji_Marvin_M6CCS_260925_143208_0_x16y08": "x16y08",
+      "Tianji_Marvin_M6CCS_260925_142724_0_x16y08": "x16y08",
+      "Tianji_Marvin_M6CCS_260925_141421_0_x16y08": "x16y08"
+    }
+  },
+  "code_sha256": {
+    "scripts/convert_mcap_right_arm.py": "b1d65c934c51f1bb76abcbdf44613739bd03b0088aaa506a5da48b6b93258033",
+    "src/force_aware_act/real_robot/reader.py": "03f99680378597e3cf2f109d2956c82e87649372972a54c32728b24dfff3e45f",
+    "src/force_aware_act/real_robot/sampling.py": "b58a825185c7aa3ef583e5054f775ed23bd4f8c9b72043f29da4d3f718d1c720"
+  },
+  "total_bytes": 26702509706,
+  "split_valid_anchors": {
+    "train": 40719,
+    "validation": 12690,
+    "test": 13784
+  }
+}

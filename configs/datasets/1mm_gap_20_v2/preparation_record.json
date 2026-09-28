@@ -1,0 +1,331 @@
+{
+  "version": "1mm_gap_data_preparation_commit_record_v1",
+  "recorded_utc": "2026-09-28T08:28:55.780423+00:00",
+  "scope": "dataset conversion, read-time alignment, masks, native training-only statistics, fixed recording split and provenance; excludes model/training implementation and run results",
+  "source_root": "/home/stw/Downloads/1mm_gap_mcap",
+  "output_root": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2",
+  "raw_schema_version": "real_robot_right_arm_raw_v2",
+  "data_contract": {
+    "sampling_version": "right_arm_available_clock_100hz_torque300hz_phase_v2",
+    "raw_schema_version": "real_robot_right_arm_raw_v2",
+    "contact_representation": "joint_external_torque",
+    "force_source_topic": "/tianji_marvin_teleop_bridge/estimated_joint_disturbance",
+    "force_source_field": "effort",
+    "force_timestamp_stream": "disturbance",
+    "gravity_compensation": "unverified",
+    "internal_torque_input": false,
+    "qvel_input": false,
+    "qpos_unit": "rad",
+    "action_unit": "rad",
+    "torque_unit": "N*m",
+    "joint_names": [
+      "Joint1_R",
+      "Joint2_R",
+      "Joint3_R",
+      "Joint4_R",
+      "Joint5_R",
+      "Joint6_R",
+      "Joint7_R"
+    ],
+    "camera_names": [
+      "d455",
+      "d405"
+    ],
+    "image_preprocessing": "RGB uint8 / 255; bilinear antialias resize to model dimensions; optional ImageNet normalization from model config",
+    "synthetic_terminal_hold": false,
+    "input_clock_semantics": "recorder availability proxy; headers are diagnostics only",
+    "config": {
+      "timestamp_key": "log_ns",
+      "action_rate_hz": 100,
+      "action_grid_phase_mode": "circular_mean_initial_window",
+      "action_grid_phase_window_s": 2.0,
+      "torque_rate_hz": 300,
+      "history_duration_s": 0.2,
+      "camera_names": [
+        "d455",
+        "d405"
+      ],
+      "joint_names": [
+        "Joint1_R",
+        "Joint2_R",
+        "Joint3_R",
+        "Joint4_R",
+        "Joint5_R",
+        "Joint6_R",
+        "Joint7_R"
+      ],
+      "image_height": 480,
+      "image_width": 640,
+      "state_max_age_ms": 20.0,
+      "camera_max_age_ms": 100.0,
+      "action_match_tolerance_ms": 5.0,
+      "torque_match_tolerance_ms": 1.666666,
+      "max_samples_per_interval": 8
+    }
+  },
+  "labels": {
+    "original_path": "/home/stw/Downloads/1mm_gap_mcap/dataset_labels.csv",
+    "sha256": "695976dab7c8a10fffdea24c28986f95910910d0b3abaf4d9481c29e1bf0c9a7",
+    "success_meaning": "all 20 episodes successfully inserted; user confirmed, not inferred from MCAP",
+    "rows": [
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_153913_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_153913_0_x13y08",
+        "group": "x13y08",
+        "created_at": "Fri Sep 25 2026 07:39:48 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_153734_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_153734_0_x13y08",
+        "group": "x13y08",
+        "created_at": "Fri Sep 25 2026 07:38:18 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_153600_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_153600_0_x13y08",
+        "group": "x13y08",
+        "created_at": "Fri Sep 25 2026 07:36:43 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_153434_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_153434_0_x13y08",
+        "group": "x13y08",
+        "created_at": "Fri Sep 25 2026 07:35:09 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_153238_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_153238_0_x13y08",
+        "group": "x13y08",
+        "created_at": "Fri Sep 25 2026 07:33:14 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_151431_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_151431_0_x14y08",
+        "group": "x14y08",
+        "created_at": "Fri Sep 25 2026 07:15:14 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_151227_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_151227_0_x14y08",
+        "group": "x14y08",
+        "created_at": "Fri Sep 25 2026 07:13:09 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_151036_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_151036_0_x14y08",
+        "group": "x14y08",
+        "created_at": "Fri Sep 25 2026 07:11:11 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_150909_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_150909_0_x14y08",
+        "group": "x14y08",
+        "created_at": "Fri Sep 25 2026 07:09:45 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_150735_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_150735_0_x14y08",
+        "group": "x14y08",
+        "created_at": "Fri Sep 25 2026 07:08:14 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_145659_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_145659_0_x15y08",
+        "group": "x15y08",
+        "created_at": "Fri Sep 25 2026 06:57:39 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_145347_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_145347_0_x15y08",
+        "group": "x15y08",
+        "created_at": "Fri Sep 25 2026 06:54:24 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_145214_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_145214_0_x15y08",
+        "group": "x15y08",
+        "created_at": "Fri Sep 25 2026 06:52:48 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_144912_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_144912_0_x15y08",
+        "group": "x15y08",
+        "created_at": "Fri Sep 25 2026 06:49:43 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_144649_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_144649_0_x15y08",
+        "group": "x15y08",
+        "created_at": "Fri Sep 25 2026 06:47:29 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_143703_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_143703_0_x16y08",
+        "group": "x16y08",
+        "created_at": "Fri Sep 25 2026 06:37:37 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_143349_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_143349_0_x16y08",
+        "group": "x16y08",
+        "created_at": "Fri Sep 25 2026 06:34:24 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_143208_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_143208_0_x16y08",
+        "group": "x16y08",
+        "created_at": "Fri Sep 25 2026 06:32:45 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_142724_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_142724_0_x16y08",
+        "group": "x16y08",
+        "created_at": "Fri Sep 25 2026 06:28:02 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      },
+      {
+        "mcap_file": "Tianji_Marvin_M6CCS_260925_141421_0.mcap",
+        "dataset_name": "Tianji_Marvin_M6CCS_260925_141421_0_x16y08",
+        "group": "x16y08",
+        "created_at": "Fri Sep 25 2026 06:15:12 GMT+0000 (Coordinated Universal Time)",
+        "task_success": "true",
+        "success_source": "user_confirmed_2026-09-25"
+      }
+    ]
+  },
+  "archives": {
+    "conversion_manifest.json": {
+      "original_path": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/conversion_manifest.json",
+      "sha256": "dc2b71d778ab66f17ef70dae053f688193f98612e69a13fe3d2a55486c2ce1ed",
+      "bytes": 71172,
+      "archive_mode": "byte_exact_copy"
+    },
+    "action_phase_audit_20260925.json": {
+      "original_path": "/home/stw/Downloads/1mm_gap_mcap/alignment_processing_manifest_v2.json",
+      "sha256": "9e65bce770eab996f0c5b4e399748de9d1369f6609d8af638b2489c08be598a7",
+      "bytes": 38590,
+      "archive_mode": "byte_exact_copy"
+    },
+    "force_source_quality_20260928.json": {
+      "original_path": "/home/stw/ForceAwareACT_workspace/ForceAwareACT/outputs/1mm_gap_20_v2/force_source_quality.json",
+      "sha256": "67296202724c9310555e84b5282e19ad3d94fe8ef2b2a1a39df1412a0a9f23a9",
+      "bytes": 17124,
+      "archive_mode": "byte_exact_copy"
+    }
+  },
+  "historical_snapshot_notes": {
+    "action_phase_audit_20260925.json": "Only the action clock phase, source fingerprints and grid results remain applicable. Its old raw_v1 force interpretation and gravity_compensated=true assertion are superseded by conversion_manifest.json raw_v2 contract.",
+    "force_source_quality_20260928.json": "Captured at data preparation; formal_training_started=false describes that historical snapshot, not the current training status."
+  },
+  "totals": {
+    "episodes": 20,
+    "hdf5_bytes": 26702509706,
+    "candidate_anchors": 67233,
+    "valid_anchors": 67193,
+    "valid_anchor_fraction": 0.9994050540657118,
+    "state_messages": 201542,
+    "external_torque_messages": 201463,
+    "external_torque_nonfinite": 0,
+    "next_interval_force_slot_coverage": 0.9400830443647403,
+    "next_interval_endpoint_coverage": 0.9540874793505276
+  },
+  "split": {
+    "seed": 20260928,
+    "episodes_per_role": {
+      "train": 12,
+      "validation": 4,
+      "test": 4
+    },
+    "valid_anchors_per_role": {
+      "train": 40719,
+      "validation": 12690,
+      "test": 13784
+    }
+  },
+  "conversion_code_identity": {
+    "scripts/convert_mcap_right_arm.py": {
+      "conversion_time_sha256": "b1d65c934c51f1bb76abcbdf44613739bd03b0088aaa506a5da48b6b93258033",
+      "current_sha256": "f266dbd0589902fe079680402371b87850c9dfbdcc2a41e49bf02090e0b052fa",
+      "unchanged": false,
+      "change_reason": "One trailing whitespace removed; no conversion logic or output data change."
+    },
+    "src/force_aware_act/real_robot/reader.py": {
+      "conversion_time_sha256": "03f99680378597e3cf2f109d2956c82e87649372972a54c32728b24dfff3e45f",
+      "current_sha256": "03f99680378597e3cf2f109d2956c82e87649372972a54c32728b24dfff3e45f",
+      "unchanged": true
+    },
+    "src/force_aware_act/real_robot/sampling.py": {
+      "conversion_time_sha256": "b58a825185c7aa3ef583e5054f775ed23bd4f8c9b72043f29da4d3f718d1c720",
+      "current_sha256": "b58a825185c7aa3ef583e5054f775ed23bd4f8c9b72043f29da4d3f718d1c720",
+      "unchanged": true
+    }
+  },
+  "commit_time_orchestration_change": "prepare_1mm_gap_dataset.py no longer imports checkpoint/training modules or writes optimization.json; source fingerprint algorithm and split are unchanged. Archived manifests describe the original completed conversion and are not rewritten.",
+  "binary_data_in_git": false,
+  "commit_verification": {
+    "python": "/home/stw/miniconda3/envs/forceact/bin/python",
+    "dependency_installations": [],
+    "mcap_library_path": "/tmp/1mm_gap_python_deps (preexisting)",
+    "data_tests": {
+      "passed": 35,
+      "seconds": 2.54,
+      "files": [
+        "tests/test_real_robot_conversion.py",
+        "tests/test_real_robot_data.py",
+        "tests/test_prepare_1mm_gap_dataset.py"
+      ]
+    },
+    "isolated_staged_tests": {
+      "passed": 57,
+      "seconds": 5.83,
+      "files": [
+        "tests/test_real_robot_conversion.py",
+        "tests/test_real_robot_data.py",
+        "tests/test_prepare_1mm_gap_dataset.py",
+        "tests/test_act_aligned_high_rate_training.py",
+        "tests/test_high_rate_force.py"
+      ],
+      "method": "git checkout-index exports the proposed commit, excluding unstaged model and training changes"
+    },
+    "archive_identity_and_split_checks": "passed: byte-exact originals/SHA256, all success labels, actual balanced split, data config, totals and code identities",
+    "existing_data_rewritten": false,
+    "formal_training_launched": false
+  }
+}

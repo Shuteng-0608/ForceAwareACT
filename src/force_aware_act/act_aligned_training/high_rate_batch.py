@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Union
+from typing import Optional, Union
 
 import torch
 
@@ -25,6 +25,14 @@ class ACTAlignedHighRateBatch:
     future_force_sample_padding_mask: torch.Tensor
     future_force_interval_padding_mask: torch.Tensor
     future_force_target: torch.Tensor
+    future_force_target_padding_mask: Optional[torch.Tensor] = None
+
+    @property
+    def force_target_padding_mask(self) -> torch.Tensor:
+        """Endpoint validity is independent of other samples in its interval."""
+        if self.future_force_target_padding_mask is None:
+            return self.future_force_interval_padding_mask
+        return self.future_force_target_padding_mask
 
     @property
     def batch_size(self) -> int:
@@ -49,6 +57,7 @@ class ACTAlignedHighRateBatch:
             "future_force_sample_padding_mask": (b, k, s),
             "future_force_interval_padding_mask": (b, k),
             "future_force_target": (b, k, config.force_dim),
+            "future_force_target_padding_mask": (b, k),
         }
         if b <= 0:
             raise ValueError("batch size must be positive")
@@ -66,6 +75,8 @@ class ACTAlignedHighRateBatch:
         for item in fields(self):
             name = item.name
             tensor = getattr(self, name)
+            if name == "future_force_target_padding_mask" and tensor is None:
+                continue
             if not isinstance(tensor, torch.Tensor) or tuple(tensor.shape) != expected[name]:
                 raise ValueError(f"{name} must have shape {expected[name]}")
             if tensor.device != reference.device:
@@ -89,6 +100,21 @@ class ACTAlignedHighRateBatch:
             raise ValueError("every sample requires at least one online force interval")
         if self.action_padding_mask.all(dim=1).any():
             raise ValueError("every sample requires at least one valid action")
+        if torch.any(self.future_force_interval_padding_mask & ~self.force_target_padding_mask):
+            raise ValueError("a valid force endpoint requires a valid force interval")
+        valid_values = {
+            "images": self.images,
+            "qpos": self.qpos,
+            "action_chunk": self.action_chunk[~self.action_padding_mask],
+            "online_force_intervals": self.online_force_intervals[~self.online_force_sample_padding_mask],
+            "online_force_relative_time": self.online_force_relative_time[~self.online_force_sample_padding_mask],
+            "future_force_intervals": self.future_force_intervals[~self.future_force_sample_padding_mask],
+            "future_force_relative_time": self.future_force_relative_time[~self.future_force_sample_padding_mask],
+            "future_force_target": self.future_force_target[~self.force_target_padding_mask],
+        }
+        for name, values in valid_values.items():
+            if not torch.isfinite(values).all():
+                raise ValueError(f"valid {name} values must be finite")
 
     def to(
         self,
@@ -98,7 +124,7 @@ class ACTAlignedHighRateBatch:
     ) -> "ACTAlignedHighRateBatch":
         return ACTAlignedHighRateBatch(
             **{
-                item.name: getattr(self, item.name).to(
+                item.name: None if getattr(self, item.name) is None else getattr(self, item.name).to(
                     device,
                     non_blocking=non_blocking,
                 )

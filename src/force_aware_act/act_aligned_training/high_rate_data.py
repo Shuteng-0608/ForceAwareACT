@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 import torch
@@ -40,6 +40,7 @@ class ACTAlignedHighRateSample:
     episode_id: str
     timestep: int
     online_raw_valid_count: int
+    future_force_target_padding_mask: Optional[torch.Tensor] = None
 
 
 class ACTAlignedHighRateHDF5Dataset(ACTAlignedHDF5Dataset):
@@ -174,5 +175,11 @@ def collate_high_rate_samples(
         **{
             name: torch.stack([getattr(sample, name) for sample in samples])
             for name in names
-        }
+        },
+        future_force_target_padding_mask=torch.stack([
+            sample.future_force_interval_padding_mask
+            if sample.future_force_target_padding_mask is None
+            else sample.future_force_target_padding_mask
+            for sample in samples
+        ]),
     )

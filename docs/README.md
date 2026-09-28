@@ -33,6 +33,8 @@ The `docs/` root intentionally contains only this index.
 
 | Need | Canonical document |
 | --- | --- |
+| Real-robot MCAP extraction, raw HDF5 fields, and causal timestamp alignment | [`REAL_ROBOT_RAW_HDF5.md`](data/REAL_ROBOT_RAW_HDF5.md) |
+| Completed 20-recording 1 mm gap conversion and dataset provenance | [`REAL_ROBOT_1MM_GAP_DATASET_CONVERSION.md`](experiments/REAL_ROBOT_1MM_GAP_DATASET_CONVERSION.md) |
 | Current high-rate Contact-CVAE model and every encoding stage | [`CONTACT_CVAE_MODEL_METHOD.md`](methods/CONTACT_CVAE_MODEL_METHOD.md) |
 | Current high-rate Contact-CVAE training configuration and logic | [`CONTACT_CVAE_TRAINING_METHOD.md`](methods/CONTACT_CVAE_TRAINING_METHOD.md) |
 | Native-rate Motion-CVAE and structurally latent-free Dual-Zero controls | [`NATIVE_RATE_CONTROL_MODELS.md`](training/NATIVE_RATE_CONTROL_MODELS.md) |

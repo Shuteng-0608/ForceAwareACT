@@ -1,0 +1,52 @@
+{
+  "version": "real_robot_recording_split_v2",
+  "seed": 20260928,
+  "train_episode_ids": [
+    "Tianji_Marvin_M6CCS_260925_141421_0_x16y08",
+    "Tianji_Marvin_M6CCS_260925_142724_0_x16y08",
+    "Tianji_Marvin_M6CCS_260925_143703_0_x16y08",
+    "Tianji_Marvin_M6CCS_260925_144912_0_x15y08",
+    "Tianji_Marvin_M6CCS_260925_145214_0_x15y08",
+    "Tianji_Marvin_M6CCS_260925_145659_0_x15y08",
+    "Tianji_Marvin_M6CCS_260925_150735_0_x14y08",
+    "Tianji_Marvin_M6CCS_260925_150909_0_x14y08",
+    "Tianji_Marvin_M6CCS_260925_151431_0_x14y08",
+    "Tianji_Marvin_M6CCS_260925_153600_0_x13y08",
+    "Tianji_Marvin_M6CCS_260925_153734_0_x13y08",
+    "Tianji_Marvin_M6CCS_260925_153913_0_x13y08"
+  ],
+  "validation_episode_ids": [
+    "Tianji_Marvin_M6CCS_260925_143349_0_x16y08",
+    "Tianji_Marvin_M6CCS_260925_145347_0_x15y08",
+    "Tianji_Marvin_M6CCS_260925_151036_0_x14y08",
+    "Tianji_Marvin_M6CCS_260925_153238_0_x13y08"
+  ],
+  "test_episode_ids": [
+    "Tianji_Marvin_M6CCS_260925_143208_0_x16y08",
+    "Tianji_Marvin_M6CCS_260925_144649_0_x15y08",
+    "Tianji_Marvin_M6CCS_260925_151227_0_x14y08",
+    "Tianji_Marvin_M6CCS_260925_153434_0_x13y08"
+  ],
+  "condition_groups": {
+    "Tianji_Marvin_M6CCS_260925_153913_0_x13y08": "x13y08",
+    "Tianji_Marvin_M6CCS_260925_153734_0_x13y08": "x13y08",
+    "Tianji_Marvin_M6CCS_260925_153600_0_x13y08": "x13y08",
+    "Tianji_Marvin_M6CCS_260925_153434_0_x13y08": "x13y08",
+    "Tianji_Marvin_M6CCS_260925_153238_0_x13y08": "x13y08",
+    "Tianji_Marvin_M6CCS_260925_151431_0_x14y08": "x14y08",
+    "Tianji_Marvin_M6CCS_260925_151227_0_x14y08": "x14y08",
+    "Tianji_Marvin_M6CCS_260925_151036_0_x14y08": "x14y08",
+    "Tianji_Marvin_M6CCS_260925_150909_0_x14y08": "x14y08",
+    "Tianji_Marvin_M6CCS_260925_150735_0_x14y08": "x14y08",
+    "Tianji_Marvin_M6CCS_260925_145659_0_x15y08": "x15y08",
+    "Tianji_Marvin_M6CCS_260925_145347_0_x15y08": "x15y08",
+    "Tianji_Marvin_M6CCS_260925_145214_0_x15y08": "x15y08",
+    "Tianji_Marvin_M6CCS_260925_144912_0_x15y08": "x15y08",
+    "Tianji_Marvin_M6CCS_260925_144649_0_x15y08": "x15y08",
+    "Tianji_Marvin_M6CCS_260925_143703_0_x16y08": "x16y08",
+    "Tianji_Marvin_M6CCS_260925_143349_0_x16y08": "x16y08",
+    "Tianji_Marvin_M6CCS_260925_143208_0_x16y08": "x16y08",
+    "Tianji_Marvin_M6CCS_260925_142724_0_x16y08": "x16y08",
+    "Tianji_Marvin_M6CCS_260925_141421_0_x16y08": "x16y08"
+  }
+}
