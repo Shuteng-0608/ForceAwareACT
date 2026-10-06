@@ -37,6 +37,7 @@ The `docs/` root intentionally contains only this index.
 | Completed 20-recording 1 mm gap conversion and dataset provenance | [`REAL_ROBOT_1MM_GAP_DATASET_CONVERSION.md`](experiments/REAL_ROBOT_1MM_GAP_DATASET_CONVERSION.md) |
 | Real-robot right-arm data alignment, missing values, encoders, losses, and prediction heads | [`REAL_ROBOT_MODEL_ARCHITECTURE.md`](architecture/REAL_ROBOT_MODEL_ARCHITECTURE.md) |
 | Real-robot raw HDF5 training commands and offline replay | [`REAL_ROBOT_TRAINING.md`](data/REAL_ROBOT_TRAINING.md) |
+| Planned Linux/4090 deployment through RealSense and Marvin SDKs, with read-only acquisition first | [`REAL_ROBOT_SDK_DEPLOYMENT_PLAN.md`](rollout/REAL_ROBOT_SDK_DEPLOYMENT_PLAN.md) |
 | Current high-rate Contact-CVAE model and every encoding stage | [`CONTACT_CVAE_MODEL_METHOD.md`](methods/CONTACT_CVAE_MODEL_METHOD.md) |
 | Current high-rate Contact-CVAE training configuration and logic | [`CONTACT_CVAE_TRAINING_METHOD.md`](methods/CONTACT_CVAE_TRAINING_METHOD.md) |
 | Native-rate Motion-CVAE and structurally latent-free Dual-Zero controls | [`NATIVE_RATE_CONTROL_MODELS.md`](training/NATIVE_RATE_CONTROL_MODELS.md) |
