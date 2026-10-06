@@ -1,0 +1,30 @@
+{
+  "version": "1mm_gap_training_plan_v2",
+  "execution_status": "prepared_not_started_per_user_request",
+  "models": [
+    "contact",
+    "act",
+    "motion"
+  ],
+  "train_episodes": 12,
+  "batch_size": 2,
+  "max_sampling_epochs": 20000,
+  "minimum_sampling_epochs": 500,
+  "early_stop_patience": 8,
+  "minimum_relative_improvement": 0.005,
+  "validation_interval_epochs": 50,
+  "validation_anchor_stride": 10,
+  "data_root": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2",
+  "data_config": "/home/stw/ForceAwareACT_workspace/ForceAwareACT/configs/real_robot/right_arm.json",
+  "optimization_config": "/home/stw/ForceAwareACT_workspace/ForceAwareACT/configs/experiments/1mm_gap_20_v1/optimization.json",
+  "split": "/home/stw/ForceAwareACT_workspace/ForceAwareACT/configs/experiments/1mm_gap_20_v1/split.json",
+  "conversion_manifest": "/home/stw/Downloads/1mm_gap_hdf5_raw_v2/conversion_manifest.json",
+  "output_root": "/home/stw/ForceAwareACT_workspace/ForceAwareACT/outputs/1mm_gap_20_v2",
+  "force_source_correction": {
+    "source_topic": "/tianji_marvin_teleop_bridge/estimated_joint_disturbance",
+    "source_field": "effort",
+    "timestamp_stream": "disturbance",
+    "internal_torque_usage": "preserved_only",
+    "old_force_checkpoints": "invalid_for_external_force_training_or_deployment"
+  }
+}

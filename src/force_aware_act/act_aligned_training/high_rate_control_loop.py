@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Iterable, Optional
 
 import torch
 
+from force_aware_act.act_aligned_training.high_rate_trainer import force_availability_metrics
 from force_aware_act.act_aligned_training.high_rate_batch import (
     ACTAlignedHighRateBatch,
 )
@@ -188,6 +189,7 @@ class _WeightedAccumulator:
         self.training_config = training_config
         self.sums: Dict[str, float] = {}
         self.weights: Dict[str, float] = {}
+        self.availability: Dict[str, float] = {}
 
     def _add(self, name: str, value: float, weight: float) -> None:
         if weight <= 0:
@@ -197,13 +199,17 @@ class _WeightedAccumulator:
 
     def _mean(self, name: str) -> float:
         if self.weights.get(name, 0.0) <= 0:
+            if name in {"loss_force", "loss_force_highrate"}:
+                return 0.0  # Absent loss contribution, not a quality estimate.
             raise RuntimeError(f"metric {name!r} has no observations")
         return self.sums[name] / self.weights[name]
 
-    @staticmethod
-    def _weights(batch: ACTAlignedHighRateBatch) -> tuple[float, float, float]:
+    def _weights(self, batch: ACTAlignedHighRateBatch) -> tuple[float, float, float, float]:
+        for name, count in force_availability_metrics(batch).items():
+            self.availability[name] = self.availability.get(name, 0.0) + count
         return (
             float((~batch.action_padding_mask).sum().item()),
+            float((~batch.force_target_padding_mask).sum().item()),
             float((~batch.future_force_interval_padding_mask).sum().item()),
             float(batch.batch_size),
         )
@@ -217,9 +223,9 @@ class _HighRateMotionAccumulator(_WeightedAccumulator):
         self.latent_count = 0
 
     def add_training(self, batch, metrics: Dict[str, Any]) -> None:
-        action_weight, force_weight, batch_weight = self._weights(batch)
+        action_weight, endpoint_weight, force_weight, batch_weight = self._weights(batch)
         self._add("loss_action", metrics["loss_action"], action_weight)
-        self._add("loss_force", metrics["loss_force"], force_weight)
+        self._add("loss_force", metrics["loss_force"], endpoint_weight)
         self._add(
             "loss_force_highrate",
             metrics["loss_force_highrate"],
@@ -254,10 +260,11 @@ class _HighRateMotionAccumulator(_WeightedAccumulator):
             + self.training_config.posterior_kl_weight
             * result["loss_posterior_kl"]
         )
+        result.update(self.availability)
         return result
 
     def add_validation(self, batch, metrics: Dict[str, Any]) -> None:
-        action_weight, force_weight, batch_weight = self._weights(batch)
+        action_weight, endpoint_weight, force_weight, batch_weight = self._weights(batch)
         for name in (
             "posterior_action_l1",
             "deployment_zero_action_l1",
@@ -272,7 +279,7 @@ class _HighRateMotionAccumulator(_WeightedAccumulator):
             "posterior_zero_force_delta",
             "posterior_zero_force_highrate_delta",
         ):
-            self._add(name, metrics[name], force_weight)
+            self._add(name, metrics[name], force_weight if "highrate" in name else endpoint_weight)
         for name in (
             "posterior_kl_standard",
             "posterior_mean_abs",
@@ -301,20 +308,21 @@ class _HighRateMotionAccumulator(_WeightedAccumulator):
             self.training_config.action_loss_weight
             * result["posterior_action_l1"]
             + self.training_config.force_loss_weight
-            * result["posterior_force_l1"]
+            * result.get("posterior_force_l1", 0.0)
             + self.training_config.high_rate_force_loss_weight
-            * result["posterior_force_highrate_l1"]
+            * result.get("posterior_force_highrate_l1", 0.0)
             + self.training_config.posterior_kl_weight
             * result["posterior_kl_standard"]
         )
+        result.update(self.availability)
         return result
 
 
 class _HighRateDualZeroAccumulator(_WeightedAccumulator):
     def add_training(self, batch, metrics: Dict[str, Any]) -> None:
-        action_weight, force_weight, _batch_weight = self._weights(batch)
+        action_weight, endpoint_weight, force_weight, _batch_weight = self._weights(batch)
         self._add("loss_action", metrics["loss_action"], action_weight)
-        self._add("loss_force", metrics["loss_force"], force_weight)
+        self._add("loss_force", metrics["loss_force"], endpoint_weight)
         self._add(
             "loss_force_highrate",
             metrics["loss_force_highrate"],
@@ -338,10 +346,11 @@ class _HighRateDualZeroAccumulator(_WeightedAccumulator):
             + self.training_config.high_rate_force_loss_weight
             * result["loss_force_highrate"]
         )
+        result.update(self.availability)
         return result
 
     def add_validation(self, batch, metrics: Dict[str, Any]) -> None:
-        action_weight, force_weight, _batch_weight = self._weights(batch)
+        action_weight, endpoint_weight, force_weight, _batch_weight = self._weights(batch)
         self._add(
             "deployment_action_l1",
             metrics["deployment_action_l1"],
@@ -351,7 +360,7 @@ class _HighRateDualZeroAccumulator(_WeightedAccumulator):
             "deployment_force_l1",
             "deployment_force_highrate_l1",
         ):
-            self._add(name, metrics[name], force_weight)
+            self._add(name, metrics[name], force_weight if "highrate" in name else endpoint_weight)
 
     def validation_result(self) -> Dict[str, float]:
         result = {name: self._mean(name) for name in self.weights}
@@ -359,8 +368,9 @@ class _HighRateDualZeroAccumulator(_WeightedAccumulator):
             self.training_config.action_loss_weight
             * result["deployment_action_l1"]
             + self.training_config.force_loss_weight
-            * result["deployment_force_l1"]
+            * result.get("deployment_force_l1", 0.0)
             + self.training_config.high_rate_force_loss_weight
-            * result["deployment_force_highrate_l1"]
+            * result.get("deployment_force_highrate_l1", 0.0)
         )
+        result.update(self.availability)
         return result

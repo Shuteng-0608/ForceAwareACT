@@ -11,6 +11,7 @@ from force_aware_act.act_aligned_training.high_rate_config import ACTAlignedHigh
 from force_aware_act.act_aligned_training.high_rate_losses import ACTAlignedHighRateCriterion
 from force_aware_act.act_aligned_training.high_rate_trainer import (
     evaluate_high_rate_one_batch,
+    force_availability_metrics,
     train_high_rate_one_step,
 )
 from force_aware_act.models.act_aligned.high_rate_policy import ACTAlignedHighRateContactCVAEPolicy
@@ -140,6 +141,7 @@ class _HighRateEpochAccumulator:
         self.weights: Dict[str, float] = {}
         self.moments: Dict[str, torch.Tensor] = {}
         self.latent_count = 0
+        self.availability: Dict[str, float] = {}
 
     def _add(self, name: str, value: float, weight: float) -> None:
         if weight <= 0:
@@ -149,15 +151,19 @@ class _HighRateEpochAccumulator:
 
     def _mean(self, name: str) -> float:
         if self.weights.get(name, 0.0) <= 0:
+            if name in {"loss_force", "loss_force_highrate"}:
+                return 0.0  # Absent loss contribution, not a quality estimate.
             raise RuntimeError(f"metric {name!r} has no observations")
         return self.sums[name] / self.weights[name]
 
     def add_training(self, batch: ACTAlignedHighRateBatch, metrics: Dict[str, Any]) -> None:
         action_intervals = float((~batch.action_padding_mask).sum().item())
         force_intervals = float((~batch.future_force_interval_padding_mask).sum().item())
+        force_endpoints = float((~batch.force_target_padding_mask).sum().item())
+        self._add_availability(batch)
         batch_size = float(batch.batch_size)
         self._add("loss_action", metrics["loss_action"], action_intervals)
-        self._add("loss_force", metrics["loss_force"], force_intervals)
+        self._add("loss_force", metrics["loss_force"], force_endpoints)
         self._add("loss_force_highrate", metrics["loss_force_highrate"], force_intervals)
         for name in ("loss_posterior_kl", "loss_prior_match", "posterior_mean_abs", "prior_mean_abs", "posterior_std_mean", "prior_std_mean", "posterior_prior_mean_l1"):
             self._add(name, metrics[name], batch_size)
@@ -166,11 +172,13 @@ class _HighRateEpochAccumulator:
     def add_validation(self, batch: ACTAlignedHighRateBatch, metrics: Dict[str, Any]) -> None:
         action_weight = float((~batch.action_padding_mask).sum().item())
         force_weight = float((~batch.future_force_interval_padding_mask).sum().item())
+        endpoint_weight = float((~batch.force_target_padding_mask).sum().item())
+        self._add_availability(batch)
         batch_weight = float(batch.batch_size)
         for name in ("posterior_action_l1", "deployment_zero_action_l1", "deployment_prior_action_l1", "posterior_zero_action_delta", "prior_zero_action_delta"):
             self._add(name, metrics[name], action_weight)
         for name in ("posterior_force_l1", "posterior_force_highrate_l1", "deployment_zero_force_l1", "deployment_zero_force_highrate_l1", "deployment_prior_force_l1", "deployment_prior_force_highrate_l1", "posterior_zero_force_delta", "posterior_zero_force_highrate_delta", "prior_zero_force_delta", "prior_zero_force_highrate_delta"):
-            self._add(name, metrics[name], force_weight)
+            self._add(name, metrics[name], force_weight if "highrate" in name else endpoint_weight)
         for name in ("posterior_kl_standard", "posterior_prior_match_kl", "posterior_prior_mean_l1", "posterior_std_mean", "prior_std_mean"):
             self._add(name, metrics[name], batch_weight)
         for name in ("_posterior_mean_sum", "_posterior_mean_square_sum", "_prior_mean_sum", "_prior_mean_square_sum"):
@@ -187,6 +195,7 @@ class _HighRateEpochAccumulator:
             + self.training_config.posterior_kl_weight * result["loss_posterior_kl"]
             + self.training_config.prior_match_weight * result["loss_prior_match"]
         )
+        result.update(self.availability)
         return result
 
     def validation_result(self) -> Dict[str, float]:
@@ -196,12 +205,17 @@ class _HighRateEpochAccumulator:
         result["prior_mean_across_sample_variance"] = self._variance("prior")
         result["posterior_total"] = (
             self.training_config.action_loss_weight * result["posterior_action_l1"]
-            + self.training_config.force_loss_weight * result["posterior_force_l1"]
-            + self.training_config.high_rate_force_loss_weight * result["posterior_force_highrate_l1"]
+            + self.training_config.force_loss_weight * result.get("posterior_force_l1", 0.0)
+            + self.training_config.high_rate_force_loss_weight * result.get("posterior_force_highrate_l1", 0.0)
             + self.training_config.posterior_kl_weight * result["posterior_kl_standard"]
             + self.training_config.prior_match_weight * result["posterior_prior_match_kl"]
         )
+        result.update(self.availability)
         return result
+
+    def _add_availability(self, batch) -> None:
+        for name, count in force_availability_metrics(batch).items():
+            self.availability[name] = self.availability.get(name, 0.0) + count
 
     def _variance(self, prefix: str) -> float:
         mean = self.moments[f"_{prefix}_mean_sum"] / self.latent_count

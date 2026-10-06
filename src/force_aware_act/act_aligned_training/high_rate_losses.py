@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Mapping
+from typing import Dict, Mapping, Optional
 
 import torch
 from torch import nn
@@ -32,7 +32,7 @@ def masked_optional_l1_loss(
         raise ValueError(f"{name} prediction/target must share shape [B, K, F]")
     if padding_mask.shape != prediction.shape[:2] or padding_mask.dtype is not torch.bool:
         raise ValueError(f"{name} padding mask must have shape [B, K] and bool dtype")
-    return prediction.sum() * 0.0
+    return prediction.masked_fill(padding_mask.unsqueeze(-1), 0.0).sum() * 0.0
 
 
 def masked_interval_balanced_high_rate_l1_loss(
@@ -64,7 +64,13 @@ def masked_interval_balanced_high_rate_l1_loss(
         raise ValueError(f"{name} sample and interval masks disagree")
 
     valid_samples = ~sample_padding_mask
-    per_sample = (prediction - target).abs().mean(dim=-1)
+    valid_scalars = valid_samples.unsqueeze(-1)
+    if not torch.isfinite(prediction[valid_samples]).all() or not torch.isfinite(target[valid_samples]).all():
+        raise ValueError(f"valid {name} prediction/target values must be finite")
+    per_sample = (
+        prediction.masked_fill(~valid_scalars, 0.0)
+        - target.masked_fill(~valid_scalars, 0.0)
+    ).abs().mean(dim=-1)
     sample_counts = valid_samples.sum(dim=-1)
     per_interval = (
         (per_sample * valid_samples).sum(dim=-1)
@@ -73,7 +79,7 @@ def masked_interval_balanced_high_rate_l1_loss(
     valid_intervals = ~interval_padding_mask
     interval_count = valid_intervals.sum()
     if interval_count.item() == 0:
-        return prediction.sum() * 0.0
+        return per_sample.sum() * 0.0
     return (per_interval * valid_intervals).sum() / interval_count
 
 
@@ -103,6 +109,7 @@ class ACTAlignedHighRateCriterion(nn.Module):
         action_padding_mask: torch.Tensor,
         force_interval_padding_mask: torch.Tensor,
         force_sample_padding_mask: torch.Tensor,
+        force_target_padding_mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         for name in self.required_output_names:
             if name not in outputs:
@@ -111,7 +118,8 @@ class ACTAlignedHighRateCriterion(nn.Module):
             outputs["pred_action"], action_target, action_padding_mask, name="action"
         )
         force_loss = masked_optional_l1_loss(
-            outputs["pred_force"], force_target, force_interval_padding_mask,
+            outputs["pred_force"], force_target,
+            force_interval_padding_mask if force_target_padding_mask is None else force_target_padding_mask,
             name="force_interval_endpoint",
         )
         high_rate_force_loss = masked_interval_balanced_high_rate_l1_loss(

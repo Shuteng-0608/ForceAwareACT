@@ -51,9 +51,13 @@ def masked_l1_loss(
     valid_scalar_count = valid_steps.sum() * prediction.shape[-1]
     if valid_scalar_count.item() == 0:
         raise ValueError(f"{name} loss requires at least one valid target step")
-    absolute_error = (prediction - target).abs()
-    masked_error = absolute_error * valid_steps.unsqueeze(-1)
-    return masked_error.sum() / valid_scalar_count
+    valid_prediction = prediction[valid_steps]
+    valid_target = target[valid_steps]
+    if not torch.isfinite(valid_prediction).all() or not torch.isfinite(valid_target).all():
+        raise ValueError(f"valid {name} prediction/target values must be finite")
+    # Select before subtracting: NaN placeholders must not enter either the
+    # value or gradient computation for an unobserved target.
+    return (valid_prediction - valid_target).abs().mean()
 
 
 def diagonal_gaussian_kl(

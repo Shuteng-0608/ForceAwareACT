@@ -79,6 +79,7 @@ class OfficialACTPosterior(nn.Module):
         if not isinstance(sample, bool):
             raise ValueError("sample must be a bool")
         self._validate(qpos, action_chunk, padding_mask)
+        action_chunk = action_chunk.masked_fill(padding_mask.unsqueeze(-1), 0.0)
         batch_size = qpos.shape[0]
         tokens = torch.cat(
             (

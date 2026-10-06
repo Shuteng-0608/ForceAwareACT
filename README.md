@@ -77,6 +77,8 @@ PYTHONPATH=src python -m pytest -q
 
 The 20-recording 1 mm gap dataset uses a versioned [right-arm raw HDF5 schema and alignment contract](docs/data/REAL_ROBOT_RAW_HDF5.md). See the [conversion record](docs/experiments/REAL_ROBOT_1MM_GAP_DATASET_CONVERSION.md) for the corrected external torque source, fixed 12/4/4 split, per-recording fingerprints, and verification results.
 
+For asynchronous real-robot recordings (two 640×480 cameras, 100 Hz absolute joint commands, and 300 Hz seven-joint external torque), use the [right-arm raw HDF5 training guide](docs/data/REAL_ROBOT_TRAINING.md) and `scripts/train_real_robot.py`. This profile supports the newer high-rate policies and the ACT baseline, retains the raw streams, and performs timestamp alignment and missing-label masking at read time.
+
 Local dataset inventory, measured counts, selection guidance, and known metadata limitations are documented in [mujoco_data/DATASET_README.md](mujoco_data/DATASET_README.md).
 
 `ContactForceHDF5Dataset` expects synchronized HDF5 episodes with:

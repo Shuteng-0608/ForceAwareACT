@@ -199,6 +199,9 @@ class ACTAlignedHighRateContactPosterior(nn.Module):
             action_padding_mask,
             future_force_interval_padding_mask,
         )
+        if action_padding_mask is not None:
+            action_chunk = action_chunk.masked_fill(action_padding_mask.unsqueeze(-1), 0.0)
+            future_force_tokens = future_force_tokens.masked_fill(action_padding_mask.unsqueeze(-1), 0.0)
         batch_size = qpos.shape[0]
         action_tokens = self.action_adapter(action_chunk)
         if future_force_interval_padding_mask is not None:

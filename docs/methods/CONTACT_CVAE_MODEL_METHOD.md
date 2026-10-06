@@ -13,6 +13,13 @@ act_aligned_contact_cvae_highrate_force_v2
 `ACTAlignedHighRateContactCVAEPolicy`。文中的“当前模型”均指这个版本，
 不是较早的 state-rate Contact-CVAE，也不是 motion-CVAE 或 Official ACT。
 
+本文的数值配置针对 500 Hz 六维 wrench 数据。实机右臂使用相同模型组件，
+但输入为 300 Hz 七维外部关节力矩、100 Hz 动作及最近 200 ms 历史；其独立
+数据约定见 [实机模型架构](../architecture/REAL_ROBOT_MODEL_ARCHITECTURE.md)。
+共用力编码器允许固定时间槽中间缺失：在算术运算前清零被 mask 的载荷，
+last pooling 选择最后一个有效槽。动作后验同样先屏蔽缺失动作载荷，
+避免占位 NaN 进入有效 token；这些扩展保留原有连续有效样本的处理方式。
+
 ## 1. 设计目标与总体数据流
 
 模型保留 ACT 的基本骨架：多相机视觉编码、Transformer policy encoder、

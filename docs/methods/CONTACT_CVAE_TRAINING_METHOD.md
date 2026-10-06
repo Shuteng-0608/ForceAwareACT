@@ -16,6 +16,13 @@ training:     act_aligned_highrate_conditional_cvae_training_v3
 scripts/train_act_aligned_high_rate_contact_cvae.py
 ```
 
+本文配置针对原有 30 Hz 动作、500 Hz 六维 wrench 训练。100 Hz 动作、
+300 Hz 七维外部关节力矩的实机数据使用独立入口 `scripts/train_real_robot.py`，
+其采样、早停和 checkpoint 约定见 [实机训练指南](../data/REAL_ROBOT_TRAINING.md)。
+共用损失函数支持独立的力矩端点 mask；未传入时沿用区间 mask。
+缺失标签在运算前屏蔽，全缺失辅助力标签的损失贡献为零，质量指标为不可用，
+并记录有效标签数量；epoch 聚合分别按端点与高频区间的有效数量加权。
+
 ## 1. 标准训练配置
 
 ### 1.1 模型相关配置

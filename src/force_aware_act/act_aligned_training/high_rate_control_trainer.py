@@ -25,6 +25,11 @@ from force_aware_act.act_aligned_training.high_rate_motion_config import (
     ACTAlignedHighRateMotionTrainingConfig,
 )
 from force_aware_act.act_aligned_training.losses import masked_l1_loss
+from force_aware_act.act_aligned_training.high_rate_trainer import (
+    _masked_value,
+    _high_rate_value,
+    force_availability_metrics,
+)
 from force_aware_act.models.act_aligned.high_rate_dual_zero_policy import (
     ACTAlignedHighRateDualZeroPolicy,
 )
@@ -52,6 +57,7 @@ def _criterion_inputs(batch: ACTAlignedHighRateBatch) -> tuple[torch.Tensor, ...
         batch.action_padding_mask,
         batch.future_force_interval_padding_mask,
         batch.future_force_sample_padding_mask,
+        batch.force_target_padding_mask,
     )
 
 
@@ -158,7 +164,8 @@ def train_high_rate_dual_zero_one_step(
     optimizer.zero_grad(set_to_none=True)
     outputs = model(*_online_inputs(batch))
     losses = criterion(outputs, *_criterion_inputs(batch))
-    return _backward_and_step(model, optimizer, losses, training_config)
+    metrics = _backward_and_step(model, optimizer, losses, training_config)
+    return metrics
 
 
 def evaluate_high_rate_dual_zero_one_batch(
@@ -190,33 +197,20 @@ def _prediction_metrics(
     prefix: str,
     outputs: Dict[str, Any],
     batch: ACTAlignedHighRateBatch,
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     return {
-        f"{prefix}_action_l1": float(
-            masked_l1_loss(
-                outputs["pred_action"],
-                batch.action_chunk,
-                batch.action_padding_mask,
-                name=f"{prefix}_action",
-            ).item()
+        f"{prefix}_action_l1": _masked_value(
+            outputs["pred_action"], batch.action_chunk,
+            batch.action_padding_mask, f"{prefix}_action",
         ),
-        f"{prefix}_force_l1": float(
-            masked_optional_l1_loss(
-                outputs["pred_force"],
-                batch.future_force_target,
-                batch.future_force_interval_padding_mask,
-                name=f"{prefix}_force",
-            ).item()
+        f"{prefix}_force_l1": _masked_value(
+            outputs["pred_force"], batch.future_force_target,
+            batch.force_target_padding_mask, f"{prefix}_force", optional=True,
         ),
-        f"{prefix}_force_highrate_l1": float(
-            masked_interval_balanced_high_rate_l1_loss(
-                outputs["pred_force_highrate"],
-                batch.future_force_intervals,
-                batch.future_force_sample_padding_mask,
-                batch.future_force_interval_padding_mask,
-                name=f"{prefix}_force_highrate",
-            ).item()
+        f"{prefix}_force_highrate_l1": _high_rate_value(
+            outputs["pred_force_highrate"], batch, f"{prefix}_force_highrate",
         ),
+        **force_availability_metrics(batch),
     }
 
 
@@ -225,32 +219,19 @@ def _prediction_deltas(
     outputs: Dict[str, Any],
     reference: Dict[str, Any],
     batch: ACTAlignedHighRateBatch,
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     return {
-        f"{prefix}_action_delta": float(
-            masked_l1_loss(
-                outputs["pred_action"],
-                reference["pred_action"],
-                batch.action_padding_mask,
-                name=f"{prefix}_action_delta",
-            ).item()
+        f"{prefix}_action_delta": _masked_value(
+            outputs["pred_action"], reference["pred_action"],
+            batch.action_padding_mask, f"{prefix}_action_delta",
         ),
-        f"{prefix}_force_delta": float(
-            masked_optional_l1_loss(
-                outputs["pred_force"],
-                reference["pred_force"],
-                batch.future_force_interval_padding_mask,
-                name=f"{prefix}_force_delta",
-            ).item()
+        f"{prefix}_force_delta": _masked_value(
+            outputs["pred_force"], reference["pred_force"],
+            batch.force_target_padding_mask, f"{prefix}_force_delta", optional=True,
         ),
-        f"{prefix}_force_highrate_delta": float(
-            masked_interval_balanced_high_rate_l1_loss(
-                outputs["pred_force_highrate"],
-                reference["pred_force_highrate"],
-                batch.future_force_sample_padding_mask,
-                batch.future_force_interval_padding_mask,
-                name=f"{prefix}_force_highrate_delta",
-            ).item()
+        f"{prefix}_force_highrate_delta": _high_rate_value(
+            outputs["pred_force_highrate"], batch, f"{prefix}_force_highrate_delta",
+            target_override=reference["pred_force_highrate"],
         ),
     }
 

@@ -96,6 +96,10 @@ class ACTAlignedHighRateForceEncoder(nn.Module):
             sample_count,
         )
         valid = ~flat_padding
+        # Missing grid slots need not form a suffix. Ignore their payloads before
+        # any arithmetic, including NaN placeholders in an unobserved slot.
+        flat_force = flat_force.masked_fill(flat_padding.unsqueeze(-1), 0.0)
+        flat_time = flat_time.masked_fill(flat_padding, 0.0)
         hidden = self.input_projection(flat_force)
         hidden = hidden + self._time_encoding(flat_time, hidden.dtype)
         hidden = hidden * valid.unsqueeze(-1).to(dtype=hidden.dtype)
@@ -109,7 +113,8 @@ class ACTAlignedHighRateForceEncoder(nn.Module):
         max_pool = hidden.masked_fill(~valid.unsqueeze(-1), lowest).max(dim=1).values
         valid_interval = valid.any(dim=1)
         max_pool = torch.where(valid_interval.unsqueeze(-1), max_pool, 0.0)
-        last_indices = valid.sum(dim=1).clamp_min(1) - 1
+        sample_indices = torch.arange(sample_count, device=valid.device)
+        last_indices = sample_indices.expand_as(valid).masked_fill(~valid, -1).max(dim=1).values.clamp_min(0)
         last_pool = hidden[
             torch.arange(hidden.shape[0], device=hidden.device),
             last_indices,
@@ -214,6 +219,3 @@ class ACTAlignedHighRateForceEncoder(nn.Module):
             raise ValueError("valid force samples must be finite")
         if not torch.isfinite(relative_times[valid]).all():
             raise ValueError("valid relative times must be finite")
-        valid_prefix = valid.to(torch.int8).diff(dim=-1)
-        if torch.any(valid_prefix > 0):
-            raise ValueError("valid force samples must be left-aligned in each interval")

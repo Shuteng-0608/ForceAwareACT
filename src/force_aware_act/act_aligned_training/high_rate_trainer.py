@@ -74,6 +74,7 @@ def _losses(
         batch.action_padding_mask,
         batch.future_force_interval_padding_mask,
         batch.future_force_sample_padding_mask,
+        batch.force_target_padding_mask,
     )
 
 
@@ -146,7 +147,7 @@ def evaluate_high_rate_one_batch(
                 ),
                 "posterior_force_l1": _masked_value(
                     posterior["pred_force"], batch.future_force_target,
-                    batch.future_force_interval_padding_mask, "posterior_force"
+                    batch.force_target_padding_mask, "posterior_force", optional=True
                 ),
                 "posterior_force_highrate_l1": _high_rate_value(
                     posterior["pred_force_highrate"], batch, "posterior_highrate"
@@ -161,7 +162,7 @@ def evaluate_high_rate_one_batch(
                 )
                 result[f"{prefix}_force_l1"] = _masked_value(
                     outputs["pred_force"], batch.future_force_target,
-                    batch.future_force_interval_padding_mask, f"{prefix}_force"
+                    batch.force_target_padding_mask, f"{prefix}_force", optional=True
                 )
                 result[f"{prefix}_force_highrate_l1"] = _high_rate_value(
                     outputs["pred_force_highrate"], batch, f"{prefix}_highrate"
@@ -174,20 +175,23 @@ def evaluate_high_rate_one_batch(
                 )
                 result[f"{prefix}_force_delta"] = _masked_value(
                     outputs["pred_force"], reference["pred_force"],
-                    batch.future_force_interval_padding_mask, f"{prefix}_force_delta"
+                    batch.force_target_padding_mask, f"{prefix}_force_delta", optional=True
                 )
                 result[f"{prefix}_force_highrate_delta"] = _high_rate_value(
                     outputs["pred_force_highrate"], batch,
                     f"{prefix}_highrate_delta", target_override=reference["pred_force_highrate"]
                 )
             result.update(_latent_validation_metrics(posterior))
+            result.update(force_availability_metrics(batch))
     finally:
         model.train(previous_mode)
     return result
 
 
-def _masked_value(prediction, target, mask, name: str) -> float:
-    if prediction.shape[-1] == 6:
+def _masked_value(prediction, target, mask, name: str, *, optional: bool = False):
+    if optional:
+        if bool(mask.all().item()):
+            return None
         loss = masked_optional_l1_loss(prediction, target, mask, name=name)
     else:
         loss = masked_l1_loss(prediction, target, mask, name=name)
@@ -195,11 +199,21 @@ def _masked_value(prediction, target, mask, name: str) -> float:
 
 
 def _high_rate_value(prediction, batch, name: str, *, target_override=None) -> float:
+    if bool(batch.future_force_interval_padding_mask.all().item()):
+        return None
     target = batch.future_force_intervals if target_override is None else target_override
     return float(masked_interval_balanced_high_rate_l1_loss(
         prediction, target, batch.future_force_sample_padding_mask,
         batch.future_force_interval_padding_mask, name=name,
     ).item())
+
+
+def force_availability_metrics(batch: ACTAlignedHighRateBatch) -> Dict[str, float]:
+    return {
+        "force_target_valid_count": float((~batch.force_target_padding_mask).sum().item()),
+        "force_highrate_valid_interval_count": float((~batch.future_force_interval_padding_mask).sum().item()),
+        "force_highrate_valid_sample_count": float((~batch.future_force_sample_padding_mask).sum().item()),
+    }
 
 
 def _latent_metrics(outputs: Dict[str, Any]) -> Dict[str, float]:

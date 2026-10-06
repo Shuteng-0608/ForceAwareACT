@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Mapping
+from typing import Dict, Mapping, Optional
 
 import torch
 from torch import nn
@@ -31,6 +31,7 @@ def _reconstruction_losses(
     action_padding_mask: torch.Tensor,
     force_interval_padding_mask: torch.Tensor,
     force_sample_padding_mask: torch.Tensor,
+    force_target_padding_mask: Optional[torch.Tensor] = None,
 ) -> Dict[str, torch.Tensor]:
     required = ("pred_action", "pred_force", "pred_force_highrate")
     for name in required:
@@ -46,7 +47,7 @@ def _reconstruction_losses(
         "loss_force": masked_optional_l1_loss(
             outputs["pred_force"],
             force_target,
-            force_interval_padding_mask,
+            force_interval_padding_mask if force_target_padding_mask is None else force_target_padding_mask,
             name="force_interval_endpoint",
         ),
         "loss_force_highrate": masked_interval_balanced_high_rate_l1_loss(
@@ -77,6 +78,7 @@ class ACTAlignedHighRateMotionCriterion(nn.Module):
         action_padding_mask: torch.Tensor,
         force_interval_padding_mask: torch.Tensor,
         force_sample_padding_mask: torch.Tensor,
+        force_target_padding_mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         for name in ("mu_motion", "logvar_motion"):
             if name not in outputs:
@@ -89,6 +91,7 @@ class ACTAlignedHighRateMotionCriterion(nn.Module):
             action_padding_mask,
             force_interval_padding_mask,
             force_sample_padding_mask,
+            force_target_padding_mask,
         )
         losses["loss_posterior_kl"] = standard_normal_kl(
             outputs["mu_motion"],
@@ -125,6 +128,7 @@ class ACTAlignedHighRateDualZeroCriterion(nn.Module):
         action_padding_mask: torch.Tensor,
         force_interval_padding_mask: torch.Tensor,
         force_sample_padding_mask: torch.Tensor,
+        force_target_padding_mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         losses = _reconstruction_losses(
             outputs,
@@ -134,6 +138,7 @@ class ACTAlignedHighRateDualZeroCriterion(nn.Module):
             action_padding_mask,
             force_interval_padding_mask,
             force_sample_padding_mask,
+            force_target_padding_mask,
         )
         losses["loss_total"] = (
             self.config.action_loss_weight * losses["loss_action"]
