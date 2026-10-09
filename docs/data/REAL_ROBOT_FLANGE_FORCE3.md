@@ -54,6 +54,8 @@ HDF5保持原样。`FlangeForceStream` 只保留原始关节位置、原始扰�
 
 ### 最新50条数据、batch8训练命令
 
+4090电脑的Motion-CVAE启动脚本、环境验收和数据传输说明见[Motion三维力4090准备记录](MOTION_FORCE3_4090_SETUP_2026_10_09.md)。该入口保留三维力输入，采用motion posterior。
+
 延续最近 `contact_seed0_b8` 的数据划分、优化参数、采样方式及早停设置，改用三维力配置并从头训练。验证间隔已核对原日志为200次更新，即50个采样epoch。输出使用新目录，checkpoint每200次更新保存。本命令尚未执行长训练。
 
 ```bash
