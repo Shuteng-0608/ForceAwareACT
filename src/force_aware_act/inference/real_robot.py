@@ -50,6 +50,7 @@ class _TorqueMessage:
     timestamp_ns: int
     available_ns: int
     torque: np.ndarray
+    valid: bool = True
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ class RealRobotObservation:
     state_timestamp_ns: int
     torque_timestamps_ns: np.ndarray
     torque_values: np.ndarray
+    torque_valid_mask: np.ndarray | None = None
 
 
 class RealRobotObservationBuffer:
@@ -123,21 +125,31 @@ class RealRobotObservationBuffer:
         timestamp_ns, available_ns = self._message_times(
             timestamp_ns, available_ns, self._states[-1] if self._states else None
         )
+        source_qpos = qpos
         qpos = _vector7(qpos, "qpos")
         if external_joint_torque is not None:
             # Validate the second stream before mutating either buffer.
             self.append_external_torque(timestamp_ns, external_joint_torque,
-                                        available_ns=available_ns)
+                                        available_ns=available_ns, qpos=source_qpos)
         self._states.append(_StateMessage(timestamp_ns, available_ns, qpos))
 
     def append_external_torque(self, timestamp_ns: int, external_joint_torque: np.ndarray,
-                               *, available_ns: int | None = None) -> None:
+                               *, available_ns: int | None = None,
+                               qpos: np.ndarray | None = None) -> None:
         """Append estimated_joint_disturbance.effort, preserving its own clock."""
         timestamp_ns, available_ns = self._message_times(
             timestamp_ns, available_ns, self._torques[-1] if self._torques else None
         )
-        self._torques.append(_TorqueMessage(timestamp_ns, available_ns,
-                                            _vector7(external_joint_torque, "external_joint_torque")))
+        torque = _vector7(external_joint_torque, "external_joint_torque")
+        valid = True
+        if self.config.force_dim == 3:
+            if qpos is None:
+                raise ValueError("flange_force3 requires same-frame qpos with external torque")
+            from force_aware_act.real_robot.flange_force import joint_torque_to_flange_force
+            # Preserve float64 source precision through inversion, then cast model input.
+            result = joint_torque_to_flange_force(qpos, external_joint_torque)
+            torque, valid = result.force.astype(np.float32), bool(result.valid)
+        self._torques.append(_TorqueMessage(timestamp_ns, available_ns, torque, valid))
 
     def append_image(self, camera_name: str, timestamp_ns: int, rgb: np.ndarray,
                      *, available_ns: int | None = None) -> None:
@@ -187,7 +199,9 @@ class RealRobotObservationBuffer:
             state_timestamp_ns=states[state_index].timestamp_ns,
             torque_timestamps_ns=np.asarray([item.timestamp_ns for item in history], dtype=np.int64),
             torque_values=(np.stack([item.torque for item in history]) if history
-                           else np.empty((0, 7), dtype=np.float32)),
+                           else np.empty((0, self.config.force_dim), dtype=np.float32)),
+            torque_valid_mask=(np.asarray([item.valid for item in history], dtype=np.bool_)
+                               if self.config.force_dim == 3 else None),
         )
 
 
@@ -267,9 +281,9 @@ class RealRobotPolicyAdapter:
             raise ValueError("real-robot model requires seven joints/actions and two cameras")
         dimensions = {"qpos": 7, "action": 7}
         if self.model_kind != "act":
-            dimensions["force"] = 7
-            if config.force_dim != 7:
-                raise ValueError("real-robot contact input must have seven joint torques")
+            dimensions["force"] = self.data_config.force_dim
+            if config.force_dim != self.data_config.force_dim:
+                raise ValueError("real-robot force dimension differs from its representation")
             if config.force_sample_rate_hz != self.data_config.torque_rate_hz:
                 raise ValueError("model torque rate differs from the data contract")
             if config.policy_sample_rate_hz != self.data_config.action_rate_hz:
@@ -296,11 +310,20 @@ class RealRobotPolicyAdapter:
 
     def prepare_observation(self, buffer: RealRobotObservationBuffer,
                             anchor_ns: int) -> RealRobotPolicyInputs:
+        validate_data_contract(buffer.config.contract_dict(), self.data_config)
+        return self.prepare_snapshot(buffer.observation_at(anchor_ns))
+
+    def prepare_snapshot(self, observation: RealRobotObservation) -> RealRobotPolicyInputs:
+        """Preprocess a copied observation after releasing the receive-buffer lock.
+
+        The snapshot must come from a buffer configured with this adapter's
+        data_config. The ordinary prepare_observation API checks that contract.
+        Snapshot selection/copying is the only operation needing the receive
+        lock; image transforms, history packing and device copies do not.
+        """
         from force_aware_act.real_robot.data import preprocess_images
         from force_aware_act.real_robot.sampling import pack_torque_history
 
-        validate_data_contract(buffer.config.contract_dict(), self.data_config)
-        observation = buffer.observation_at(anchor_ns)
         parameter = next(self.model.parameters())
         images = preprocess_images(observation.images, self.model.config).to(
             device=parameter.device, dtype=parameter.dtype
@@ -313,8 +336,14 @@ class RealRobotPolicyAdapter:
             "source": observation,
         }
         if self.model_kind != "act":
+            force_values = observation.torque_values
+            if observation.torque_valid_mask is not None:
+                class MaskedForce:
+                    def read(self, indices):
+                        return observation.torque_values[indices], observation.torque_valid_mask[indices]
+                force_values = MaskedForce()
             packed = pack_torque_history(observation.torque_timestamps_ns,
-                                         observation.torque_values,
+                                         force_values,
                                          observation.anchor_ns, self.data_config)
             if packed.sample_padding_mask.all():
                 raise ObservationUnavailableError("no causal torque sample exists in the history window")
@@ -342,6 +371,16 @@ class RealRobotPolicyAdapter:
         if self.model_kind != "contact" and contact_latent_mode != "zero":
             raise ValueError("only the contact model supports prior inference")
         inputs = self.prepare_observation(buffer, anchor_ns)
+        return self.predict_prepared(inputs, contact_latent_mode=contact_latent_mode)
+
+    def predict_prepared(self, inputs: RealRobotPolicyInputs, *,
+                         contact_latent_mode: str = "zero") -> dict[str, np.ndarray]:
+        """Predict after a locked snapshot; acquisition can continue during GPU work."""
+        if contact_latent_mode not in {"zero", "prior"}:
+            raise ValueError("deployment contact mode must be zero or prior")
+        if self.model_kind != "contact" and contact_latent_mode != "zero":
+            raise ValueError("only the contact model supports prior inference")
+        anchor_ns = inputs.source.anchor_ns
         with torch.inference_mode():
             if self.model_kind == "act":
                 output = self.model(inputs.images, inputs.qpos)

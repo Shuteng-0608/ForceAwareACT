@@ -302,6 +302,7 @@ def build_report(run_dir, reader, rate, *, now=None, processes=None, include_gpu
             "next_validation_step": next_validation, "early_stopping_config": stopping_config,
             "early_stopping_state": stopping,
             "force_source": manifest.get("data_contract", {}).get("force_source_topic"),
+            "force_representation": manifest.get("data_config", {}).get("force_representation", "joint_torque7"),
             "checkpoints": {n: checkpoint_info(run_dir / n, now) for n in ("best.pt", "last.pt")},
             "gpus": gpu_snapshot(process["pid"] if process else None) if include_gpu else [],
             "warnings": warnings})
@@ -333,6 +334,8 @@ def render_report(report):
              f"最近{report['recent_window_rows']}步均值 / 最新值："]
     labels = {"loss_total": "总损失", "loss_action": "动作L1", "loss_force": "力矩端点L1",
               "loss_force_highrate": "高频力矩L1", "loss_posterior_kl": "后验KL", "loss_prior_match": "先验匹配"}
+    if report.get("force_representation") == "flange_force3":
+        labels.update(loss_force="三维力端点L1", loss_force_highrate="高频三维力L1")
     for key, label in labels.items():
         lines.append(f"  {label:<10} {fmt(report['mean_losses'].get(key))} / {fmt(report['latest_losses'].get(key))}")
     lines.append(f"平均取样+训练：{fmt(report['mean_read_train_seconds'], 3)}秒/更新（不含验证和保存）")
@@ -351,6 +354,8 @@ def render_report(report):
     else:
         lines.append("早停：未启用")
     lines.append("外力来源：" + str(report["force_source"] or "—"))
+    if report.get("force_representation") == "flange_force3":
+        lines.append("力表示：法兰坐标系 Fx/Fy/Fz；物理指标单位 N")
     for name, info in report["checkpoints"].items():
         lines.append(f"{name}：" + (f"{info['bytes'] / 1024**3:.2f} GiB；{duration(info['age_s'])}前更新" if info["exists"] else "尚未生成"))
     for gpu in report["gpus"]:

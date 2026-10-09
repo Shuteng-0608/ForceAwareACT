@@ -1,0 +1,65 @@
+{
+  "schema_version": "controller_baseline_reference_v1",
+  "profile_id": "contact_right_step_v1",
+  "arm": "right",
+  "control_mode": "joint_impedance",
+  "velocity_ratio_percent": 10,
+  "acceleration_ratio_percent": 10,
+  "joint_stiffness_nm_per_degree": [
+    2.5,
+    2.5,
+    2.5,
+    2.0,
+    1.5,
+    1.2,
+    1.0
+  ],
+  "joint_damping_ratio": [
+    0.3,
+    0.3,
+    0.3,
+    0.2,
+    0.2,
+    0.2,
+    0.2
+  ],
+  "state": "expected_parameters_only_not_applied",
+  "controller_readback_verified": false,
+  "require_readback_before_any_future_motion": true,
+  "apply_on_load": false,
+  "allow_motion": false,
+  "source_path": "/home/stw/tianji_ws/src/tianji_io_teleop_bridge/config/bridge_both_test.yaml",
+  "source_sha256": "32c04d3f49a8e2ff19ac266d291fdfb5806f266b3ad20d6a29d6d31a3a2a7c88",
+  "operator_override": {
+    "date": "2026-10-07",
+    "velocity_ratio_percent": {
+      "from": 30,
+      "to": 10
+    },
+    "acceleration_ratio_percent": {
+      "from": 30,
+      "to": 10
+    },
+    "purpose": "operator selected initial rollout parameters; implementation only, no hardware changes applied",
+    "joint_stiffness_nm_per_degree": {
+      "from": [
+        12,
+        12,
+        12,
+        10,
+        9,
+        9,
+        9
+      ],
+      "to": [
+        2.5,
+        2.5,
+        2.5,
+        2.0,
+        1.5,
+        1.2,
+        1.0
+      ]
+    }
+  }
+}

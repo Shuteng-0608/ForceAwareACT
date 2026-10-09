@@ -1,0 +1,45 @@
+{
+  "schema_version": "deployment_force_hud_v1",
+  "display_rate_hz": 30,
+  "width": 1280,
+  "height": 720,
+  "input_timeout_s": 0.2,
+  "smoothing_time_constant_s": 0.08,
+  "display_mode": "ring",
+  "force_display_range_N": 20.0,
+  "torque_display_range_Nm": 2.0,
+  "show_high_residual_samples": true,
+  "wrench_frame": "marvin_m6_ccs40_right_base",
+  "mapping": {
+    "confirmed": false,
+    "preview": true,
+    "frame": "marvin_m6_ccs40_right_base",
+    "right": [
+      -0.003926610247,
+      0.0,
+      0.999992290836
+    ],
+    "up": [
+      0.009006972357,
+      0.999959435776,
+      3.5367143e-05
+    ],
+    "axial": [
+      -0.99995172692,
+      0.009007041794,
+      -0.003926450967
+    ],
+    "yaw_deg": 0.0,
+    "force_sign": 1.0,
+    "semantics": "contact_side",
+    "lateral_deadzone": 0.5,
+    "axial_deadzone": 0.5
+  },
+  "provenance": {
+    "renderer_source": "/home/stw/tianji_ws/src/tianji_io_teleop_bridge/scripts/force_hud_core.py",
+    "renderer_sha256": "c442a51dad0e5d9a75135de607e336aa8dca1b2a1b591343420a38a845c4a8ab",
+    "mapping_source": "/home/stw/tianji_ws/src/tianji_io_teleop_bridge/config/force_hud_insertion_preview.yaml",
+    "mapping_status": "existing fixed task-axis preview, uncalibrated; not live flange axes",
+    "zeroing": "use deployment session calibration.bias_nm, no extra display tare"
+  }
+}

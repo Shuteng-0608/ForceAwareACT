@@ -129,6 +129,14 @@ class RawEpisode:
                     raise ValueError(f"{camera}: RGB data must have shape {expected} and uint8 dtype")
         self.state_timestamps_ns = self.timestamps["state"]
         self.torque_timestamps_ns = self.timestamps["disturbance"]
+        self.force = self.torque
+        if self.config.force_representation == "flange_force3":
+            from .flange_force import FlangeForceStream
+            self.force = FlangeForceStream(self.qpos, self.torque,
+                self.header_timestamps["state"], self.header_timestamps["disturbance"],
+                self.timestamps["state"], self.timestamps["disturbance"])
+            self.torque_timestamps_ns = self.force.timestamps_ns
+            self.diagnostics["force_conversion"] = self.force.diagnostics
         self.action_timestamps_ns = self.timestamps["action"]
         if self.config.action_grid_phase_mode == "first_action":
             phase = {"method": "first_action", "phase_ns": 0,
@@ -159,6 +167,9 @@ class RawEpisode:
         reasons = {"missing_current_action": 0, "stale_or_missing_state": 0,
                    "stale_or_missing_camera": 0, "empty_torque_history": 0}
         valid = []
+        force_valid = (self.force.valid_samples if self.config.force_dim == 3
+                       else np.ones(len(self.torque), dtype=np.bool_))
+        force_prefix = np.r_[0, np.cumsum(force_valid)]
         for index, anchor in enumerate(self.anchor_timestamps_ns):
             if self.action_slot_indices[index] < 0:
                 reasons["missing_current_action"] += 1
@@ -170,8 +181,9 @@ class RawEpisode:
                    for name in self.config.camera_names):
                 reasons["stale_or_missing_camera"] += 1
                 continue
-            history = pack_torque_history(self.torque_timestamps_ns, self.torque, anchor, self.config)
-            if history.interval_padding_mask.all():
+            left = int(anchor) - round(self.config.history_duration_s * 1e9)
+            lo, hi = np.searchsorted(self.torque_timestamps_ns, [left, anchor], side="right")
+            if force_prefix[hi] == force_prefix[lo]:
                 reasons["empty_torque_history"] += 1
                 continue
             valid.append(index)

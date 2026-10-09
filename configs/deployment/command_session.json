@@ -1,0 +1,18 @@
+{
+  "schema_version": "right_command_session_v1",
+  "allow_hardware": false,
+  "stop_policy": "cease_targets",
+  "servo_off_after_standstill": false,
+  "startup_timeout_s": 15.0,
+  "packet_settle_ms": 250.0,
+  "transition_timeout_s": 2.0,
+  "calibration_window_s": 2.0,
+  "stationary_dwell_ms": 500.0,
+  "stationary_velocity_rad_s": 0.01,
+  "stationary_range_rad": 0.005,
+  "calibration_std_nm": 0.15,
+  "stop_observe_timeout_s": 2.0,
+  "sdk_busy_timeout_ms": 100.0,
+  "expected_sdk_version": 100343013,
+  "expected_sdk_sha256": "47ab2ab6e35cf899eae3978dfb50ee219e05b10f72aedd6bc9ba6a338a8b4011"
+}

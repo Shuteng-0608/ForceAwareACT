@@ -1,0 +1,391 @@
+{
+  "schema_version": "readonly_profile_manifest_v1",
+  "profile_id": "contact_right_collection_stiffness_v1",
+  "date": "2026-10-07",
+  "parameter_status": "operator_selected",
+  "authorization_scope": "Prepare and synchronize collection-stiffness comparison profile; operator personally starts hardware test",
+  "allow_motion": false,
+  "hardware_control_backend": "separate_command_session_implemented_disabled",
+  "physical_stop_verified": false,
+  "deployed_to_new_pc": true,
+  "controller_parameters_applied": false,
+  "joint_order": [
+    "Joint1_R",
+    "Joint2_R",
+    "Joint3_R",
+    "Joint4_R",
+    "Joint5_R",
+    "Joint6_R",
+    "Joint7_R"
+  ],
+  "base_config": "base.json",
+  "goal_configs": [
+    "goals/x13y07.json",
+    "goals/x13y08.json",
+    "goals/x14y07.json",
+    "goals/x14y08.json",
+    "goals/x15y07.json",
+    "goals/x15y08.json",
+    "goals/x16y07.json",
+    "goals/x16y08.json",
+    "goals/x17y07.json",
+    "goals/x17y08.json"
+  ],
+  "controller_baseline": "controller_baseline.json",
+  "rules": {
+    "external_torque_source": "estimated_joint_disturbance; live SDK m_EST_Joint_Force minus valid per-run software bias",
+    "soft_duration_ms": 100,
+    "release_ratio": 0.95,
+    "soft_timer": "start at >= soft; retain in hysteresis band; reset at <= release",
+    "hard_torque": "any fresh absolute joint sample >= hard requests latched shadow abort",
+    "host_velocity_and_acceleration_guard": false,
+    "controller_velocity_and_acceleration_percent": [
+      10,
+      10
+    ],
+    "step_policy": "reject, never clip; >0.03rad per joint after temporal aggregation; operator revised from0.01 on2026-10-07",
+    "first_target": "separate alignment to actual feedback, <= 0.05rad per joint; operator revised from0.02 on2026-10-07",
+    "shadow_step_reference": "last accepted shadow target; no transmission occurs",
+    "future_hardware_step_reference": "last successfully submitted target; command_session commits only on SDK submitted result",
+    "sustained_clipping_abort": false,
+    "fault_recovery": "latched; no automatic resume",
+    "goal": "explicit selected hole, actual feedback FK, 3mm radius, 500ms continuous dwell",
+    "goal_selection": "--goal-id required with profile selection; exact manifest lookup before SDK loading; locked per run; no nearest-goal fallback; not a model input",
+    "following_error": "each joint <= 0.05rad for current target vs actual feedback and previous accepted shadow target vs actual feedback; operator selected2026-10-07"
+  },
+  "provenance": {
+    "force": "user supplied seven soft and five hard revisions; J1 hard20 and J2 hard6.75 retained; release ratio95%",
+    "motion": "task range, following proxy and first alignment from previous reviewed data references; user chose controller speed/acceleration and step-only host guard; operator requested velocity10% on 2026-10-07; acceleration30% retained; readonly baseline only; user subsequently selected acceleration10% and reduced right stiffness for first rollout; never applied on profile load; on2026-10-08 operator requested restoring collection stiffness in a separate profile, retaining10/10 speed/acceleration",
+    "numerical_reference": {
+      "path": "outputs/protection_reference_20261007_v3/parameter_references.json",
+      "sha256": "334af8781a7ee700ee5667883d6c18c54104eb9fa3bafb716adf10d8807a3120"
+    },
+    "reference_report": "docs/rollout/PROTECTION_PARAMETER_REFERENCES_2026_10_07.md"
+  },
+  "compatibility": "Step-only protection profile; hardware command runner requires transport C ABI 2; old ABI 1 libraries are rejected.",
+  "files_sha256": {
+    "base.json": "c44e1a66f7e1d3fb5556dc8359a85e5085eb1ae6867cf687c5e5dedaacdafd77",
+    "controller_baseline.json": "9531676489038ef28640505b304c1e119f388410c53399240487d178301f9e38",
+    "goals/x13y07.json": "8a6a1c22225f9a4da5caadc399d38db7f4a41b7791580059996842181976dbef",
+    "goals/x13y08.json": "17fbe19676fc0e05ea3b7a80a82190fdae7e7b0eaaed07afde201bd151009d78",
+    "goals/x14y07.json": "2551652a0caf8ec57e41fbb303ef08794c37c1154132a0bc376176f76b45043a",
+    "goals/x14y08.json": "cd0fb39d234ef4d4a3b02225aaaae85edc496e57d696b4fcf8ebbd7acd35eb3a",
+    "goals/x15y07.json": "3d4d4ff45e73a0110ae7e2972a62ba86c48e8733f3f98bc3dbfcfcf5c0eca9b7",
+    "goals/x15y08.json": "2e536ebfd5127689a2b8e035e0f5a4cd518f9d081925d35317bc426c82ff6d6e",
+    "goals/x16y07.json": "cfc47e81deb3345c719fc88147152e622da0113827824ef53a71210b28527d95",
+    "goals/x16y08.json": "2ff7cb3bc3b41a998d85cf63bf34c4deae6408603e63c012424fc1b48f736641",
+    "goals/x17y07.json": "46edf4602337727bfbb64bdd514b864d49a854c32fd1492a3f7f682b5559c89d",
+    "goals/x17y08.json": "4a94c7b19c3d1bd6253562484f3b50c30a4d94f8cf2837a386c34ea7d08fa94a",
+    "README.md": "e424736f37a609fdccd87e8643a378ff73b8d4ea6826ccd1273217062aa3e4c7"
+  },
+  "runtime_sources_sha256": {
+    "src/force_aware_act/control/contracts.py": "571e87b47aec04ad60792dd36afa34bb831b19bcd5ca93901eb91c0a81b4c72a",
+    "src/force_aware_act/control/execution.py": "511a77c488737179027647ce59dc74ce7b5c903a8745da1d9508d60cc746a518",
+    "src/force_aware_act/control/supervision.py": "032330ab0a7c57e13c58153af63f77a8431bb967713a6565f2099ec01e31a343",
+    "src/force_aware_act/control/goal_selection.py": "528b99dde39cfa7b90f4c60e640fa95a3b8846f6b27d42c71b12fbf84e7b897b",
+    "scripts/deployment/shadow_contact_readonly.py": "846701dff6c46164bbf542530fd42861ae5f6e4827f492d21be096da9fd2e356",
+    "scripts/deployment/robot_feedback_readonly.cpp": "173a21a11788613bf1a9928ca9d0ac2f0db7f852f491d735248fd3de19eb2296",
+    "src/force_aware_act/control/command_session.py": "d548cac9dc31127a61f3dae86af9c173af29ea54cee6e362c10a6fbff7edfffe",
+    "src/force_aware_act/control/sdk_transport.py": "71c208061e387b087e604687b99b4a3ffc611e62be59d1c25c9d6acffda6e276",
+    "src/force_aware_act/control/command_worker.py": "176acd2651179cff28e6fc37cd5d8cae2717f10b08176ef74c5e213dafb57856",
+    "scripts/deployment/right_arm_transport.cpp": "14a422ed16d8ebeca38a915c02b0ca797caddbfc7c4dba186bdde0c56a0bb232",
+    "scripts/deployment/build_right_arm_transport.py": "12581516c33a852e3a6889ffe00da72c592d312cc7ee8c9982b014b357126e89",
+    "scripts/deployment/run_contact_controller.py": "d29ab6690592c64933614b8780c9dc5b0c8052f59221e1d2a7e36ff74d7c8c63",
+    "configs/deployment/command_session.json": "fa30927b5b136999e64a4e627be8e3013bda1604419ab270663c71c3158cc568",
+    "src/force_aware_act/inference/realtime_gc.py": "4fc781d36b929d9153d5198720565e7d215a06b4ea1c2363a9e087ff612ddc88",
+    "scripts/deployment/profile_observation_readonly.py": "e848f4fe0881973f42b5d173062335b654d0608bfb42e34b4c31361893a95703",
+    "scripts/deployment/run_act_controller.py": "9f27a5d75d33c3bc418ac8d2e4d22f5663083b8dd045a593a35f41bbd13f67df",
+    "src/force_aware_act/visualization/deployment_hud.py": "fc0219ae5be740cec416249a794e6601c427cfd78323b2c1413c1fe7663c2d0f",
+    "scripts/deployment/replay_force_hud.py": "52fe028a3feccb3b45c0e2a76dca9556b1470a041ca7531c0713d7036f81b16a",
+    "src/force_aware_act/visualization/tianji_hud_render.py": "1fa7c1d59ceaf94d7b051ec96e395a7d9ff0c41811f7531a670330e2186149a2",
+    "src/force_aware_act/control/wrench_estimation.py": "0259d6fbbf7478169c2e601784066fc53d172ed9d4ab1ae38a1ad1cd594eff5c",
+    "scripts/deployment/observe_force_hud_readonly.py": "488f661defad0ed9818c32e488d598e973cae1658b8edd85ce0f3067e77acf2e",
+    "configs/deployment/force_hud.json": "730b98fdbe81671e22e42416175e8407108926467c2d821c9c2a2c7c52efb59f",
+    "src/force_aware_act/control/hud_telemetry.py": "e4dd7fe77915c00c0f94bef69421d787be13de469663e616513147567aba671c"
+  },
+  "revision_history": [
+    {
+      "date": "2026-10-07",
+      "field": "limits.first_action_error_rad",
+      "before": [
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02
+      ],
+      "after": [
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05
+      ],
+      "reason": "operator requested a new readonly x13y07 trial after v5 first-target rejection",
+      "other_motion_and_force_limits_unchanged": true
+    },
+    {
+      "date": "2026-10-07",
+      "field": "limits.following_error_rad",
+      "before": [
+        0.035,
+        0.025,
+        0.015,
+        0.04,
+        0.015,
+        0.02,
+        0.015
+      ],
+      "after": [
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05
+      ],
+      "reason": "operator requested uniform0.05rad for all joints after v6 J5 target-feedback rejection",
+      "first_action_and_step_limits_unchanged": true
+    },
+    {
+      "date": "2026-10-07",
+      "field": "limits.max_command_step_rad",
+      "before": [
+        0.01,
+        0.01,
+        0.01,
+        0.01,
+        0.01,
+        0.01,
+        0.01
+      ],
+      "after": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "reason": "operator requested0.03rad step limit for all joints",
+      "first_action_and_following_error_rad_retained": [
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05
+      ]
+    },
+    {
+      "date": "2026-10-07",
+      "field": "controller_baseline",
+      "velocity_percent": 10,
+      "acceleration_percent": 10,
+      "joint_stiffness_nm_per_degree": [
+        2.5,
+        2.5,
+        2.5,
+        2.0,
+        1.5,
+        1.2,
+        1.0
+      ],
+      "joint_damping_ratio": [
+        0.3,
+        0.3,
+        0.3,
+        0.2,
+        0.2,
+        0.2,
+        0.2
+      ],
+      "reason": "operator approved initial startup/send/stop implementation; transmission remains disabled"
+    },
+    {
+      "date": "2026-10-08",
+      "field": "software_calibration_window",
+      "reason": "fixed initial window included measured J3 mode-transition transient; wait for recent complete stable window within existing startup timeout",
+      "window_s": 2,
+      "velocity_rad_s": 0.01,
+      "position_range_rad": 0.005,
+      "torque_std_nm": 0.15,
+      "startup_timeout_s": 15,
+      "motion_limits_unchanged": true,
+      "report": "docs/rollout/CALIBRATION_STARTUP_FIX_2026_10_08.md"
+    },
+    {
+      "date": "2026-10-08",
+      "field": "prediction_deadline_and_stop_path",
+      "reason": "real x13y07 query1 reached 200ms at execution tick; expired target incorrectly latched all SDK packets including IDLE",
+      "prediction_freshness": "actual evaluation time; availability/action indices still use logical tick",
+      "expired_target": "drop without committing submitted reference; no deadline extension",
+      "sdk_failure": "latch motion; allow revoked-target IDLE path after standstill observation",
+      "transport_abi": 2,
+      "motion_and_force_limits_unchanged": true,
+      "report": "docs/rollout/TARGET_EXPIRATION_STOP_FIX_2026_10_08.md"
+    },
+    {
+      "date": "2026-10-08",
+      "field": "inference_process_gc_policy",
+      "reason": "readonly camera/GPU/IPC reproduction attributed ~66ms receive stall to generation-2 cyclic collection",
+      "policy": "precollect_and_freeze_initialized_graph_v1",
+      "automatic_gc_preserved": true,
+      "cleanup": "unfreeze after receiving/inference stops",
+      "observation_event_timing": "camera frame/device/available/published and control-process consumed timestamps",
+      "robot_control_commands_sent_for_delivery": 0,
+      "motion_force_camera_age_limits_unchanged": true,
+      "report": "docs/rollout/IMAGE_RECEIVE_GC_FIX_2026_10_08.md"
+    },
+    {
+      "date": "2026-10-08",
+      "before": [
+        2.5,
+        2.5,
+        2.5,
+        2.0,
+        1.5,
+        1.2,
+        1.0
+      ],
+      "after": [
+        12.0,
+        12.0,
+        12.0,
+        10.0,
+        9.0,
+        9.0,
+        9.0
+      ],
+      "source": "bridge_both_test.yaml active right_joint_stiffness",
+      "authorization": "operator requested restoring collection stiffness; no robot commands sent while preparing this profile",
+      "applied_to_hardware_by_this_delivery": false
+    },
+    {
+      "date": "2026-10-08",
+      "change": "Shared guarded runner now has an ACT entry pinned to gap50 act_seed0_b8/best.pt; Contact remains its default. Safety parameters unchanged; hardware not contacted."
+    },
+    {
+      "date": "2026-10-09",
+      "field": "optional_force_hud",
+      "reason": "operator requested collection-style HUD during deployment; independent CPU process, latest feedback snapshot, full finite wrench display with residual diagnostics",
+      "commands_sent_during_preparation": false,
+      "motion_and_force_limits_unchanged": true
+    }
+  ],
+  "deployment_history": [
+    {
+      "host": "shutiao@192.168.8.105",
+      "directory": "/home/shutiao/tianji_deployment/readonly_controller_20261007_v5",
+      "goal_id_tested": "x13y07",
+      "status": "readonly_delivered_action_guard_aborted",
+      "report": "docs/rollout/SELECTED_GOAL_NEW_PC_V5_2026_10_07.md",
+      "controller_parameters_applied": false,
+      "observed_velocity_ratio_percent": 10,
+      "observed_acceleration_ratio_percent": 10
+    },
+    {
+      "host": "shutiao@192.168.8.105",
+      "directory": "/home/shutiao/tianji_deployment/readonly_controller_20261007_v6",
+      "goal_id": "x13y07",
+      "status": "readonly_retest_first_target_accepted_second_target_j5_error",
+      "report": "docs/rollout/FIRST_ACTION_005_NEW_PC_V6_2026_10_07.md",
+      "first_action_error_rad": [
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05
+      ],
+      "controller_parameters_applied": false,
+      "observed_velocity_ratio_percent": 10,
+      "observed_acceleration_ratio_percent": 10
+    },
+    {
+      "host": "shutiao@192.168.8.105",
+      "directory": "/home/shutiao/tianji_deployment/readonly_controller_20261007_v7",
+      "status": "readonly_live_retest_passed_no_motion",
+      "live_test_performed": true,
+      "controller_parameters_applied": false,
+      "report": "docs/rollout/V7_X13Y07_READONLY_RETEST_2026_10_07.md",
+      "following_error_rad": [
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05
+      ],
+      "max_command_step_rad": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "goal_id_tested": "x13y07",
+      "predictions": 6000,
+      "accepted_shadow_targets": 12000,
+      "first_safety_fault": null,
+      "observed_velocity_ratio_percent": 10,
+      "observed_acceleration_ratio_percent": 10
+    },
+    {
+      "date": "2026-10-08",
+      "host": "shutiao@192.168.8.105",
+      "directory": "/home/shutiao/tianji_deployment/command_controller_20261007_v8",
+      "status": "operator_3s_test_prediction_boundary_aborted_stop_unconfirmed",
+      "goal_id_tested": "x13y07",
+      "predictions": 12,
+      "submitted_targets": 18,
+      "servo_off_submitted": 0,
+      "calibration_status": "valid",
+      "final_state": "STOP_UNCONFIRMED",
+      "report": "docs/rollout/TARGET_EXPIRATION_STOP_FIX_2026_10_08.md"
+    },
+    {
+      "host": "shutiao@192.168.8.105",
+      "directory": "/home/shutiao/tianji_deployment/command_controller_20261008_v9",
+      "status": "v9_expiration_and_stop_fix_offline_verified_pending_manual_retest",
+      "controller_parameters_applied": false,
+      "physical_stop_verified": false,
+      "live_test_performed": false,
+      "report": "docs/rollout/TARGET_EXPIRATION_STOP_FIX_2026_10_08.md",
+      "offline_checks": 58,
+      "calibration_fix": {
+        "date": "2026-10-08",
+        "status": "synchronized_offline_verified",
+        "live_retest_performed": false,
+        "offline_checks": 47,
+        "report": "docs/rollout/CALIBRATION_STARTUP_FIX_2026_10_08.md"
+      },
+      "transport_abi": 2
+    }
+  ],
+  "deployment": {
+    "date": "2026-10-08",
+    "host": "shutiao@192.168.8.105",
+    "directory": "/home/shutiao/tianji_deployment/command_controller_20261008_v10",
+    "profile_directory": "configs/deployment/profiles/contact_right_collection_stiffness_v1",
+    "status": "configuration_prepared_pending_operator_run",
+    "controller_parameters_applied": false,
+    "robot_control_commands_sent": 0
+  },
+  "last_update_date": "2026-10-08",
+  "derived_from": {
+    "profile_id": "contact_right_step_v1",
+    "manifest_sha256": "61ae513cc243b8e5997e4daa229b84ed5318a75202573bc44db6ca3876f6a07c"
+  }
+}

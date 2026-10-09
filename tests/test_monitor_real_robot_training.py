@@ -100,6 +100,20 @@ def test_monitor_counts_epochs_best_early_stop_and_does_not_change_artifacts(tmp
     assert before == {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in run.iterdir()}
 
 
+def test_force3_monitor_labels_are_force_not_joint_torque(tmp_path):
+    m = _module()
+    run, reader = _fixture(tmp_path, m)
+    path = run / "run_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["data_config"] = {"force_representation": "flange_force3"}
+    path.write_text(json.dumps(manifest))
+    report = m.build_report(run, reader, m.WallRate(), processes=[], include_gpu=False)
+    rendered = m.render_report(report)
+    assert report["force_representation"] == "flange_force3"
+    assert "三维力端点L1" in rendered and "高频三维力L1" in rendered
+    assert "物理指标单位 N" in rendered
+
+
 def test_old_summary_is_ignored_during_resume_and_after_later_steps(tmp_path):
     m = _module()
     run, reader = _fixture(tmp_path, m)

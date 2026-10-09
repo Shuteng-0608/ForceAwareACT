@@ -61,16 +61,29 @@ def match_time_slots(timestamps_ns, target_ns, tolerance_ns, *, after_ns=None):
     return result
 
 
+def _read_force(values, indices, dimension):
+    if hasattr(values, "read"):
+        data, valid = values.read(indices)
+    else:
+        data = np.asarray(values)[indices]
+        valid = np.ones(len(data), dtype=np.bool_)
+    data = np.asarray(data, dtype=np.float32)
+    if data.shape != (len(valid), dimension):
+        raise ValueError("force stream dimension differs from its representation")
+    return data, np.asarray(valid, dtype=np.bool_)
+
+
 def pack_torque_history(timestamps_ns, values, anchor_ns, config: RealRobotDataConfig):
     """Keep every actual sample in (anchor-duration, anchor], including real gaps."""
     times = np.asarray(timestamps_ns, dtype=np.int64)
-    values = np.asarray(values, dtype=np.float32)
     n, capacity = config.history_intervals, config.max_samples_per_interval
-    packed = np.zeros((n, capacity, 7), dtype=np.float32)
+    packed = np.zeros((n, capacity, config.force_dim), dtype=np.float32)
     relative = np.zeros((n, capacity), dtype=np.float32)
     mask = np.ones((n, capacity), dtype=np.bool_)
     counts = np.zeros(n, dtype=np.int64)
     start = int(anchor_ns) - n * config.action_period_ns
+    begin, end = np.searchsorted(times, [start, int(anchor_ns)], side="right")
+    selected, selected_valid = _read_force(values, slice(begin, end), config.force_dim)
     for interval in range(n):
         left = start + interval * config.action_period_ns
         right = left + config.action_period_ns
@@ -79,10 +92,11 @@ def pack_torque_history(timestamps_ns, values, anchor_ns, config: RealRobotDataC
         count = hi - lo
         if count > capacity:
             raise ValueError(f"torque history capacity exceeded in interval {interval}: {count}>{capacity}")
-        packed[interval, :count] = values[lo:hi]
+        packed[interval, :count] = selected[lo-begin:hi-begin]
         relative[interval, :count] = (times[lo:hi] - left).astype(np.float64) * 1e-9
-        mask[interval, :count] = False
-        counts[interval] = count
+        mask[interval, :count] = ~selected_valid[lo-begin:hi-begin]
+        counts[interval] = int(selected_valid[lo-begin:hi-begin].sum())
+    packed[mask] = 0
     return PackedForceIntervals(packed, relative, mask, mask.all(axis=-1), counts)
 
 
@@ -101,16 +115,16 @@ def pack_future_torque(timestamps_ns, values, anchor_ns, chunk_len, config: Real
     """Three fixed torque slots per 10 ms action; missing values keep their slots."""
     indices, _ = future_torque_slot_indices(timestamps_ns, anchor_ns, chunk_len, config)
     shape = (chunk_len, config.max_samples_per_interval)
-    packed = np.zeros((*shape, 7), dtype=np.float32)
+    packed = np.zeros((*shape, config.force_dim), dtype=np.float32)
     relative = np.zeros(shape, dtype=np.float32)
     mask = np.ones(shape, dtype=np.bool_)
-    for flat_index, source_index in enumerate(indices.reshape(-1)):
-        interval, slot = divmod(flat_index, config.samples_per_action)
-        # Query time is fixed even when that particular target has no label.
-        relative[interval, slot] = (slot + 1) / config.torque_rate_hz
-        if source_index >= 0:
-            packed[interval, slot] = values[source_index]
-            mask[interval, slot] = False
+    # Query times and holes keep their nominal positions, including invalid conversions.
+    relative[:, :config.samples_per_action] = np.arange(1, config.samples_per_action + 1) / config.torque_rate_hz
+    intervals, slots = np.nonzero(indices >= 0)
+    selected, valid = _read_force(values, indices[intervals, slots], config.force_dim)
+    packed[intervals, slots] = selected
+    mask[intervals, slots] = ~valid
+    packed[mask] = 0
     return PackedForceIntervals(packed, relative, mask, mask.all(axis=-1), (~mask).sum(axis=-1))
 
 

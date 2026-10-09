@@ -1,0 +1,106 @@
+{
+  "scope": "operator accepted coarse completion; NO physical TCP calibration or motion authorization",
+  "statistics": "/home/stw/ForceAwareACT_workspace/ForceAwareACT/outputs/endpoint_fk_20261007/group_statistics.json",
+  "statistics_sha256": "1517ef19d3be71d45d969a5b2fea55d71b72a4810e13384283b25f1d2482ee1d",
+  "model_sha256": "ce20b1a80974c3ed58cdac4973152625096c8ad93a779e5fd4108c26ce19bd52",
+  "frame_id": "marvin_m6_ccs40_right_base",
+  "pose_source": "m6_ccs40_right_flange_fk",
+  "radius_mm": 3.0,
+  "dwell_ms": 500.0,
+  "joint_velocity_gate": false,
+  "orientation_gate": false,
+  "completion_latched_in_shadow_controller": true,
+  "allow_motion": false,
+  "goals": {
+    "x13y07": {
+      "path": "configs/deployment/goals/x13y07.json",
+      "sha256": "74baa4e19c919befe320b05007807030755eda128dca074cf4bf6ecb444fd814",
+      "center_mm": [
+        517.1237737981482,
+        -316.71363124769164,
+        250.07723345747658
+      ]
+    },
+    "x13y08": {
+      "path": "configs/deployment/goals/x13y08.json",
+      "sha256": "5d19920d4a840f63e60a5980726339b8e27b76bd163fb39c8bfa809fb49694bb",
+      "center_mm": [
+        543.914664286561,
+        -316.23890138382626,
+        251.25270162397686
+      ]
+    },
+    "x14y07": {
+      "path": "configs/deployment/goals/x14y07.json",
+      "sha256": "cbde944beccaaa62dddf948e871a9d8f4859c53e0e468bf64e6b00e27a8a83cf",
+      "center_mm": [
+        520.1020083965694,
+        -315.7029521357994,
+        225.63735703825776
+      ]
+    },
+    "x14y08": {
+      "path": "configs/deployment/goals/x14y08.json",
+      "sha256": "bffa6ace1b30fe81e947589cab92fc8abb6e6c4a14fec3dff39b3aacab77021b",
+      "center_mm": [
+        543.6013592676005,
+        -315.418177677861,
+        226.75445685781705
+      ]
+    },
+    "x15y07": {
+      "path": "configs/deployment/goals/x15y07.json",
+      "sha256": "74c43808491e8f2ab263dc99d3e7cc2753ee2b24855bbc9aaef5ed0367dd75bf",
+      "center_mm": [
+        519.905703294041,
+        -317.1945277254988,
+        201.14012095771278
+      ]
+    },
+    "x15y08": {
+      "path": "configs/deployment/goals/x15y08.json",
+      "sha256": "0caa8b55e084c6241ac1330625e8ed51793144c989f35884c08b3770b8491613",
+      "center_mm": [
+        542.3546695182787,
+        -317.8850305931759,
+        201.6581344313489
+      ]
+    },
+    "x16y07": {
+      "path": "configs/deployment/goals/x16y07.json",
+      "sha256": "bca0d334a0b2f182b9ac9caac546db5ff42a0e29e9956434ba813dd4e77e4cce",
+      "center_mm": [
+        519.3283622567752,
+        -317.75504979825337,
+        176.5364191182167
+      ]
+    },
+    "x16y08": {
+      "path": "configs/deployment/goals/x16y08.json",
+      "sha256": "fbebf95f50c9f599a7bf86be8fd8f6c7b90f1d37d2ad7be10a1fc878318ec543",
+      "center_mm": [
+        542.6319565314097,
+        -319.0281191731135,
+        176.4353583381251
+      ]
+    },
+    "x17y07": {
+      "path": "configs/deployment/goals/x17y07.json",
+      "sha256": "ebab257137fdc1bd06529ffee82e926330da43ee4580bf4aea4c114d873a8108",
+      "center_mm": [
+        519.8183987157789,
+        -318.07585286995817,
+        151.50938673954388
+      ]
+    },
+    "x17y08": {
+      "path": "configs/deployment/goals/x17y08.json",
+      "sha256": "820b896d1e803606b89433ea065a2bd3be57edb89cf0076d4e06a4d041bedd03",
+      "center_mm": [
+        545.0252485473754,
+        -319.4353602722281,
+        152.2849175310198
+      ]
+    }
+  }
+}

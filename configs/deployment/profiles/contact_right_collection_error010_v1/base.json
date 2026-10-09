@@ -1,0 +1,104 @@
+{
+  "schema_version": "readonly_controller_v1",
+  "mode": "shadow",
+  "allow_motion": false,
+  "query_hz": 50,
+  "execute_hz": 100,
+  "aggregation": "recency",
+  "decay_ms": 80,
+  "official_decay": 0.01,
+  "max_prediction_age_ms": 200,
+  "feedback_max_age_ms": 20,
+  "force_max_age_ms": 20,
+  "camera_max_age_ms": 100,
+  "execution_lateness_ms": 10,
+  "task_timeout_s": 180,
+  "limits": {
+    "authority": "operator_reviewed",
+    "motion_guard": "step_reject",
+    "torque_soft_nm": [
+      17.5,
+      6.5,
+      5.0,
+      11.0,
+      1.0,
+      6.5,
+      2.0
+    ],
+    "torque_release_nm": [
+      16.625,
+      6.175,
+      4.75,
+      10.45,
+      0.95,
+      6.175,
+      1.9
+    ],
+    "torque_hard_nm": [
+      20.0,
+      6.75,
+      5.5,
+      12.0,
+      1.2,
+      7.0,
+      2.5
+    ],
+    "torque_soft_duration_ms": 100.0,
+    "raw_torque_hard_nm": null,
+    "internal_torque_hard_nm": null,
+    "joint_min_rad": [
+      -2.02,
+      -1.64,
+      1.0,
+      -2.01,
+      -0.1,
+      -0.3,
+      -0.35
+    ],
+    "joint_max_rad": [
+      -0.97,
+      -1.11,
+      1.79,
+      -0.83,
+      0.51,
+      0.09,
+      0.22
+    ],
+    "following_error_rad": [
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1
+    ],
+    "first_action_error_rad": [
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1
+    ],
+    "max_command_step_rad": [
+      0.03,
+      0.03,
+      0.03,
+      0.03,
+      0.03,
+      0.03,
+      0.03
+    ],
+    "velocity_rad_s": null,
+    "acceleration_rad_s2": null,
+    "max_consecutive_limited_ms": null
+  },
+  "goal": {
+    "goal_id": "unselected",
+    "kind": "disabled",
+    "verified": false,
+    "provenance": "base profile only; select a per-hole config in goals/ for sphere completion"
+  }
+}

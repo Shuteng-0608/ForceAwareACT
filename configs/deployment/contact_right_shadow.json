@@ -1,0 +1,23 @@
+{
+  "schema_version": "readonly_controller_v1",
+  "mode": "shadow",
+  "allow_motion": false,
+  "query_hz": 50,
+  "execute_hz": 100,
+  "aggregation": "recency",
+  "decay_ms": 80,
+  "official_decay": 0.01,
+  "max_prediction_age_ms": 200,
+  "feedback_max_age_ms": 20,
+  "force_max_age_ms": 20,
+  "camera_max_age_ms": 100,
+  "execution_lateness_ms": 10,
+  "task_timeout_s": 180,
+  "limits": {"authority": "unconfigured"},
+  "goal": {
+    "goal_id": "unselected",
+    "kind": "disabled",
+    "verified": false,
+    "provenance": "10 different hole locations confirmed by operator; calibrated per-hole goals pending"
+  }
+}

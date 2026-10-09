@@ -40,8 +40,8 @@ class RealRobotHighRateDataset(Dataset):
         self.data_config = data_config or RealRobotDataConfig()
         if not self.episodes:
             raise ValueError("dataset requires at least one raw episode")
-        if (model_config.q_dim, model_config.action_dim, model_config.force_dim) != (7, 7, 7):
-            raise ValueError("right-arm model dimensions must be qpos=action=torque=7")
+        if (model_config.q_dim, model_config.action_dim, model_config.force_dim) != (7, 7, self.data_config.force_dim):
+            raise ValueError("right-arm dimensions must be qpos=action=7 and force match its representation")
         if model_config.num_cameras != len(self.data_config.camera_names):
             raise ValueError("model camera count does not match raw data contract")
         if model_config.max_online_force_intervals != self.data_config.history_intervals:
@@ -56,8 +56,9 @@ class RealRobotHighRateDataset(Dataset):
             raise ValueError("model nominal history length does not match the configured duration")
         for name in ("qpos_mean", "qpos_std", "action_mean", "action_std", "force_mean", "force_std"):
             values = np.asarray(getattr(normalization, name))
-            if values.shape != (7,) or not np.isfinite(values).all():
-                raise ValueError(f"{name} must contain seven finite real-robot statistics")
+            dimension = self.data_config.force_dim if name.startswith("force_") else 7
+            if values.shape != (dimension,) or not np.isfinite(values).all():
+                raise ValueError(f"{name} must contain {dimension} finite real-robot statistics")
             if name.endswith("std") and np.any(values <= 0):
                 raise ValueError(f"{name} must be positive")
         self.raw_episodes = tuple(RawEpisode(record.resolve(data_root), self.data_config) for record in self.episodes)
@@ -99,13 +100,30 @@ class RealRobotHighRateDataset(Dataset):
              "hdf5_index": int(index),
              "source_timestamp_ns": None if index < 0 else int(episode.torque_timestamps_ns[index])}
             for slot, index in enumerate(force_indices[0])]
-        history = pack_torque_history(episode.torque_timestamps_ns, episode.torque, anchor, self.data_config)
+        history = pack_torque_history(episode.torque_timestamps_ns, episode.force, anchor, self.data_config)
+        if self.data_config.force_dim == 3:
+            future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, count, self.data_config)
+            endpoint = self.data_config.samples_per_action - 1
+            force_trace.update(
+                valid_conversion_slots=(~future.sample_padding_mask[:, :self.data_config.samples_per_action]).tolist(),
+                endpoint_padding_mask=future.sample_padding_mask[:, endpoint].tolist(),
+                valid_endpoint_count=int((~future.sample_padding_mask[:, endpoint]).sum()),
+                timestamp_semantics="max(raw disturbance log_ns, paired state log_ns)")
+            for slot in force_trace["first_interval"]:
+                index = slot["hdf5_index"]
+                slot["paired_state_hdf5_index"] = None if index < 0 else int(episode.force.state_indices[index])
+                slot["raw_disturbance_log_ns"] = None if index < 0 else int(episode.timestamps["disturbance"][index])
         return {"episode_id": self.episodes[episode_index].episode_id, "anchor_grid_index": timestep,
                 "observation": episode.observation_trace(anchor), "action": action_trace,
-                "future_torque": force_trace, "history_actual_sample_count": history.valid_sample_count,
+                ("future_force" if self.data_config.force_dim == 3 else "future_torque"): force_trace,
+                "history_actual_sample_count": history.valid_sample_count,
                 "force_source_topic": episode.provenance["force_source_topic"],
                 "force_timestamp_stream": "disturbance",
-                "qpos_unit": "rad", "action_unit": "rad", "torque_unit": "N*m"}
+                "qpos_unit": "rad", "action_unit": "rad", "torque_unit": "N*m",
+                **({"force_representation": "flange_force3", "force_unit": "N",
+                    "force_conversion": episode.force.diagnostics,
+                    "future_force_valid_samples": int((~future.sample_padding_mask).sum())}
+                   if self.data_config.force_dim == 3 else {})}
 
     def __getitem__(self, item):
         episode_index, timestep = self.index[item]
@@ -123,8 +141,8 @@ class RealRobotHighRateDataset(Dataset):
                 action_mask[j] = False
         action_tensor = self.normalization.normalize_action(torch.from_numpy(actions))
         action_tensor.masked_fill_(torch.from_numpy(action_mask).unsqueeze(-1), 0)
-        history = pack_torque_history(episode.torque_timestamps_ns, episode.torque, anchor, self.data_config)
-        future = pack_future_torque(episode.torque_timestamps_ns, episode.torque, anchor, chunk_len, self.data_config)
+        history = pack_torque_history(episode.torque_timestamps_ns, episode.force, anchor, self.data_config)
+        future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, chunk_len, self.data_config)
 
         def normalize_force(values, mask):
             normalized = self.normalization.normalize_force(torch.from_numpy(values.copy()))

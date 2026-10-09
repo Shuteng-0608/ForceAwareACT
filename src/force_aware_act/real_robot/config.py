@@ -28,8 +28,11 @@ class RealRobotDataConfig:
     action_match_tolerance_ms: float = 5.0
     torque_match_tolerance_ms: float = 1.666666
     max_samples_per_interval: int = 8
+    force_representation: str = "joint_torque7"
 
     def __post_init__(self):
+        if self.force_representation not in {"joint_torque7", "flange_force3"}:
+            raise ValueError("unsupported force_representation")
         if self.timestamp_key != "log_ns":
             raise ValueError("real-robot sampling requires log_ns availability; header clocks need an explicit synchronized availability mapping")
         if self.action_grid_phase_mode not in {"first_action", "circular_mean_initial_window"}:
@@ -66,6 +69,10 @@ class RealRobotDataConfig:
             raise ValueError("torque tolerance must not exceed half a torque period")
 
     @property
+    def force_dim(self):
+        return 3 if self.force_representation == "flange_force3" else 7
+
+    @property
     def action_period_ns(self):
         return 1_000_000_000 // self.action_rate_hz
 
@@ -87,6 +94,8 @@ class RealRobotDataConfig:
 
     def to_dict(self):
         values = asdict(self)
+        if self.force_representation == "joint_torque7":
+            values.pop("force_representation")  # Exact compatibility with existing checkpoints.
         if self.action_grid_phase_mode == "first_action":
             # Preserve the exact serialized v1 config for existing checkpoints.
             values.pop("action_grid_phase_mode")
@@ -106,7 +115,7 @@ class RealRobotDataConfig:
     def contract_dict(self):
         version = (LEGACY_REAL_ROBOT_SAMPLING_VERSION if self.action_grid_phase_mode == "first_action"
                    else REAL_ROBOT_SAMPLING_VERSION)
-        return {"sampling_version": version,
+        result = {"sampling_version": version,
                 "raw_schema_version": RAW_SCHEMA_VERSION,
                 "contact_representation": "joint_external_torque",
                 "force_source_topic": EXTERNAL_TORQUE_TOPIC,
@@ -120,3 +129,9 @@ class RealRobotDataConfig:
                 "synthetic_terminal_hold": False,
                 "input_clock_semantics": "recorder availability proxy; headers are diagnostics only",
                 "config": self.to_dict()}
+        if self.force_representation == "flange_force3":
+            from .flange_force import conversion_contract
+            result.update(contact_representation="flange_force3", force_unit="N",
+                          force_dim=3, force_conversion=conversion_contract(),
+                          input_clock_semantics="recorder availability proxy; exact header identity pairs source frames; force available at max(source log times)")
+        return result

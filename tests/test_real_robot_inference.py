@@ -203,7 +203,29 @@ def test_preparation_uses_shared_history_and_image_transforms():
     torch.testing.assert_close(inputs.images[0], preprocess_images(inputs.source.images, model_config))
     assert int((~inputs.online_force_sample_padding_mask).sum()) == 4
     result = adapter.predict(buffer, ORIGIN + 20 * MS)
+    prepared_result = adapter.predict_prepared(inputs)
+    detached = buffer.observation_at(ORIGIN + 20 * MS)
+    detached_inputs = adapter.prepare_snapshot(detached)
+    torch.testing.assert_close(detached_inputs.images, inputs.images)
+    torch.testing.assert_close(detached_inputs.qpos, inputs.qpos)
+    torch.testing.assert_close(detached_inputs.online_force_intervals, inputs.online_force_intervals)
+    for key in result:
+        np.testing.assert_array_equal(prepared_result[key], result[key])
+    with pytest.raises(ValueError, match="zero or prior"):
+        adapter.predict_prepared(inputs, contact_latent_mode="invalid")
     np.testing.assert_array_equal(result["pred_action"], np.full((3, 7), 3))
+
+
+def test_snapshot_does_not_change_when_receiver_appends_more_data():
+    buffer = _buffer()
+    buffer.append_state(ORIGIN, np.zeros(7), np.zeros(7))
+    snapshot = buffer.observation_at(ORIGIN)
+    buffer.append_state(ORIGIN + MS, np.ones(7), np.ones(7))
+    buffer.append_image("d455", ORIGIN + MS, np.full((32,32,3),255,np.uint8))
+    assert snapshot.state_timestamp_ns == ORIGIN
+    assert snapshot.qpos.max() == 0
+    assert snapshot.images[0].max() == 0
+    assert snapshot.torque_values.max() == 0
 
 
 @pytest.mark.parametrize("kind", ["contact", "motion", "dual-zero", "act"])

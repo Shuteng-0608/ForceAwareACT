@@ -67,7 +67,7 @@ def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretra
     if kind == "act":
         return OfficialACTConfig(**values)
     values.update(
-        force_dim=7, force_sample_rate_hz=data_config.torque_rate_hz,
+        force_dim=data_config.force_dim, force_sample_rate_hz=data_config.torque_rate_hz,
         policy_sample_rate_hz=data_config.action_rate_hz,
         online_force_window_len=round(data_config.history_duration_s * data_config.torque_rate_hz),
         max_online_force_intervals=round(data_config.history_duration_s * data_config.action_rate_hz),
@@ -209,8 +209,11 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False):
     """Global valid-scalar deployment errors, never posterior-assisted validation."""
     previous = model.training
     model.eval()
-    sums = {"action": 0.0, "torque": 0.0, "torque_endpoint": 0.0}
+    force3 = len(normalization.force_std) == 3
+    force_name = "force" if force3 else "torque"
+    sums = {"action": 0.0, force_name: 0.0, force_name + "_endpoint": 0.0}
     counts = dict.fromkeys(sums, 0)
+    component_sums = {}
     windows = 0
     action_errors = []
     hold_sum, hold_count = 0.0, 0
@@ -237,9 +240,9 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False):
                         batch.action_padding_mask, normalization.action_std)]
             if kind != "act":
                 entries.extend([
-                    ("torque", outputs["pred_force_highrate"], batch.future_force_intervals,
+                    (force_name, outputs["pred_force_highrate"], batch.future_force_intervals,
                      batch.future_force_sample_padding_mask, normalization.force_std),
-                    ("torque_endpoint", outputs["pred_force"], batch.future_force_target,
+                    (force_name + "_endpoint", outputs["pred_force"], batch.future_force_target,
                      batch.force_target_padding_mask, normalization.force_std),
                 ])
             for name, predicted, target, mask, std in entries:
@@ -248,12 +251,19 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False):
                     raise FloatingPointError(f"non-finite validation {name}")
                 sums[name] += float(error.double().sum())
                 counts[name] += error.numel()
+                if force3 and name != "action":
+                    total = error.double().sum(dim=0)
+                    component_sums[name] = total + component_sums.get(name, torch.zeros_like(total))
     finally:
         model.train(previous)
     result = {"windows": windows,
-            **{f"{name}_mae_{'rad' if name == 'action' else 'nm'}":
+            **{f"{name}_mae_{'rad' if name == 'action' else ('n' if force3 else 'nm')}":
                sums[name] / counts[name] if counts[name] else None for name in sums},
             **{f"{name}_valid_scalars": count for name, count in counts.items()}}
+    if force3:
+        result.update(force_representation="flange_force3", force_unit="N")
+        for name, total in component_sums.items():
+            result[f"{name}_mae_per_axis_n"] = (total / (counts[name] / 3)).cpu().tolist() if counts[name] else None
     if detailed:
         import numpy as np
         errors = np.concatenate(action_errors)

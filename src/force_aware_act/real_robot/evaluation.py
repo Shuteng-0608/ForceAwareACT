@@ -44,13 +44,22 @@ def aggregate_episode_metrics(per_episode):
     if not per_episode:
         raise ValueError("evaluation requires at least one episode")
     result = {"windows": sum(row["windows"] for row in per_episode.values()), "per_episode": per_episode}
-    for name, unit in (("action", "rad"), ("torque", "nm"), ("torque_endpoint", "nm")):
+    force3 = next(iter(per_episode.values())).get("force_representation") == "flange_force3"
+    metrics = (("action", "rad"), ("force", "n"), ("force_endpoint", "n")) if force3 else (("action", "rad"), ("torque", "nm"), ("torque_endpoint", "nm"))
+    for name, unit in metrics:
         key, count_key = f"{name}_mae_{unit}", f"{name}_valid_scalars"
         values = [row[key] for row in per_episode.values() if row[key] is not None]
         count = sum(row[count_key] for row in per_episode.values())
         result[count_key] = count
         result[key] = sum(row[key] * row[count_key] for row in per_episode.values() if row[key] is not None) / count if count else None
         result[f"episode_macro_{key}"] = sum(values) / len(values) if values else None
+    if force3:
+        result.update(force_representation="flange_force3", force_unit="N")
+        for name in ("force", "force_endpoint"):
+            key = f"{name}_mae_per_axis_n"
+            rows = [row for row in per_episode.values() if row.get(key) is not None]
+            count = sum(row[f"{name}_valid_scalars"] for row in rows)
+            result[key] = [sum(row[key][i] * row[f"{name}_valid_scalars"] for row in rows) / count for i in range(3)] if count else None
     holds = [row["hold_current_qpos_mae_rad"] for row in per_episode.values() if "hold_current_qpos_mae_rad" in row]
     if holds:
         result["episode_macro_hold_current_qpos_mae_rad"] = sum(holds) / len(holds)

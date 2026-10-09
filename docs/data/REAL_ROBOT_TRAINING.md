@@ -4,6 +4,8 @@
 
 完整的数据对齐、缺失掩码、编码流程、CVAE分支、loss公式和预测头定义见 [真机训练模型架构](../architecture/REAL_ROBOT_MODEL_ARCHITECTURE.md)。本文侧重运行方法和检查结果。
 
+新增的末端三维力 Contact-CVAE 使用 [right_arm_force3.json](../../configs/real_robot/right_arm_force3.json)，原始七维关节扰动力矩按需换算为法兰坐标系 Fx/Fy/Fz。完整的方法、时间语义、训练与监控命令见 [末端三维力训练](REAL_ROBOT_FLANGE_FORCE3.md)。
+
 ## 数据与时间语义
 
 经用户纠正：action 是 `joint_cmd.position` 的七关节绝对目标位置，单位 rad；接触信号来自 `/tianji_marvin_teleop_bridge/estimated_joint_disturbance.effort`，为七维外部关节力矩估计，单位 N·m。它保留独立 `timestamps/disturbance`，历史、未来高频及端点监督均按该流的原生 `log_ns` 采样。`joint_states.effort` 保存为内部关节力矩，仅供审查，当前不输入网络、不作监督、不参与force统计。补偿细节未核实，不额外执行补偿。
