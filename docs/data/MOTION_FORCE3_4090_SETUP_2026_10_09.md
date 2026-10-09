@@ -9,7 +9,7 @@
 - 数据：`/home/shutiao/Downloads/1mm-gap-10points_hdf5_raw_v2`，50条HDF5，固定30/10/10划分。
 - 模型：Motion-CVAE，历史法兰坐标系三维力输入；动作和三维力辅助监督；motion posterior仅使用qpos和未来动作，验证/推理时motion latent置零。
 - batch8，episodic_uniform，seed0，chunk100，双相机640×480，训练上限20000epoch。
-- 每200次更新（50个采样epoch）验证，最低500epoch，patience8次验证，相对改善阈值0.005。
+- 每200次更新（50个采样epoch）验证，最低3000epoch，patience20次验证，相对改善阈值0.001。
 - 动作L1权重1，力端点L1权重1，高频力L1权重0.5，motion KL权重10；Motion-CVAE没有contact prior matching项。
 - 重新计算训练集三维力归一化；不载入旧七维力矩归一化或Contact-CVAE权重。
 
@@ -29,11 +29,17 @@ cd /home/shutiao/ForceAwareACT_workspace/ForceAwareACT
 bash scripts/training/monitor_gap50_motion_force3.sh
 ```
 
-输出：`outputs/1mm_gap_50_10points_v1/runs/motion_force3_seed0_b8`。
+输出：`outputs/1mm_gap_50_10points_v1/runs/motion_force3_seed0_b8_es3000_p20_r001`。
 
 启动脚本根据当前用户HOME定位Conda和数据目录，也可通过`FORCEACT_DATA_ROOT`显式指定数据路径。正式目录已有训练记录时入口会拒绝覆盖。
 
 ## 准备记录
+
+### 早停配置更正
+
+最初准备的脚本及此前命令继承了旧50条实验的500/8/0.005，偏离用户此前确认的3000/20/0.001。已将后续Motion训练恢复为宽松早停，并使用新输出目录；同时更新了Contact三维力的从头训练示例。batch8、数据划分、每50epoch验证、损失权重及最大20000epoch不变。
+
+本机`contact_force3_seed0_b8`错误地使用500/8/0.005，已按用户要求删除整个训练输出目录，不保留日志或checkpoint，也不纳入后续模型对比。若需要同一宽松训练控制下的Contact/Motion对照，应使用更正后的新目录重新训练Contact。这里未自动启动训练，也未更改已创建训练的配置。
 
 初步检查：RTX4090 24564MiB，驱动595.91.07；Python位于forceact环境，PyTorch2.10.0+cu128、torchvision0.25.0+cu128、h5py3.16.0、NumPy2.2.6，CUDA可用；ResNet18权重已缓存。
 

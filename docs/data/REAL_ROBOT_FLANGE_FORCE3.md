@@ -50,13 +50,15 @@ HDF5保持原样。`FlangeForceStream` 只保留原始关节位置、原始扰�
 
 最近的50条数据实验使用 **batch=8**：`outputs/1mm_gap_50_10points_v1/runs/contact_seed0_b8/run_manifest.json` 和 `act_seed0_b8/run_manifest.json` 均记录 `run_config.batch_size=8`。两次实验的 `metrics.jsonl` 前四次更新实际batch均为8、8、8、6，对应30条训练记录每个episodic_uniform epoch各取一个窗口，末批不跨epoch补齐。
 
-此前将新三维力训练推荐为batch4，误用了早期20条数据实验的配置。若延续最近50条数据的实验，应使用batch8，并沿用该实验的数据目录、30/10/10划分及训练控制参数。最近50条实验的早停参数为minimum_epochs=500、patience=8、minimum_relative_improvement=0.005，与下方20条示例的宽松早停配置不同；不能只替换batch就称为完全相同配置。
+此前将新三维力训练推荐为batch4，误用了早期20条数据实验的配置。最近50条实验使用batch8、30/10/10划分；其早停参数实际为minimum_epochs=500、patience=8、minimum_relative_improvement=0.005。随后更正batch时，错误地一并继承了该组早停参数，偏离用户此前确认的宽松方案。后续训练保留50条数据与batch8，早停恢复为minimum_epochs=3000、patience=20、minimum_relative_improvement=0.001。算法和全局默认值不变，通过显式实验参数固定该设置。
+
+配置错误的`outputs/1mm_gap_50_10points_v1/runs/contact_force3_seed0_b8`使用500/8/0.005，已按用户要求删除整个训练输出目录，不保留日志或checkpoint，也不纳入后续模型对比。这里仅记录配置错误和删除事实。下方命令使用新目录从头训练。
 
 ### 最新50条数据、batch8训练命令
 
 4090电脑的Motion-CVAE启动脚本、环境验收和数据传输说明见[Motion三维力4090准备记录](MOTION_FORCE3_4090_SETUP_2026_10_09.md)。该入口保留三维力输入，采用motion posterior。
 
-延续最近 `contact_seed0_b8` 的数据划分、优化参数、采样方式及早停设置，改用三维力配置并从头训练。验证间隔已核对原日志为200次更新，即50个采样epoch。输出使用新目录，checkpoint每200次更新保存。本命令尚未执行长训练。
+沿用50条数据划分、优化参数和采样方式，使用三维力和用户确认的宽松早停设置从头训练。每200次更新即50个采样epoch验证；最低3000epoch，patience20次验证，相对改善阈值0.001。输出使用新目录，checkpoint每200次更新保存。本命令尚未执行长训练。
 
 ```bash
 source /home/stw/miniconda3/etc/profile.d/conda.sh
@@ -69,11 +71,11 @@ python -u scripts/train_real_robot.py \
   --data-config configs/real_robot/right_arm_force3.json \
   --optimization-config configs/experiments/1mm_gap_50_10points_v1/optimization.json \
   --split configs/datasets/1mm_gap_50_10points_v2/split.json \
-  --output-dir outputs/1mm_gap_50_10points_v1/runs/contact_force3_seed0_b8 \
+  --output-dir outputs/1mm_gap_50_10points_v1/runs/contact_force3_seed0_b8_es3000_p20_r001 \
   --train-sampling-mode episodic_uniform \
   --batch-size 8 --chunk-len 100 --seed 0 \
-  --max-sampling-epochs 20000 --minimum-sampling-epochs 500 \
-  --early-stop-patience 8 --early-stop-min-relative-improvement 0.005 \
+  --max-sampling-epochs 20000 --minimum-sampling-epochs 3000 \
+  --early-stop-patience 20 --early-stop-min-relative-improvement 0.001 \
   --validation-interval 200 --validation-anchor-stride 10 \
   --selection-metric episode_macro_action_mae_rad \
   --checkpoint-interval 200 --record-timing --device cuda --threads 4
@@ -84,7 +86,7 @@ python -u scripts/train_real_robot.py \
 ```bash
 cd /home/stw/ForceAwareACT_workspace/ForceAwareACT
 /home/stw/miniconda3/envs/forceact/bin/python scripts/monitor_real_robot_training.py \
-  --run-dir outputs/1mm_gap_50_10points_v1/runs/contact_force3_seed0_b8 \
+  --run-dir outputs/1mm_gap_50_10points_v1/runs/contact_force3_seed0_b8_es3000_p20_r001 \
   --watch --interval 5
 ```
 

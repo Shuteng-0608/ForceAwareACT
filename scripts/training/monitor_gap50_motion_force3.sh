@@ -5,5 +5,5 @@ source "${HOME}/miniconda3/etc/profile.d/conda.sh"
 conda activate forceact
 cd "$task_repo_root"
 exec python scripts/monitor_real_robot_training.py \
-  --run-dir outputs/1mm_gap_50_10points_v1/runs/motion_force3_seed0_b8 \
+  --run-dir outputs/1mm_gap_50_10points_v1/runs/motion_force3_seed0_b8_es3000_p20_r001 \
   --watch --interval 5 "$@"
