@@ -1,0 +1,72 @@
+实机动作与未来力同时缩短为 0.2 秒
+日期：2026-10-12
+分支：codex/action-force-horizon-200ms
+开发起点：ffcefd8（动作 1s / 未来力 0.2s 实验）
+
+实验配置
+输入力历史仍为过去 0.2s（20 个区间、名义 60 个样本）。
+动作 chunk_len=20：100 Hz，时间点 t、t+10ms、…、t+190ms。
+未来力 force_prediction_steps=20：区间 (t,t+10ms] 至 (t+190ms,t+200ms]。
+endpoint 为 20 点，名义高频力为 60 点，每区间仍存储 8 个槽位，前 3 个用于监督。
+输出动作 [B,20,7]，endpoint [B,20,F]，高频力 [B,20,8,F]。
+末端三维力 F=3；七维关节外力估计 F=7。
+
+后验与控制变量
+Contact posterior：[CLS,qpos,C0,...,C19]，共 22 个 token。
+每个 Cj 为 LayerNorm(action_token_j+force_token_j)，不存在额外的 80 步动作 token。
+Motion posterior 同样缩短为 CLS+qpos+20 个动作 token，共 22 个 token，不读取未来力。
+两种模型仍产生整段共享的 32 维隐变量。mean/max/last 池化、类型编码和
+位置编码的算法保持一致，序列位置表及 decoder 查询长度随动作 chunk 缩短。
+末端换算器、训练集归一化、数据划分、有效锚点索引及采样方式继续沿用既有流程。
+
+严格力边界
+新增 --strict-force-horizon（以及对应的 --no-strict-force-horizon）。
+本入口显式启用该标志，确保末端源样本时间戳不晚于 t+0.2s，即使匹配容差
+允许选到略晚的样本，也将该槽位标为缺失。
+这样 20/20 实验与此前 100/20 实验使用相同的力标签及 mask。
+旧代码仅在未来力长度小于动作长度时自动收紧边界，因此只把 chunk_len 改成
+20 会恢复旧容差行为；这个显式标志解决两组实验标签边界不一致的问题。
+默认值为 False，旧配置/旧 checkpoint 缺少字段时保留原有行为。
+当 force_prediction_steps < chunk_len 时仍自动启用严格边界。
+恢复训练会继承 checkpoint 的标志；更改边界或动作长度将被恢复检查拒绝。
+模型参数中记录 strict_force_horizon，prediction_horizons 记录实际边界行为。
+
+启动命令（本次仅实现与检查，未启动正式训练）
+先进入仓库。每次运行下列命令之一，不要同时占用同一块 GPU：
+bash scripts/training/train_gap50_ah20_fh20.sh contact force3
+bash scripts/training/train_gap50_ah20_fh20.sh motion force3
+bash scripts/training/train_gap50_ah20_fh20.sh contact torque7
+bash scripts/training/train_gap50_ah20_fh20.sh motion torque7
+省略两个位置参数时默认 contact force3。
+第三个及后续参数可以传给 train_real_robot.py，例如恢复本实验的 --resume。
+输出：outputs/1mm_gap_50_10points_v1/runs/<model>_<force>_ah20_fh20_seed0_b8_es3000_p20_r001
+
+保持的训练设置
+batch=8、seed=0、episodic_uniform、原 30/10/10 split、原 optimization.json。
+最大 20000 epoch、最少 3000 epoch、patience=20 次验证、相对改善阈值 0.001。
+验证间隔 200 updates、stride=10，以 episode_macro_action_mae_rad 选 best。
+动作/endpoint/高频力 loss 权重分别为 1/1/0.5，KL=10，Contact prior matching=1。
+loss 仍对有效标量或区间求平均，不按预测长度追加缩放因子。
+
+比较口径
+动作长度改变后，本实验的动作 MAE 只覆盖前 20 步。不能将其直接与旧模型
+覆盖 100 步的动作 MAE 比较；应在相同锚点对旧模型的前 20 步重新计算。
+力指标可与 100/20 组在相同 20 步标签上比较；与旧 100/100 模型比较也需取前20步。
+动作长度改变还会影响实机执行/重规划方式，离线 loss 本身不代表插入成功率。
+本次没有修改实机部署脚本，也没有同步到正在运行训练队列的 4090 checkout。
+
+验证
+专项测试覆盖：20/20 与 100/20 下所有带力模型的前向/反向、3D/7D 维度、
+22-token Contact 后验、有效步梯度与 padding、未来窗口外数据扰动、相同力标签、
+旧配置兼容、边界设置保存/恢复和错误恢复拒绝。
+命令：PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_force_prediction_horizon.py
+完整测试、真实数据两步检查日志保存在 outputs/action_force_horizon_200ms_validation/。
+真实数据检查使用完整 512 维模型、640x480 双相机和 batch=8；不保存训练权重。
+
+本次验证结果
+- 相关回归及推理测试：319 passed。
+- 完整模型真实数据两步检查通过；原验证索引哈希保持一致。
+- Contact posterior 实测输入 [8,22,512]；整段隐变量仍为 32 维。
+- 动作 [8,20,7]、endpoint [8,20,3]、高频力 [8,20,8,3]。
+- CUDA peak allocated 约 3.83 GiB；仅为两步检查，不是正式训练性能评估。
+- 启动脚本 bash -n 和 --help 检查通过；未启动这组实验的正式训练。

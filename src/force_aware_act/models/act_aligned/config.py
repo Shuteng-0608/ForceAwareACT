@@ -287,6 +287,7 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
     architecture_version: str = ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION
     # None preserves legacy checkpoints: force spans the entire action chunk.
     force_prediction_steps: int | None = None
+    strict_force_horizon: bool = False
     force_sample_rate_hz: float = 500.0
     policy_sample_rate_hz: float = 30.0
     online_force_window_len: int = 100
@@ -297,6 +298,8 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if type(self.strict_force_horizon) is not bool:
+            raise ValueError("strict_force_horizon must be a bool")
         if self.force_prediction_steps is not None:
             if type(self.force_prediction_steps) is not int or not 1 <= self.force_prediction_steps <= self.chunk_len:
                 raise ValueError("force_prediction_steps must be an integer between 1 and chunk_len")
@@ -327,6 +330,10 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
             )
         if self.local_force_dim % 2 != 0:
             raise ValueError("local_force_dim must be even for time encoding")
+
+    @property
+    def bounds_force_source_timestamps(self) -> bool:
+        return self.strict_force_horizon or self.force_prediction_len < self.chunk_len
 
     @property
     def force_prediction_len(self) -> int:
@@ -363,6 +370,8 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
                 "force_input_contract": (
                     HIGH_RATE_FORCE_CONTRACT_VERSION
                 ),
+                "strict_force_horizon": self.strict_force_horizon,
+                "force_source_timestamps_bounded": self.bounds_force_source_timestamps,
                 "force_prediction_steps": self.force_prediction_len,
                 "force_prediction_duration_s": self.force_prediction_len / self.policy_sample_rate_hz,
                 "force_sample_rate_hz": self.force_sample_rate_hz,
@@ -408,6 +417,7 @@ def canonical_model_config(values: dict) -> dict:
         ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
         ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
     }:
+        result.setdefault("strict_force_horizon", False)
         if result.get("force_prediction_steps") is None:
             result["force_prediction_steps"] = result.get("chunk_len", 100)
     return result

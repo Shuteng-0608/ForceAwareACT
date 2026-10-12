@@ -84,7 +84,7 @@ class RealRobotHighRateDataset(Dataset):
         anchor = int(episode.anchor_timestamps_ns[timestep])
         count = self.model_config.chunk_len
         force_count = self.model_config.force_prediction_len
-        strict_horizon = force_count < count
+        strict_horizon = self.model_config.bounds_force_source_timestamps
         action_indices = np.full(count, -1, dtype=np.int64)
         slots = episode.action_slot_indices[timestep:timestep + count]
         action_indices[:len(slots)] = slots
@@ -147,7 +147,7 @@ class RealRobotHighRateDataset(Dataset):
         action_tensor.masked_fill_(torch.from_numpy(action_mask).unsqueeze(-1), 0)
         history = pack_torque_history(episode.torque_timestamps_ns, episode.force, anchor, self.data_config)
         future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, self.model_config.force_prediction_len, self.data_config,
-                                   strict_horizon=self.model_config.force_prediction_len < chunk_len)
+                                   strict_horizon=self.model_config.bounds_force_source_timestamps)
 
         def normalize_force(values, mask):
             normalized = self.normalization.normalize_force(torch.from_numpy(values.copy()))

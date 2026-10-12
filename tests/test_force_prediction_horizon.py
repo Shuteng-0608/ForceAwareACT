@@ -31,9 +31,10 @@ def _helper(filename):
     return module
 
 
-def _config(kind='contact', force_dim=3):
+def _config(kind='contact', force_dim=3, chunk_len=100):
     data = RealRobotDataConfig(force_representation='flange_force3' if force_dim == 3 else 'joint_torque7')
-    return replace(make_model_config(kind, data, compact=True, force_prediction_steps=20),
+    return replace(make_model_config(kind, data, compact=True, chunk_len=chunk_len, force_prediction_steps=20,
+                                     strict_force_horizon=chunk_len == 20),
                    image_height=32, image_width=32, dropout=0.)
 
 
@@ -61,6 +62,7 @@ def test_horizon_rejects_invalid_values(value):
 def test_legacy_config_means_full_horizon_and_preserves_state_shapes():
     old = asdict(_config())
     old.pop('force_prediction_steps')
+    old.pop('strict_force_horizon')
     legacy = ACTAlignedHighRateConfig(**old)
     assert legacy.force_prediction_len == legacy.chunk_len == 100
     explicit = replace(legacy, force_prediction_steps=100)
@@ -72,9 +74,10 @@ def test_legacy_config_means_full_horizon_and_preserves_state_shapes():
 
 @pytest.mark.parametrize('kind', ['contact', 'motion', 'dual-zero'])
 @pytest.mark.parametrize('force_dim', [3, 7])
-def test_training_inference_and_gradients_with_short_force(kind, force_dim):
+@pytest.mark.parametrize('chunk_len', [20, 100])
+def test_training_inference_and_gradients_with_short_force(kind, force_dim, chunk_len):
     torch.manual_seed(7)
-    config = _config(kind, force_dim)
+    config = _config(kind, force_dim, chunk_len)
     model = build_model(kind, asdict(config)).eval()
     batch = _batch(config)
     # Missing endpoint, then entirely missing interval; payloads may be NaN.
@@ -89,7 +92,7 @@ def test_training_inference_and_gradients_with_short_force(kind, force_dim):
     batch.future_force_target[:, -2] = float('nan')
     criterion = build_criterion(kind, RealRobotOptimizationConfig())
     outputs, losses = forward_training(kind, model, criterion, batch, sample_posterior=False)
-    assert outputs['pred_action'].shape == (1, 100, 7)
+    assert outputs['pred_action'].shape == (1, chunk_len, 7)
     assert outputs['pred_force'].shape == (1, 20, force_dim)
     assert outputs['pred_force_highrate'].shape == (1, 20, 8, force_dim)
     assert all(torch.isfinite(v).all() for v in losses.values())
@@ -98,7 +101,7 @@ def test_training_inference_and_gradients_with_short_force(kind, force_dim):
     assert model.high_rate_force_head.weight.grad.abs().sum() > 0
     assert all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None)
     online = deployment_predictions(kind, model, batch)
-    assert online['pred_action'].shape[1] == 100
+    assert online['pred_action'].shape[1] == chunk_len
     assert online['pred_force'].shape[1] == 20
 
 
@@ -124,17 +127,19 @@ def test_contact_posterior_keeps_tail_actions_and_ignores_missing_force():
         posterior(q, actions, torch.randn(1, 100, config.d_model))
 
 
-def test_short_data_never_reads_force_after_horizon_and_keeps_action_grid(tmp_path):
+@pytest.mark.parametrize("chunk_len", [20, 100])
+def test_short_data_never_reads_force_after_horizon_and_keeps_action_grid(tmp_path, chunk_len):
     helpers = _helper('test_real_robot_data')
     path = helpers._write_raw(tmp_path)
     data_config = helpers._config()
-    config = replace(helpers._model(data_config), chunk_len=100, force_prediction_steps=20)
+    config = replace(helpers._model(data_config), chunk_len=chunk_len, force_prediction_steps=20,
+                     strict_force_horizon=chunk_len == 20)
     records = discover_real_robot_episodes(tmp_path, data_config)
     stats = compute_real_robot_normalization_stats(tmp_path, records, data_config)
     dataset = RealRobotHighRateDataset(tmp_path, records, stats, config, data_config)
     index = dataset.index.index((0, 4))
     sample = dataset[index]
-    assert sample.action_chunk.shape == (100, 7)
+    assert sample.action_chunk.shape == (chunk_len, 7)
     assert sample.future_force_intervals.shape == (20, 8, 7)
     assert sample.future_force_target_padding_mask[-1].item() is False
     # Mutate only this synthetic fixture; stats intentionally remain frozen.
@@ -218,9 +223,96 @@ def test_legacy_cli_resume_accepts_missing_horizon_field(tmp_path):
     runner.main(helpers._args(root, config, output, 1))
     payload = torch.load(output / 'last.pt', weights_only=False)
     payload['model_config'].pop('force_prediction_steps')
+    payload['model_config'].pop('strict_force_horizon')
     torch.save(payload, output / 'last.pt')
     manifest = json.loads((output / 'run_manifest.json').read_text())
     manifest['model_config'].pop('force_prediction_steps')
+    manifest['model_config'].pop('strict_force_horizon')
     (output / 'run_manifest.json').write_text(json.dumps(manifest))
     result = runner.main(helpers._args(root, config, output, 2) + ['--resume', str(output / 'last.pt')])
     assert result['checkpoint_round_trip'] == 'passed'
+
+
+def test_joint_short_posterior_has_22_tokens_and_all_valid_steps_have_gradients():
+    torch.manual_seed(10)
+    config = _config(chunk_len=20)
+    posterior = ACTAlignedHighRateContactPosterior(config).eval()
+    seen = []
+    def inspect_encoder(module, args, kwargs):
+        seen.append((args[0].shape, kwargs['position'].shape, kwargs['padding_mask'].clone()))
+    hook = posterior.encoder.register_forward_pre_hook(inspect_encoder, with_kwargs=True)
+    actions = torch.randn(1, 20, 7, requires_grad=True)
+    force = torch.randn(1, 20, config.d_model, requires_grad=True)
+    action_mask = torch.zeros(1, 20, dtype=torch.bool)
+    action_mask[:, -1] = True
+    mean, _, _ = posterior(torch.randn(1, 7), actions, force,
+                           action_padding_mask=action_mask, sample=False)
+    hook.remove()
+    assert seen[0][0] == (1, 22, config.d_model)
+    assert seen[0][1][-2:] == (22, config.d_model)
+    assert seen[0][2].shape == (1, 22)
+    assert seen[0][2][0, -1] and not seen[0][2][0, :-1].any()
+    assert mean.shape == (1, 32)
+    mean.square().sum().backward()
+    assert (actions.grad[:, :-1].abs().sum(-1) > 0).all()
+    assert (force.grad[:, :-1].abs().sum(-1) > 0).all()
+    assert actions.grad[:, -1].eq(0).all()
+    assert force.grad[:, -1].eq(0).all()
+
+
+def test_joint_short_and_force_only_short_use_identical_force_targets(tmp_path):
+    helpers = _helper('test_real_robot_data')
+    # Positive timestamp jitter stresses the final endpoint's upper bound.
+    helpers._write_raw(tmp_path, disturbance_delay_ms=1)
+    data = helpers._config()
+    records = discover_real_robot_episodes(tmp_path, data)
+    stats = compute_real_robot_normalization_stats(tmp_path, records, data)
+    full = replace(helpers._model(data), chunk_len=100, force_prediction_steps=20)
+    short = replace(full, chunk_len=20, strict_force_horizon=True)
+    full_data = RealRobotHighRateDataset(tmp_path, records, stats, full, data)
+    short_data = RealRobotHighRateDataset(tmp_path, records, stats, short, data)
+    assert full_data.index == short_data.index
+    for index in (0, len(full_data)//2, len(full_data)-1):
+        a, b = full_data[index], short_data[index]
+        for field in ('future_force_intervals', 'future_force_target', 'future_force_target_padding_mask',
+                      'future_force_sample_padding_mask', 'online_force_intervals'):
+            torch.testing.assert_close(getattr(a, field), getattr(b, field), rtol=0, atol=0)
+        torch.testing.assert_close(a.action_chunk[:20], b.action_chunk, rtol=0, atol=0)
+        torch.testing.assert_close(a.action_padding_mask[:20], b.action_padding_mask, rtol=0, atol=0)
+
+
+def test_strict_horizon_is_opt_in_for_equal_lengths_and_checkpointed():
+    old = _config()
+    assert old.bounds_force_source_timestamps  # force shorter than actions
+    equal = replace(old, chunk_len=20)
+    assert not equal.bounds_force_source_timestamps
+    strict = replace(equal, strict_force_horizon=True)
+    assert strict.bounds_force_source_timestamps
+    assert strict.checkpoint_metadata()['force_source_timestamps_bounded']
+    legacy_dict = asdict(equal)
+    legacy_dict.pop('strict_force_horizon')
+    assert canonical_model_config(legacy_dict) == canonical_model_config(asdict(equal))
+    assert canonical_model_config(legacy_dict) != canonical_model_config(asdict(strict))
+    with pytest.raises(ValueError, match='strict_force_horizon'):
+        replace(equal, strict_force_horizon=1)
+
+
+def test_joint_short_cli_resume_preserves_boundary_and_rejects_boundary_switch(tmp_path):
+    helpers = _helper('test_real_robot_cli')
+    runner = helpers._runner()
+    root, config = helpers._data(tmp_path)
+    output = tmp_path / 'joint_short'
+    args = helpers._args(root, config, output, 1)
+    args[args.index('--chunk-len') + 1] = '20'
+    runner.main(args + ['--force-prediction-steps', '20', '--strict-force-horizon'])
+    manifest = json.loads((output/'run_manifest.json').read_text())
+    horizons = manifest['prediction_horizons']
+    assert horizons['action_steps'] == horizons['force_prediction_steps'] == 20
+    assert horizons['contact_posterior'] == 'full_action_plus_full_force'
+    assert horizons['force_source_upper_bound'] == 'anchor_plus_force_horizon'
+    args[args.index('--steps') + 1] = '2'
+    result = runner.main(args + ['--resume', str(output/'last.pt')])
+    assert result['checkpoint_round_trip'] == 'passed'
+    args[args.index('--steps') + 1] = '3'
+    with pytest.raises(ValueError, match='model_config'):
+        runner.main(args + ['--resume', str(output/'last.pt'), '--no-strict-force-horizon'])

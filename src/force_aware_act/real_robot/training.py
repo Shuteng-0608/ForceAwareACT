@@ -51,10 +51,10 @@ class RealRobotOptimizationConfig:
             raise ValueError("backbone learning rate must not exceed main learning rate")
 
 
-def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretrained=True, force_prediction_steps=None):
+def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretrained=True, force_prediction_steps=None, strict_force_horizon=False):
     if kind not in MODEL_KINDS:
         raise ValueError(f"unknown model kind: {kind}")
-    if kind == "act" and force_prediction_steps is not None:
+    if kind == "act" and (force_prediction_steps is not None or strict_force_horizon):
         raise ValueError("ACT has no force prediction horizon")
     values = dict(
         q_dim=7, action_dim=7, num_cameras=len(data_config.camera_names),
@@ -78,6 +78,7 @@ def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretra
     if compact:
         values.update(local_force_dim=16, local_force_encoder_layers=1)
     values["force_prediction_steps"] = force_prediction_steps
+    values["strict_force_horizon"] = strict_force_horizon
     factory = {"contact": ACTAlignedHighRateConfig,
                "motion": ACTAlignedHighRateConfig.motion_control,
                "dual-zero": ACTAlignedHighRateConfig.dual_zero}[kind]

@@ -157,6 +157,8 @@ def parser():
     result.add_argument("--chunk-len", type=int, default=100)
     result.add_argument("--force-prediction-steps", type=int,
                         help="future force intervals; defaults to action chunk length, or saved value on resume")
+    result.add_argument("--strict-force-horizon", action=argparse.BooleanOptionalAction, default=None,
+                        help="cap source timestamps at the force horizon even when action and force lengths match")
     result.add_argument("--seed", type=int, default=0)
     result.add_argument("--train-sampling-mode", choices=TRAIN_SAMPLING_MODES,
                         help="episodic_uniform: one random valid anchor per episode per epoch; "
@@ -176,6 +178,8 @@ def main(argv=None):
     for name in ("batch_size", "chunk_len", "validation_interval", "checkpoint_interval", "threads", "validation_anchor_stride"):
         if getattr(args, name) <= 0:
             raise ValueError(f"{name} must be positive")
+    if args.model == "act" and args.strict_force_horizon is not None:
+        raise ValueError("ACT has no force prediction horizon")
     if args.force_prediction_steps is not None:
         if args.model == "act" or not 1 <= args.force_prediction_steps <= args.chunk_len:
             raise ValueError("force-prediction-steps requires a force model and a value between 1 and chunk-len")
@@ -221,6 +225,8 @@ def main(argv=None):
     payload = read_checkpoint(args.resume) if args.resume else None
     if payload and args.force_prediction_steps is None:
         args.force_prediction_steps = payload["model_config"].get("force_prediction_steps")
+    if payload and args.strict_force_horizon is None:
+        args.strict_force_horizon = payload["model_config"].get("strict_force_horizon", False)
     sampling_mode = resolve_training_sampling_mode(
         args.train_sampling_mode, checkpoint_sampling=payload["run_config"]["sampling"] if payload else None)
     if (args.max_sampling_epochs is not None or stopping_config.patience) and sampling_mode != EPISODIC_UNIFORM_SAMPLING:
@@ -234,7 +240,8 @@ def main(argv=None):
     settings = RealRobotOptimizationConfig(**json.loads(args.optimization_config.read_text())) if args.optimization_config else RealRobotOptimizationConfig()
     compact = args.compact or args.mode == "smoke"
     config = make_model_config(args.model, data_config, compact=compact, chunk_len=args.chunk_len,
-                               pretrained=not args.no_pretrained, force_prediction_steps=args.force_prediction_steps)
+                               pretrained=not args.no_pretrained, force_prediction_steps=args.force_prediction_steps,
+                               strict_force_horizon=bool(args.strict_force_horizon))
     # ACT normalizes images inside its model. Its data proxy must deliver RGB/255.
     data_model_config = config if args.model != "act" else make_model_config(
         "contact", data_config, compact=compact, chunk_len=args.chunk_len, pretrained=False)
@@ -283,9 +290,10 @@ def main(argv=None):
             "force_prediction_steps": config.force_prediction_len,
             "force_prediction_duration_s": config.force_prediction_len / data_config.action_rate_hz,
             "force_nominal_samples": config.force_prediction_len * data_config.samples_per_action,
-            "contact_posterior": "full_action_plus_force_prefix" if args.model == "contact" else "not_used",
+            "contact_posterior": ("full_action_plus_full_force" if config.force_prediction_len == config.chunk_len
+                                  else "full_action_plus_force_prefix") if args.model == "contact" else "not_used",
             "force_pooling": ["mean", "max", "last"],
-            "force_source_upper_bound": ("anchor_plus_force_horizon" if config.force_prediction_len < config.chunk_len
+            "force_source_upper_bound": ("anchor_plus_force_horizon" if config.bounds_force_source_timestamps
                                          else "legacy_matching_tolerance"),
         }
     validate_output_identity(args.output_dir, metadata, payload["global_step"] if payload else 0)
