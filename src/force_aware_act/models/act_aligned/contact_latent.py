@@ -201,7 +201,9 @@ class ACTAlignedHighRateContactPosterior(nn.Module):
         )
         if action_padding_mask is not None:
             action_chunk = action_chunk.masked_fill(action_padding_mask.unsqueeze(-1), 0.0)
-            future_force_tokens = future_force_tokens.masked_fill(action_padding_mask.unsqueeze(-1), 0.0)
+            future_force_tokens = future_force_tokens.masked_fill(
+                action_padding_mask[:, :self.config.force_prediction_len].unsqueeze(-1), 0.0
+            )
         batch_size = qpos.shape[0]
         action_tokens = self.action_adapter(action_chunk)
         if future_force_interval_padding_mask is not None:
@@ -209,6 +211,12 @@ class ACTAlignedHighRateContactPosterior(nn.Module):
                 future_force_interval_padding_mask.unsqueeze(-1),
                 0.0,
             )
+        # Append absent force FEATURES only; every valid action remains in attention.
+        if self.config.force_prediction_len < self.config.chunk_len:
+            absent = future_force_tokens.new_zeros(
+                batch_size, self.config.chunk_len - self.config.force_prediction_len, self.config.d_model
+            )
+            future_force_tokens = torch.cat((future_force_tokens, absent), dim=1)
         contact_steps = self.contact_step_norm(action_tokens + future_force_tokens)
         cls_token = self.cls_token.expand(batch_size, -1, -1)
         qpos_token = self.qpos_adapter(qpos)
@@ -259,7 +267,7 @@ class ACTAlignedHighRateContactPosterior(nn.Module):
         _require_floating_shape(
             future_force_tokens,
             "future_force_tokens",
-            (batch_size, self.config.chunk_len, self.config.d_model),
+            (batch_size, self.config.force_prediction_len, self.config.d_model),
         )
         _require_same_context(
             qpos,
@@ -279,7 +287,8 @@ class ACTAlignedHighRateContactPosterior(nn.Module):
                     mask,
                     name=name,
                     batch_size=batch_size,
-                    sequence_length=self.config.chunk_len,
+                    sequence_length=(self.config.chunk_len if name == "action_padding_mask"
+                                     else self.config.force_prediction_len),
                 )
 
 

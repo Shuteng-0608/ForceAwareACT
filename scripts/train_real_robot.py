@@ -18,6 +18,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from force_aware_act.act_aligned_training.high_rate_data import collate_high_rate_samples
+from force_aware_act.models.act_aligned.config import canonical_model_config
 from force_aware_act.real_robot.config import RealRobotDataConfig
 from force_aware_act.real_robot.data import RealRobotHighRateDataset
 from force_aware_act.real_robot.reader import RawEpisode, discover_real_robot_episodes
@@ -109,7 +110,10 @@ def validate_output_identity(output_dir, metadata, resume_step):
     previous = json.loads(path.read_text())
     for key in ("model_kind", "model_config", "data_config", "data_contract", "normalization",
                 "split_manifest", "source_fingerprints", "training_config"):
-        if canonical(previous[key]) != canonical(metadata[key]):
+        left, right = previous[key], metadata[key]
+        if key == "model_config":
+            left, right = canonical_model_config(left), canonical_model_config(right)
+        if canonical(left) != canonical(right):
             raise ValueError(f"existing output directory belongs to another run ({key})")
     for key in ("mode", "batch_size", "seed", "sampling"):
         if previous["run_config"][key] != metadata["run_config"][key]:
@@ -151,6 +155,8 @@ def parser():
     result.add_argument("--record-timing", action="store_true")
     result.add_argument("--batch-size", type=int, default=1)
     result.add_argument("--chunk-len", type=int, default=100)
+    result.add_argument("--force-prediction-steps", type=int,
+                        help="future force intervals; defaults to action chunk length, or saved value on resume")
     result.add_argument("--seed", type=int, default=0)
     result.add_argument("--train-sampling-mode", choices=TRAIN_SAMPLING_MODES,
                         help="episodic_uniform: one random valid anchor per episode per epoch; "
@@ -170,6 +176,9 @@ def main(argv=None):
     for name in ("batch_size", "chunk_len", "validation_interval", "checkpoint_interval", "threads", "validation_anchor_stride"):
         if getattr(args, name) <= 0:
             raise ValueError(f"{name} must be positive")
+    if args.force_prediction_steps is not None:
+        if args.model == "act" or not 1 <= args.force_prediction_steps <= args.chunk_len:
+            raise ValueError("force-prediction-steps requires a force model and a value between 1 and chunk-len")
     if not 0 < args.validation_fraction < 1:
         raise ValueError("validation fraction must be between zero and one")
     if args.steps is not None and args.steps <= 0:
@@ -210,6 +219,8 @@ def main(argv=None):
         return inspection
 
     payload = read_checkpoint(args.resume) if args.resume else None
+    if payload and args.force_prediction_steps is None:
+        args.force_prediction_steps = payload["model_config"].get("force_prediction_steps")
     sampling_mode = resolve_training_sampling_mode(
         args.train_sampling_mode, checkpoint_sampling=payload["run_config"]["sampling"] if payload else None)
     if (args.max_sampling_epochs is not None or stopping_config.patience) and sampling_mode != EPISODIC_UNIFORM_SAMPLING:
@@ -223,7 +234,7 @@ def main(argv=None):
     settings = RealRobotOptimizationConfig(**json.loads(args.optimization_config.read_text())) if args.optimization_config else RealRobotOptimizationConfig()
     compact = args.compact or args.mode == "smoke"
     config = make_model_config(args.model, data_config, compact=compact, chunk_len=args.chunk_len,
-                               pretrained=not args.no_pretrained)
+                               pretrained=not args.no_pretrained, force_prediction_steps=args.force_prediction_steps)
     # ACT normalizes images inside its model. Its data proxy must deliver RGB/255.
     data_model_config = config if args.model != "act" else make_model_config(
         "contact", data_config, compact=compact, chunk_len=args.chunk_len, pretrained=False)
@@ -264,6 +275,19 @@ def main(argv=None):
                 "data_contract": data_config.contract_dict(), "normalization": normalization.to_dict(),
                 "split_manifest": split, "source_fingerprints": fingerprints,
                 "training_config": asdict(settings), "run_config": run_config}
+    if args.model != "act":
+        metadata["prediction_horizons"] = {
+            "action_steps": config.chunk_len,
+            "action_duration_s": config.chunk_len / data_config.action_rate_hz,
+            "force_history_duration_s": data_config.history_duration_s,
+            "force_prediction_steps": config.force_prediction_len,
+            "force_prediction_duration_s": config.force_prediction_len / data_config.action_rate_hz,
+            "force_nominal_samples": config.force_prediction_len * data_config.samples_per_action,
+            "contact_posterior": "full_action_plus_force_prefix" if args.model == "contact" else "not_used",
+            "force_pooling": ["mean", "max", "last"],
+            "force_source_upper_bound": ("anchor_plus_force_horizon" if config.force_prediction_len < config.chunk_len
+                                         else "legacy_matching_tolerance"),
+        }
     validate_output_identity(args.output_dir, metadata, payload["global_step"] if payload else 0)
     device = torch.device(args.device)
     model = build_model(args.model, asdict(config), initialize_pretrained=payload is None).to(device)

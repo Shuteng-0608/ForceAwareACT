@@ -12,6 +12,8 @@ from typing import Any, Mapping, Optional
 import numpy as np
 import torch
 
+from force_aware_act.models.act_aligned.config import canonical_model_config
+
 from force_aware_act.act_aligned_training.config import (
     ACT_ALIGNED_TRAINING_VERSION,
     ACTAlignedTrainingConfig,
@@ -98,7 +100,7 @@ def load_act_aligned_checkpoint(
     """Strictly load model, optimizer, progress, data contract, and RNG."""
 
     payload = read_act_aligned_checkpoint(path, map_location=map_location)
-    if payload["model_config"] != asdict(model.config):
+    if canonical_model_config(payload["model_config"]) != canonical_model_config(asdict(model.config)):
         raise ValueError("checkpoint model_config does not match the model")
     if payload["training_config"] != asdict(training_config):
         raise ValueError("checkpoint training_config does not match")

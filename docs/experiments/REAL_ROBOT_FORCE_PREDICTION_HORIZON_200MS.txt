@@ -1,0 +1,77 @@
+实机未来力预测窗口 0.2 秒实验
+日期：2026-10-12
+开发分支：codex/force-prediction-horizon-200ms
+开发起点：d2a82ee（codex/real-robot-sdk-deployment）
+
+目的与时间语义
+本实验只缩短未来力窗口。输入力历史继续使用过去 0.2 秒；动作仍为
+100 Hz 的 100 步；未来力为 20 个 10 ms 区间，即未来 0.2 秒。
+力表示首次实验采用 flange_force3：原始外力来源仍为 estimated_joint_disturbance，
+通过既有换算器生成末端三维力，不使用 joint_states.effort 内部力矩。
+
+配置与数据
+新增 --force-prediction-steps 20，对应模型配置 force_prediction_steps。
+值必须是 1 至 chunk_len 的整数；省略或旧配置缺少字段时沿用 chunk_len。
+恢复训练时未指定该参数则读取 checkpoint；不同窗口的 checkpoint 不允许续训混用。
+原始 HDF5 无需转换。训练窗口索引、30/10/10 划分、归一化算法与原实验相同。
+未来目标读取缩短至 20 个区间。短窗口额外限制实际源时间戳不晚于 anchor+0.2s，
+因此即使终点的匹配容差能匹配到稍晚样本，该样本也作为缺失处理。
+这个边界策略已记录为 force_source_upper_bound；完整窗口保留旧时间戳匹配语义。
+
+模型与损失
+动作 [B,100,7]；endpoint 力 [B,20,F]；高频力 [B,20,8,F]。
+F=3 或 7；每区间前 3 个槽位名义上有标签，其余为 padding。
+Contact posterior 仍为 CLS+qpos+100 个时间步，共 102 个 token：
+前 20 步 LayerNorm(action+force)，后 80 步 LayerNorm(action)。
+后 80 步有效动作继续参与注意力。未来 0.2s 之后的力不进入 posterior。
+维度 32 的隐变量、三类类型编码、位置编码、mean/max/last 池化保持原方案。
+Motion posterior 继续只读取动作和当前 qpos；其力监督同样支持短窗口。
+推理 API 仅使用在线观测，无未来标签输入；本次未修改实机部署脚本。
+endpoint/highrate loss 均按各自有效元素或区间取平均，权重分别为 1.0/0.5。
+动作权重 1、posterior KL 权重 10、Contact prior matching 权重 1。
+
+训练设置与入口
+bash scripts/training/train_gap50_contact_force3_fh20.sh
+输出目录：
+outputs/1mm_gap_50_10points_v1/runs/contact_force3_fh20_seed0_b8_es3000_p20_r001
+batch=8，seed=0，episodic_uniform，最大 20000 epoch，最少 3000 epoch，
+patience=20 次验证，最小相对改善 0.001，验证每 200 updates，验证 stride=10。
+仍按 episode_macro_action_mae_rad 选择 best checkpoint。
+学习率/权重衰减等直接读取原 optimization.json。
+启动脚本默认进行全新训练；续训需显式附加 --resume <该实验的last.pt>。
+manifest/checkpoint 的 prediction_horizons 记录动作、历史和未来窗口、
+名义样本数、posterior 力输入范围、池化方式与力源时间戳上界。
+验证日志记录 force_evaluation_steps 和 force_evaluation_duration_s。
+
+公平比较
+不能直接把旧日志中未来 1s 的平均力 MAE 与本实验 0.2s 的平均值作结论。
+旧模型保持原模型配置和权重，验证时使用本实验短窗口数据集（包括相同 mask），
+调用 evaluate_episodes(..., force_evaluation_steps=20)，仅比较共同的前 0.2s。
+新旧模型都继续评价完整 1s 动作。验证使用 zero latent，与既有五模型实验一致。
+本次功能验证不代表短窗口已提高预测或实机表现，需要正式训练后比较。
+
+验证记录
+回归及新功能测试：tests/test_force_prediction_horizon.py 与相关 ACT/实机测试。
+专门覆盖三维/七维力、Contact/Motion/无隐变量接口、缺失 endpoint、整区间缺失、
+动作尾段梯度、超出窗口的力扰动不影响输入、旧配置恢复和跨窗口恢复拒绝。
+详细日志与真实数据两步检查：outputs/force_prediction_horizon_200ms_validation/
+real_data_smoke.py 使用完整模型与 640x480 双相机、batch=8，更新两步，
+保留原 train-only 归一化并检查原验证索引哈希，随后检查在线输出及两个验证窗口。
+该检查不保存训练权重，也不是正式训练结果。
+
+本次验证结果
+- 相关回归测试：288 passed；其中新窗口专项测试 18 项。
+- 实机推理接口测试：20 passed；合计 308 项。
+- 真实数据两步全模型训练及在线验证通过，峰值 allocated 显存约 4.22 GiB。
+- 输出动作 [8,100,7]、endpoint [8,20,3]、高频力 [8,20,8,3]。
+- 原验证索引哈希保持一致：
+  bdf62fcb8bc22e2921ce2ca14bf6f2dadfc5d20a726f63b586ca0cc685ff9b90
+- 原 Contact 三维力 best.pt（step 4800）严格加载通过，并通过两个窗口的
+  前 0.2s 统一标签评估检查。该小样本检查不用于报告模型优劣。
+- bash -n 与 git diff --check 通过。未启动正式训练。
+
+复现专项测试（forceact 环境）
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_force_prediction_horizon.py
+推理接口回归：
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_real_robot_inference.py
+完整相关回归文件集合见验证目录的 implementation_manifest.json。

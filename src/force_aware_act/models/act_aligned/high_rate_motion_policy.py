@@ -201,10 +201,10 @@ class ACTAlignedHighRateMotionCVAEPolicy(ACTAlignedMotionCVAEControlPolicy):
         )
         batch_size = outputs["decoder_hidden"].shape[0]
         outputs["pred_force_highrate"] = self.high_rate_force_head(
-            outputs["decoder_hidden"]
+            outputs["decoder_hidden"][:, :self.config.force_prediction_len]
         ).reshape(
             batch_size,
-            self.config.chunk_len,
+            self.config.force_prediction_len,
             self.config.max_force_samples_per_interval,
             self.config.force_dim,
         )

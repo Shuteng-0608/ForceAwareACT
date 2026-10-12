@@ -100,7 +100,7 @@ def pack_torque_history(timestamps_ns, values, anchor_ns, config: RealRobotDataC
     return PackedForceIntervals(packed, relative, mask, mask.all(axis=-1), counts)
 
 
-def future_torque_slot_indices(timestamps_ns, anchor_ns, chunk_len, config: RealRobotDataConfig):
+def future_torque_slot_indices(timestamps_ns, anchor_ns, chunk_len, config: RealRobotDataConfig, *, strict_horizon=False):
     """Expose the exact raw-source mapping used by future supervision and audits."""
     count = chunk_len * config.samples_per_action
     offsets = np.rint(np.arange(1, count + 1, dtype=np.float64)
@@ -108,12 +108,17 @@ def future_torque_slot_indices(timestamps_ns, anchor_ns, chunk_len, config: Real
     targets = int(anchor_ns) + offsets
     indices = match_time_slots(timestamps_ns, targets,
                               round(config.torque_match_tolerance_ms * 1e6), after_ns=int(anchor_ns))
+    if strict_horizon:
+        # Matching tolerance must not admit a source after the requested horizon.
+        matched = np.flatnonzero(indices >= 0)
+        outside = np.asarray(timestamps_ns)[indices[matched]] > int(anchor_ns) + chunk_len * config.action_period_ns
+        indices[matched[outside]] = -1
     return indices.reshape(chunk_len, config.samples_per_action), targets.reshape(chunk_len, config.samples_per_action)
 
 
-def pack_future_torque(timestamps_ns, values, anchor_ns, chunk_len, config: RealRobotDataConfig):
+def pack_future_torque(timestamps_ns, values, anchor_ns, chunk_len, config: RealRobotDataConfig, *, strict_horizon=False):
     """Three fixed torque slots per 10 ms action; missing values keep their slots."""
-    indices, _ = future_torque_slot_indices(timestamps_ns, anchor_ns, chunk_len, config)
+    indices, _ = future_torque_slot_indices(timestamps_ns, anchor_ns, chunk_len, config, strict_horizon=strict_horizon)
     shape = (chunk_len, config.max_samples_per_interval)
     packed = np.zeros((*shape, config.force_dim), dtype=np.float32)
     relative = np.zeros(shape, dtype=np.float32)

@@ -285,6 +285,8 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
     """ACT-aligned contact policy with native 500 Hz force intervals."""
 
     architecture_version: str = ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION
+    # None preserves legacy checkpoints: force spans the entire action chunk.
+    force_prediction_steps: int | None = None
     force_sample_rate_hz: float = 500.0
     policy_sample_rate_hz: float = 30.0
     online_force_window_len: int = 100
@@ -295,6 +297,9 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if self.force_prediction_steps is not None:
+            if type(self.force_prediction_steps) is not int or not 1 <= self.force_prediction_steps <= self.chunk_len:
+                raise ValueError("force_prediction_steps must be an integer between 1 and chunk_len")
         high_rate_versions = {
             ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
             ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
@@ -322,6 +327,10 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
             )
         if self.local_force_dim % 2 != 0:
             raise ValueError("local_force_dim must be even for time encoding")
+
+    @property
+    def force_prediction_len(self) -> int:
+        return self.chunk_len if self.force_prediction_steps is None else self.force_prediction_steps
 
     @property
     def force_encoder_token_count(self) -> int:
@@ -354,6 +363,8 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
                 "force_input_contract": (
                     HIGH_RATE_FORCE_CONTRACT_VERSION
                 ),
+                "force_prediction_steps": self.force_prediction_len,
+                "force_prediction_duration_s": self.force_prediction_len / self.policy_sample_rate_hz,
                 "force_sample_rate_hz": self.force_sample_rate_hz,
                 "policy_sample_rate_hz": self.policy_sample_rate_hz,
                 "online_force_window_len": self.online_force_window_len,
@@ -387,3 +398,16 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
                 "z_VF",
             )
         return metadata
+
+
+def canonical_model_config(values: dict) -> dict:
+    """Compare legacy and explicit full-horizon high-rate configurations."""
+    result = dict(values)
+    if result.get("architecture_version") in {
+        ACT_ALIGNED_HIGH_RATE_ARCHITECTURE_VERSION,
+        ACT_ALIGNED_HIGH_RATE_MOTION_ARCHITECTURE_VERSION,
+        ACT_ALIGNED_HIGH_RATE_DUAL_ZERO_ARCHITECTURE_VERSION,
+    }:
+        if result.get("force_prediction_steps") is None:
+            result["force_prediction_steps"] = result.get("chunk_len", 100)
+    return result

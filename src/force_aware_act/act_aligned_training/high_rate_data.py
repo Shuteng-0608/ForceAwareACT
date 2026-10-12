@@ -84,7 +84,7 @@ class ACTAlignedHighRateHDF5Dataset(ACTAlignedHDF5Dataset):
             force_values,
             state_timestamps,
             state_index=timestep,
-            chunk_len=self.high_rate_config.chunk_len,
+            chunk_len=self.high_rate_config.force_prediction_len,
             max_samples_per_interval=(
                 self.high_rate_config.max_force_samples_per_interval
             ),
@@ -98,7 +98,7 @@ class ACTAlignedHighRateHDF5Dataset(ACTAlignedHDF5Dataset):
             future.sample_padding_mask,
         )
         future_target = torch.zeros(
-            self.high_rate_config.chunk_len,
+            self.high_rate_config.force_prediction_len,
             self.high_rate_config.force_dim,
             dtype=torch.float32,
         )

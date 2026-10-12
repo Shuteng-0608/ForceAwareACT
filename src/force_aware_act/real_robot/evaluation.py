@@ -63,12 +63,19 @@ def aggregate_episode_metrics(per_episode):
     holds = [row["hold_current_qpos_mae_rad"] for row in per_episode.values() if "hold_current_qpos_mae_rad" in row]
     if holds:
         result["episode_macro_hold_current_qpos_mae_rad"] = sum(holds) / len(holds)
+    for key in ("force_evaluation_steps", "force_evaluation_duration_s"):
+        values = [row.get(key) for row in per_episode.values()]
+        if any(value is not None for value in values):
+            if len(set(values)) != 1:
+                raise ValueError("episodes must use the same force evaluation horizon")
+            result[key] = values[0]
     return result
 
 
-def evaluate_episodes(kind, model, dataset, indices, normalization, device, batch_size, *, detailed=False):
+def evaluate_episodes(kind, model, dataset, indices, normalization, device, batch_size, *, detailed=False, force_evaluation_steps=None):
     per_episode = {
-        episode: evaluate(kind, model, batches_for_indices(dataset, locations, batch_size), normalization, device, detailed=detailed)
+        episode: evaluate(kind, model, batches_for_indices(dataset, locations, batch_size), normalization, device, detailed=detailed,
+                          force_evaluation_steps=force_evaluation_steps)
         for episode, locations in indices.items()
     }
     return aggregate_episode_metrics(per_episode)

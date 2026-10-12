@@ -117,12 +117,12 @@ class ACTAlignedHighRateDualZeroPolicy(nn.Module):
             "policy_memory": policy_memory,
             "decoder_hidden": decoder_hidden,
             "pred_action": self.action_head(decoder_hidden),
-            "pred_force": self.force_head(decoder_hidden),
+            "pred_force": self.force_head(decoder_hidden[:, :self.config.force_prediction_len]),
             "pred_force_highrate": self.high_rate_force_head(
-                decoder_hidden
+                decoder_hidden[:, :self.config.force_prediction_len]
             ).reshape(
                 batch_size,
-                self.config.chunk_len,
+                self.config.force_prediction_len,
                 self.config.max_force_samples_per_interval,
                 self.config.force_dim,
             ),

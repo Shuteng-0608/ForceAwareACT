@@ -83,6 +83,8 @@ class RealRobotHighRateDataset(Dataset):
         episode = self.raw_episodes[episode_index]
         anchor = int(episode.anchor_timestamps_ns[timestep])
         count = self.model_config.chunk_len
+        force_count = self.model_config.force_prediction_len
+        strict_horizon = force_count < count
         action_indices = np.full(count, -1, dtype=np.int64)
         slots = episode.action_slot_indices[timestep:timestep + count]
         action_indices[:len(slots)] = slots
@@ -91,8 +93,10 @@ class RealRobotHighRateDataset(Dataset):
         action_trace["hdf5_indices"] = action_indices.tolist()
         action_trace["valid_slots"] = (action_indices >= 0).tolist()
         force_indices, force_targets = future_torque_slot_indices(
-            episode.torque_timestamps_ns, anchor, count, self.data_config)
+            episode.torque_timestamps_ns, anchor, force_count, self.data_config, strict_horizon=strict_horizon)
         force_trace = matching_error_summary(episode.torque_timestamps_ns, force_targets, force_indices)
+        force_trace["prediction_steps"] = force_count
+        force_trace["prediction_duration_s"] = force_count / self.data_config.action_rate_hz
         force_trace["valid_endpoint_count"] = int((force_indices[:, -1] >= 0).sum())
         force_trace["endpoint_padding_mask"] = (force_indices[:, -1] < 0).tolist()
         force_trace["first_interval"] = [
@@ -102,7 +106,7 @@ class RealRobotHighRateDataset(Dataset):
             for slot, index in enumerate(force_indices[0])]
         history = pack_torque_history(episode.torque_timestamps_ns, episode.force, anchor, self.data_config)
         if self.data_config.force_dim == 3:
-            future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, count, self.data_config)
+            future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, force_count, self.data_config, strict_horizon=strict_horizon)
             endpoint = self.data_config.samples_per_action - 1
             force_trace.update(
                 valid_conversion_slots=(~future.sample_padding_mask[:, :self.data_config.samples_per_action]).tolist(),
@@ -142,7 +146,8 @@ class RealRobotHighRateDataset(Dataset):
         action_tensor = self.normalization.normalize_action(torch.from_numpy(actions))
         action_tensor.masked_fill_(torch.from_numpy(action_mask).unsqueeze(-1), 0)
         history = pack_torque_history(episode.torque_timestamps_ns, episode.force, anchor, self.data_config)
-        future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, chunk_len, self.data_config)
+        future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, self.model_config.force_prediction_len, self.data_config,
+                                   strict_horizon=self.model_config.force_prediction_len < chunk_len)
 
         def normalize_force(values, mask):
             normalized = self.normalization.normalize_force(torch.from_numpy(values.copy()))

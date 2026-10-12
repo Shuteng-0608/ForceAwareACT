@@ -41,6 +41,7 @@ class ACTAlignedHighRateBatch:
     def validate(self, config: ACTAlignedHighRateConfig) -> None:
         b = self.batch_size
         k = config.chunk_len
+        f = config.force_prediction_len
         h = config.max_online_force_intervals
         s = config.max_force_samples_per_interval
         expected = {
@@ -52,12 +53,12 @@ class ACTAlignedHighRateBatch:
             "online_force_relative_time": (b, h, s),
             "online_force_sample_padding_mask": (b, h, s),
             "online_force_interval_padding_mask": (b, h),
-            "future_force_intervals": (b, k, s, config.force_dim),
-            "future_force_relative_time": (b, k, s),
-            "future_force_sample_padding_mask": (b, k, s),
-            "future_force_interval_padding_mask": (b, k),
-            "future_force_target": (b, k, config.force_dim),
-            "future_force_target_padding_mask": (b, k),
+            "future_force_intervals": (b, f, s, config.force_dim),
+            "future_force_relative_time": (b, f, s),
+            "future_force_sample_padding_mask": (b, f, s),
+            "future_force_interval_padding_mask": (b, f),
+            "future_force_target": (b, f, config.force_dim),
+            "future_force_target_padding_mask": (b, f),
         }
         if b <= 0:
             raise ValueError("batch size must be positive")

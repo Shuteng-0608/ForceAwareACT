@@ -51,9 +51,11 @@ class RealRobotOptimizationConfig:
             raise ValueError("backbone learning rate must not exceed main learning rate")
 
 
-def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretrained=True):
+def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretrained=True, force_prediction_steps=None):
     if kind not in MODEL_KINDS:
         raise ValueError(f"unknown model kind: {kind}")
+    if kind == "act" and force_prediction_steps is not None:
+        raise ValueError("ACT has no force prediction horizon")
     values = dict(
         q_dim=7, action_dim=7, num_cameras=len(data_config.camera_names),
         image_height=data_config.image_height, image_width=data_config.image_width,
@@ -75,6 +77,7 @@ def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretra
     )
     if compact:
         values.update(local_force_dim=16, local_force_encoder_layers=1)
+    values["force_prediction_steps"] = force_prediction_steps
     factory = {"contact": ACTAlignedHighRateConfig,
                "motion": ACTAlignedHighRateConfig.motion_control,
                "dual-zero": ACTAlignedHighRateConfig.dual_zero}[kind]
@@ -205,8 +208,11 @@ def deployment_predictions(kind, model, batch):
 
 
 @torch.no_grad()
-def evaluate(kind, model, batches, normalization, device, *, detailed=False):
+def evaluate(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None):
     """Global valid-scalar deployment errors, never posterior-assisted validation."""
+    if force_evaluation_steps is not None:
+        if kind == "act" or type(force_evaluation_steps) is not int or not 1 <= force_evaluation_steps <= model.config.force_prediction_len:
+            raise ValueError("force_evaluation_steps must fit the model force prediction horizon")
     previous = model.training
     model.eval()
     force3 = len(normalization.force_std) == 3
@@ -246,6 +252,12 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False):
                      batch.force_target_padding_mask, normalization.force_std),
                 ])
             for name, predicted, target, mask, std in entries:
+                if name != "action" and force_evaluation_steps is not None:
+                    predicted = predicted[:, :force_evaluation_steps]
+                    target = target[:, :force_evaluation_steps]
+                    mask = mask[:, :force_evaluation_steps]
+                    if predicted.shape != target.shape:
+                        raise ValueError("force evaluation targets do not cover the requested horizon")
                 error = ((predicted - target) * predicted.new_tensor(std)).abs()[~mask]
                 if not torch.isfinite(error).all():
                     raise FloatingPointError(f"non-finite validation {name}")
@@ -264,6 +276,9 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False):
         result.update(force_representation="flange_force3", force_unit="N")
         for name, total in component_sums.items():
             result[f"{name}_mae_per_axis_n"] = (total / (counts[name] / 3)).cpu().tolist() if counts[name] else None
+    if kind != "act":
+        result["force_evaluation_steps"] = force_evaluation_steps or model.config.force_prediction_len
+        result["force_evaluation_duration_s"] = result["force_evaluation_steps"] / model.config.policy_sample_rate_hz
     if detailed:
         import numpy as np
         errors = np.concatenate(action_errors)

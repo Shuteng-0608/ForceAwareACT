@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from force_aware_act.models.act_aligned.config import canonical_model_config
+
 
 FORMAT_VERSION = "real_robot_training_v1"
 
@@ -79,7 +81,10 @@ def restore_checkpoint(payload, *, model, optimizer, sampler, expected):
     # Check everything before mutating model/optimizer or the random streams.
     for key in ("model_kind", "model_config", "data_config", "data_contract", "normalization",
                 "split_manifest", "source_fingerprints", "training_config"):
-        if canonical(payload[key]) != canonical(expected[key]):
+        left, right = payload[key], expected[key]
+        if key == "model_config":
+            left, right = canonical_model_config(left), canonical_model_config(right)
+        if canonical(left) != canonical(right):
             raise ValueError(f"checkpoint {key} differs from this run")
     for key in ("batch_size", "seed", "sampling", "mode"):
         if payload["run_config"][key] != expected["run_config"][key]:

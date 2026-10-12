@@ -262,13 +262,17 @@ class ACTAlignedMotionCVAEControlPolicy(nn.Module):
             decoder_hidden = decoder_output
             decoder_intermediate = None
 
+        force_hidden = decoder_hidden
+        force_steps = getattr(self.config, "force_prediction_len", self.config.chunk_len)
+        if force_steps < self.config.chunk_len:
+            force_hidden = decoder_hidden[:, :force_steps]
         outputs = {
             "policy_tokens": policy_tokens,
             "policy_position": policy_position,
             "policy_memory": policy_memory,
             "decoder_hidden": decoder_hidden,
             "pred_action": self.action_head(decoder_hidden),
-            "pred_force": self.force_head(decoder_hidden),
+            "pred_force": self.force_head(force_hidden),
         }
         if decoder_intermediate is not None:
             outputs["decoder_intermediate"] = decoder_intermediate
