@@ -140,8 +140,8 @@ def parser():
                         help="test: held-out full-network check, explicit budget up to 300 updates")
     result.add_argument("--model", choices=MODEL_KINDS, default="contact")
     result.add_argument("--data-config", type=Path)
-    result.add_argument("--force-representation", choices=("joint_torque7", "flange_force3"),
-                        help="flange_force3: calculate native three-axis flange force on demand")
+    result.add_argument("--force-representation", choices=("joint_torque7", "flange_force3", "end_effector_wrench6"),
+                        help="Select external joint torque, derived flange force3, or measured raw_v3 wrench6")
     result.add_argument("--optimization-config", type=Path)
     result.add_argument("--split", type=Path, help="JSON with train_episode_ids and validation_episode_ids")
     result.add_argument("--resume", type=Path)
@@ -210,11 +210,11 @@ def main(argv=None):
     data_config = RealRobotDataConfig.from_dict(json.loads(args.data_config.read_text())) if args.data_config else RealRobotDataConfig()
     if args.force_representation is not None:
         data_config = replace(data_config, force_representation=args.force_representation)
-    if args.model == "act" and data_config.force_dim != 7:
+    if args.model == "act" and data_config.force_dim == 3:
         raise ValueError("ACT has no force input; choose contact/motion/dual-zero for flange_force3")
     records = discover_real_robot_episodes(args.data_root, data_config)
     if not records:
-        raise ValueError("no corrected raw v2 episodes found")
+        raise ValueError("no episodes matching the selected raw schema found")
     diagnostics = {record.episode_id: RawEpisode(record.resolve(args.data_root), data_config).diagnostics for record in records}
     inspection = {"data_contract": data_config.contract_dict(), "episodes": diagnostics}
     print(json.dumps(inspection, ensure_ascii=False, allow_nan=False), flush=True)

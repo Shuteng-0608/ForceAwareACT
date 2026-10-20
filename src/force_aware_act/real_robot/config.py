@@ -7,6 +7,10 @@ import math
 RAW_SCHEMA_VERSION = "real_robot_right_arm_raw_v2"
 EXTERNAL_TORQUE_TOPIC = "/tianji_marvin_teleop_bridge/estimated_joint_disturbance"
 EXTERNAL_TORQUE_FIELD = "effort"
+WRENCH_SCHEMA_VERSION = "real_robot_right_arm_raw_v3"
+WRENCH_TOPIC = "/io_teleop/right/ft_sensor"
+WRENCH_AXES = ("Fx", "Fy", "Fz", "Tx", "Ty", "Tz")
+WRENCH_UNITS = ("N", "N", "N", "N*m", "N*m", "N*m")
 LEGACY_REAL_ROBOT_SAMPLING_VERSION = "right_arm_available_clock_100hz_torque300hz_v1"
 REAL_ROBOT_SAMPLING_VERSION = "right_arm_available_clock_100hz_torque300hz_phase_v2"
 
@@ -29,10 +33,23 @@ class RealRobotDataConfig:
     torque_match_tolerance_ms: float = 1.666666
     max_samples_per_interval: int = 8
     force_representation: str = "joint_torque7"
+    wrench_component_units: tuple[str, ...] | None = None
+    wrench_frame: str | None = None
+    force_std_floor: tuple[float, ...] | None = None
 
     def __post_init__(self):
-        if self.force_representation not in {"joint_torque7", "flange_force3"}:
+        if self.force_representation not in {"joint_torque7", "flange_force3", "end_effector_wrench6"}:
             raise ValueError("unsupported force_representation")
+        if self.force_representation == "end_effector_wrench6":
+            if self.wrench_component_units is None or tuple(self.wrench_component_units) != WRENCH_UNITS:
+                raise ValueError("wrench_component_units must explicitly confirm N/N*m in fixed axis order")
+            if not isinstance(self.wrench_frame, str) or not self.wrench_frame.strip():
+                raise ValueError("wrench_frame must explicitly identify the measurement frame")
+            if (self.force_std_floor is None or len(self.force_std_floor) != 6
+                    or any(isinstance(v, bool) or not math.isfinite(v) or v <= 0 for v in self.force_std_floor)):
+                raise ValueError("force_std_floor requires six finite positive per-axis values")
+        elif any(v is not None for v in (self.wrench_component_units, self.wrench_frame, self.force_std_floor)):
+            raise ValueError("wrench-only configuration on a legacy force representation")
         if self.timestamp_key != "log_ns":
             raise ValueError("real-robot sampling requires log_ns availability; header clocks need an explicit synchronized availability mapping")
         if self.action_grid_phase_mode not in {"first_action", "circular_mean_initial_window"}:
@@ -70,7 +87,15 @@ class RealRobotDataConfig:
 
     @property
     def force_dim(self):
-        return 3 if self.force_representation == "flange_force3" else 7
+        return {"flange_force3": 3, "joint_torque7": 7, "end_effector_wrench6": 6}[self.force_representation]
+
+    @property
+    def raw_schema_version(self):
+        return WRENCH_SCHEMA_VERSION if self.force_dim == 6 else RAW_SCHEMA_VERSION
+
+    @property
+    def force_timestamp_stream(self):
+        return "ft_sensor" if self.force_dim == 6 else "disturbance"
 
     @property
     def action_period_ns(self):
@@ -94,6 +119,9 @@ class RealRobotDataConfig:
 
     def to_dict(self):
         values = asdict(self)
+        for name in ("wrench_component_units", "wrench_frame", "force_std_floor"):
+            if values[name] is None:
+                values.pop(name)
         if self.force_representation == "joint_torque7":
             values.pop("force_representation")  # Exact compatibility with existing checkpoints.
         if self.action_grid_phase_mode == "first_action":
@@ -107,8 +135,8 @@ class RealRobotDataConfig:
         values = dict(values)
         if "action_grid_phase_mode" not in values:
             values["action_grid_phase_mode"] = "first_action"
-        for name in ("camera_names", "joint_names"):
-            if name in values:
+        for name in ("camera_names", "joint_names", "wrench_component_units", "force_std_floor"):
+            if name in values and values[name] is not None:
                 values[name] = tuple(values[name])
         return cls(**values)
 
@@ -134,4 +162,15 @@ class RealRobotDataConfig:
             result.update(contact_representation="flange_force3", force_unit="N",
                           force_dim=3, force_conversion=conversion_contract(),
                           input_clock_semantics="recorder availability proxy; exact header identity pairs source frames; force available at max(source log times)")
+        if self.force_dim == 6:
+            result.update(raw_schema_version=WRENCH_SCHEMA_VERSION,
+                          contact_representation="end_effector_wrench6", force_dim=6,
+                          primary_force_dataset="observations/ee_wrench", force_source_topic=WRENCH_TOPIC,
+                          force_timestamp_stream="ft_sensor", gravity_compensation="applied_upstream",
+                          force_axes=WRENCH_AXES, force_component_units=WRENCH_UNITS,
+                          force_coordinate_frame=self.wrench_frame,
+                          force_reference_point="sensor measurement reference; no spatial transform applied",
+                          force_units_provenance="explicit training configuration; raw source_native metadata retained",
+                          normalization_policy="training native samples once; per-axis z-score with configured floors; no clipping",
+                          additional_gravity_compensation=False)
         return result

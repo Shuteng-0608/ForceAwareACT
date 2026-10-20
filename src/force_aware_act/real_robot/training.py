@@ -179,6 +179,9 @@ def forward_training(kind, model, criterion, batch, *, sample_posterior=True):
         batch.action_padding_mask, batch.future_force_interval_padding_mask,
         batch.future_force_sample_padding_mask,
         force_target_padding_mask=batch.force_target_padding_mask)
+    if model.config.force_dim == 6:
+        from .wrench_metrics import training_components
+        losses.update(training_components(outputs, batch))
     return outputs, losses
 
 
@@ -214,6 +217,10 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False, for
     if force_evaluation_steps is not None:
         if kind == "act" or type(force_evaluation_steps) is not int or not 1 <= force_evaluation_steps <= model.config.force_prediction_len:
             raise ValueError("force_evaluation_steps must fit the model force prediction horizon")
+    if len(normalization.force_std) == 6:
+        from .wrench_metrics import evaluate_wrench6
+        return evaluate_wrench6(kind, model, batches, normalization, device,
+                               detailed=detailed, force_evaluation_steps=force_evaluation_steps)
     previous = model.training
     model.eval()
     force3 = len(normalization.force_std) == 3

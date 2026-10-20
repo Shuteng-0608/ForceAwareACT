@@ -43,6 +43,9 @@ def batches_for_indices(dataset, indices, batch_size):
 def aggregate_episode_metrics(per_episode):
     if not per_episode:
         raise ValueError("evaluation requires at least one episode")
+    if next(iter(per_episode.values())).get("force_representation") == "end_effector_wrench6":
+        from .wrench_metrics import aggregate_wrench6_metrics
+        return aggregate_wrench6_metrics(per_episode)
     result = {"windows": sum(row["windows"] for row in per_episode.values()), "per_episode": per_episode}
     force3 = next(iter(per_episode.values())).get("force_representation") == "flange_force3"
     metrics = (("action", "rad"), ("force", "n"), ("force_endpoint", "n")) if force3 else (("action", "rad"), ("torque", "nm"), ("torque_endpoint", "nm"))

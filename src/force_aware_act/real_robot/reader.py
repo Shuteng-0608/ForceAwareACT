@@ -7,7 +7,7 @@ import h5py
 import numpy as np
 
 from .config import (RAW_SCHEMA_VERSION, EXTERNAL_TORQUE_TOPIC,
-                     EXTERNAL_TORQUE_FIELD, RealRobotDataConfig)
+                     EXTERNAL_TORQUE_FIELD, WRENCH_TOPIC, WRENCH_AXES, RealRobotDataConfig)
 from .sampling import (causal_index, estimate_action_grid_phase_ns,
                        match_time_slots, matching_error_summary, pack_torque_history)
 
@@ -46,20 +46,40 @@ class RawEpisode:
         self.header_timestamps = {}
         self.diagnostics = {"timestamp_key": self.config.timestamp_key, "streams": {}}
         with h5py.File(self.path, "r") as handle:
-            if _text(handle.attrs.get("schema_version", "")) != RAW_SCHEMA_VERSION:
-                raise ValueError(f"{self.path}: unsupported raw schema; regenerate v2 with estimated_joint_disturbance")
+            schema = self.config.raw_schema_version
+            wrench6 = self.config.force_dim == 6
+            force_key = "observations/ee_wrench" if wrench6 else "observations/joint_external_torque"
+            force_stream = self.config.force_timestamp_stream
+            force_topic = WRENCH_TOPIC if wrench6 else EXTERNAL_TORQUE_TOPIC
+            if _text(handle.attrs.get("schema_version", "")) != schema:
+                raise ValueError(f"{self.path}: unsupported raw schema; expected {schema}")
             if _text(handle.attrs.get("arm", "")) != "right":
                 raise ValueError("raw episode must explicitly identify the right arm")
-            if _text(handle.attrs.get("force_representation", "")) != "joint_external_torque":
-                raise ValueError("expected joint_external_torque, not Cartesian wrench")
-            force = handle["observations/joint_external_torque"]
-            for name, expected in (("source_topic", EXTERNAL_TORQUE_TOPIC),
-                                   ("source_field", EXTERNAL_TORQUE_FIELD),
-                                   ("timestamp_group", "/timestamps/disturbance")):
+            expected_rep = "end_effector_wrench6" if wrench6 else "joint_external_torque"
+            if _text(handle.attrs.get("force_representation", "")) != expected_rep:
+                raise ValueError(f"expected {expected_rep}")
+            force = handle[force_key]
+            for name, expected in (("source_topic", force_topic), ("source_field", "effort"),
+                                   ("timestamp_group", "/timestamps/" + force_stream)):
                 if _text(force.attrs.get(name, "")) != expected:
-                    raise ValueError(f"external torque {name} must be {expected!r}")
-            if _text(handle["timestamps/disturbance"].attrs.get("source_topic", "")) != EXTERNAL_TORQUE_TOPIC:
-                raise ValueError("disturbance timestamps must originate from the external torque topic")
+                    raise ValueError(f"force {name} must be {expected!r}")
+            if _text(handle["timestamps/" + force_stream].attrs.get("source_topic", "")) != force_topic:
+                raise ValueError("force timestamps must originate from the selected force topic")
+            if wrench6:
+                axes = tuple(_text(x) for x in handle["metadata/ee_wrench_axes"][...])
+                if axes != WRENCH_AXES:
+                    raise ValueError("ee_wrench axes must be Fx/Fy/Fz/Tx/Ty/Tz")
+                if _text(handle.attrs.get("primary_force_dataset", "")) != force_key:
+                    raise ValueError("raw primary_force_dataset must identify ee_wrench")
+                for attrs in (handle.attrs, force.attrs):
+                    if _text(attrs.get("gravity_compensation", "")) != "applied_upstream":
+                        raise ValueError("wrench gravity compensation must be applied_upstream")
+                frames = handle["timestamps/ft_sensor/frame_id"][...]
+                if len(frames) != len(force) or any(_text(f) != self.config.wrench_frame for f in frames):
+                    raise ValueError("wrench frame_id differs from configured measurement frame")
+                unit = _text(force.attrs.get("unit", ""))
+                if unit not in {"source_native", "source_native; no unit conversion", "N,N,N,N*m,N*m,N*m"}:
+                    raise ValueError("ee_wrench unit metadata contradicts configured N/N*m")
             joints = tuple(_text(x) for x in handle["metadata/joint_names"][...])
             if joints != tuple(self.config.joint_names):
                 raise ValueError("joint order does not match the right-arm sampling contract")
@@ -67,15 +87,15 @@ class RawEpisode:
             if set(cameras) != set(self.config.camera_names):
                 raise ValueError("camera names do not match the sampling contract")
             self.provenance = {
-                "path": str(self.path), "schema_version": RAW_SCHEMA_VERSION,
+                "path": str(self.path), "schema_version": schema,
                 "source_sha256": _text(handle.attrs.get("source_sha256", "")),
                 "source_path": _text(handle.attrs.get("source_path", "")),
                 "friction_compensation": _text(handle.attrs.get("friction_compensation", "unknown")),
-                "force_source_topic": EXTERNAL_TORQUE_TOPIC,
+                "force_source_topic": force_topic,
                 "force_source_field": EXTERNAL_TORQUE_FIELD,
-                "force_timestamp_stream": "disturbance",
+                "force_timestamp_stream": force_stream,
             }
-            for stream in ("state", "disturbance", "action", *self.config.camera_names):
+            for stream in ("state", force_stream, "action", *self.config.camera_names):
                 group = handle[f"timestamps/{stream}"]
                 times = _integer_times(group[self.config.timestamp_key][...], stream)
                 if np.any(np.diff(times) <= 0):
@@ -103,20 +123,22 @@ class RawEpisode:
             }
             for key, stream in (("observations/joint_pos", "state"),
                                 ("observations/joint_vel", "state"),
-                                ("observations/joint_external_torque", "disturbance"), ("action", "action")):
-                if "unit" in handle[key].attrs:
+                                (force_key, force_stream), ("action", "action")):
+                if key in allowed_units and "unit" in handle[key].attrs:
                     unit = _text(handle[key].attrs["unit"])
                     if unit not in allowed_units[key]:
                         raise ValueError(f"{key}: unit {unit!r} contradicts the real-robot data contract")
                 values = np.asarray(handle[key][...], dtype=np.float64)
-                if values.shape != (len(self.timestamps[stream]), 7):
-                    raise ValueError(f"{key}: expected independent stream shape [N_{stream}, 7]")
+                dimension = 6 if wrench6 and key == force_key else 7
+                if values.shape != (len(self.timestamps[stream]), dimension):
+                    raise ValueError(f"{key}: expected independent stream shape [N_{stream}, {dimension}]")
                 if not np.isfinite(values).all():
                     raise ValueError(f"{key}: non-finite raw measurements require explicit quality review")
                 numeric[key] = values
             self.qpos = numeric["observations/joint_pos"]
             self.qvel = numeric["observations/joint_vel"]  # retained for audit; never a model input
-            self.torque = numeric["observations/joint_external_torque"]
+            # Historical attribute name; for raw_v3 this is exclusively measured wrench6.
+            self.torque = numeric[force_key]
             self.action = numeric["action"]
             for camera in self.config.camera_names:
                 image_group = handle[f"observations/images/{camera}"]
@@ -128,7 +150,7 @@ class RawEpisode:
                 if images.shape != expected or images.dtype != np.dtype("uint8"):
                     raise ValueError(f"{camera}: RGB data must have shape {expected} and uint8 dtype")
         self.state_timestamps_ns = self.timestamps["state"]
-        self.torque_timestamps_ns = self.timestamps["disturbance"]
+        self.torque_timestamps_ns = self.timestamps[force_stream]
         self.force = self.torque
         if self.config.force_representation == "flange_force3":
             from .flange_force import FlangeForceStream
@@ -224,15 +246,16 @@ def discover_real_robot_episodes(data_root, config=None):
     root = Path(data_root).resolve()
     if not root.is_dir():
         raise FileNotFoundError(root)
+    config = config or RealRobotDataConfig()
     records = []
     for path in sorted(root.rglob("episode.hdf5")):
         with h5py.File(path, "r") as handle:
-            if _text(handle.attrs.get("schema_version", "")) != RAW_SCHEMA_VERSION:
+            if _text(handle.attrs.get("schema_version", "")) != config.raw_schema_version:
                 continue
         episode = RawEpisode(path, config)
         records.append(RealRobotEpisodeRecord(
             path.parent.relative_to(root).as_posix(), path.relative_to(root).as_posix(),
             len(episode.valid_anchor_indices), tuple(episode.config.camera_names)))
     if not records:
-        raise ValueError(f"no {RAW_SCHEMA_VERSION} episodes under {root}")
+        raise ValueError(f"no {config.raw_schema_version} episodes under {root}")
     return tuple(records)

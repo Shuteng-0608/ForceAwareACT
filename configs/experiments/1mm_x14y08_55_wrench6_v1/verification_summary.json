@@ -1,0 +1,93 @@
+{
+  "branch": "codex/ee-wrench6-raw-v3",
+  "conversion_commit": "4ea83dd",
+  "formal_training_started": false,
+  "dataset_unchanged": true,
+  "test_runs": {
+    "contact": {
+      "updates": 10,
+      "sampling_epochs": 2,
+      "batch_size": 8,
+      "source_hashes_verified": 55,
+      "normalization_matches_preparation": true,
+      "each_episode_once_per_epoch": true,
+      "checkpoint_round_trip": "passed",
+      "all_losses_and_gradient_norms_finite": true,
+      "group_losses_recombine_to_original_loss": true,
+      "validation_episodes": 10,
+      "validation_windows": 2505,
+      "peak_allocated_gib": 3.830423355102539,
+      "peak_reserved_gib": 4.59375,
+      "seconds_per_update": 0.389418914700218,
+      "checkpoint": "outputs/1mm_x14y08_55_wrench6_v1/checks/contact_fullnet/last.pt",
+      "gradient_norm_semantics": "logged before clipping; clipping threshold=1.0",
+      "final_validation_macro": {
+        "episode_macro_action_mae_rad": 0.06701235028934854,
+        "episode_macro_hold_current_qpos_mae_rad": 0.0032683030347569106,
+        "episode_macro_wrench_normalized_mae": 0.4825372146755692,
+        "episode_macro_force_mae_n": 1.5451932216983177,
+        "episode_macro_force_hold_mae_n": 0.38172351102052315,
+        "episode_macro_force_normalized_mae": 0.4955281902144092,
+        "episode_macro_moment_mae_nm": 0.07768410695791153,
+        "episode_macro_moment_hold_mae_nm": 0.02064282277733091,
+        "episode_macro_moment_normalized_mae": 0.46954623913672905,
+        "episode_macro_wrench_endpoint_normalized_mae": 0.46019949269508764,
+        "episode_macro_force_endpoint_mae_n": 1.5249330732788022,
+        "episode_macro_force_hold_endpoint_mae_n": 0.38686318234487926,
+        "episode_macro_force_endpoint_normalized_mae": 0.48261912352265723,
+        "episode_macro_moment_endpoint_mae_nm": 0.07343648810904893,
+        "episode_macro_moment_hold_endpoint_mae_nm": 0.020930098379769568,
+        "episode_macro_moment_endpoint_normalized_mae": 0.437779861867518
+      }
+    },
+    "motion": {
+      "updates": 10,
+      "sampling_epochs": 2,
+      "batch_size": 8,
+      "source_hashes_verified": 55,
+      "normalization_matches_preparation": true,
+      "each_episode_once_per_epoch": true,
+      "checkpoint_round_trip": "passed",
+      "all_losses_and_gradient_norms_finite": true,
+      "group_losses_recombine_to_original_loss": true,
+      "validation_episodes": 10,
+      "validation_windows": 2505,
+      "peak_allocated_gib": 3.7990851402282715,
+      "peak_reserved_gib": 4.49609375,
+      "seconds_per_update": 0.3546764526996412,
+      "checkpoint": "outputs/1mm_x14y08_55_wrench6_v1/checks/motion_fullnet/last.pt",
+      "gradient_norm_semantics": "logged before clipping; clipping threshold=1.0",
+      "final_validation_macro": {
+        "episode_macro_action_mae_rad": 0.07334404725892915,
+        "episode_macro_hold_current_qpos_mae_rad": 0.0032683030347569106,
+        "episode_macro_wrench_normalized_mae": 0.46826315053311296,
+        "episode_macro_force_mae_n": 1.4708540914185722,
+        "episode_macro_force_hold_mae_n": 0.38172351102052315,
+        "episode_macro_force_normalized_mae": 0.48228558218582795,
+        "episode_macro_moment_mae_nm": 0.07979443079282875,
+        "episode_macro_moment_hold_mae_nm": 0.02064282277733091,
+        "episode_macro_moment_normalized_mae": 0.45424071888039785,
+        "episode_macro_wrench_endpoint_normalized_mae": 0.46483446534546624,
+        "episode_macro_force_endpoint_mae_n": 1.4914481438449316,
+        "episode_macro_force_hold_endpoint_mae_n": 0.38686318234487926,
+        "episode_macro_force_endpoint_normalized_mae": 0.4925943626703472,
+        "episode_macro_moment_endpoint_mae_nm": 0.07491062193021034,
+        "episode_macro_moment_hold_endpoint_mae_nm": 0.020930098379769568,
+        "episode_macro_moment_endpoint_normalized_mae": 0.43707456802058536
+      }
+    }
+  },
+  "tests": [
+    {
+      "suite": "tests/test_real_robot*.py tests/test_prepare_wrench6_training.py tests/test_monitor_real_robot_training.py",
+      "passed": 175
+    },
+    {
+      "suite": "tests/test_real_robot_wrench6.py tests/test_prepare_wrench6_training.py after ACT raw_v3 compatibility test added",
+      "passed": 16,
+      "overlap_with_first_suite": 15
+    }
+  ],
+  "total_distinct_tests_passed": 176,
+  "status": "implementation and bounded checks complete; awaiting user review"
+}

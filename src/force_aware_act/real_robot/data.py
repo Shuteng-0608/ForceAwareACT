@@ -117,17 +117,25 @@ class RealRobotHighRateDataset(Dataset):
                 index = slot["hdf5_index"]
                 slot["paired_state_hdf5_index"] = None if index < 0 else int(episode.force.state_indices[index])
                 slot["raw_disturbance_log_ns"] = None if index < 0 else int(episode.timestamps["disturbance"][index])
+        if self.data_config.force_dim == 6:
+            force_trace.update(hdf5_indices=force_indices.tolist(), target_timestamps_ns=force_targets.tolist(),
+                               timestamp_semantics="raw ft_sensor log_ns")
         return {"episode_id": self.episodes[episode_index].episode_id, "anchor_grid_index": timestep,
                 "observation": episode.observation_trace(anchor), "action": action_trace,
-                ("future_force" if self.data_config.force_dim == 3 else "future_torque"): force_trace,
+                ("future_force" if self.data_config.force_dim in (3, 6) else "future_torque"): force_trace,
                 "history_actual_sample_count": history.valid_sample_count,
                 "force_source_topic": episode.provenance["force_source_topic"],
-                "force_timestamp_stream": "disturbance",
+                "force_timestamp_stream": self.data_config.force_timestamp_stream,
                 "qpos_unit": "rad", "action_unit": "rad", "torque_unit": "N*m",
                 **({"force_representation": "flange_force3", "force_unit": "N",
                     "force_conversion": episode.force.diagnostics,
                     "future_force_valid_samples": int((~future.sample_padding_mask).sum())}
-                   if self.data_config.force_dim == 3 else {})}
+                   if self.data_config.force_dim == 3 else {}),
+                **({"force_representation": "end_effector_wrench6",
+                    "force_component_units": self.data_config.wrench_component_units,
+                    "force_coordinate_frame": self.data_config.wrench_frame,
+                    "primary_force_dataset": "observations/ee_wrench"}
+                   if self.data_config.force_dim == 6 else {})}
 
     def __getitem__(self, item):
         episode_index, timestep = self.index[item]

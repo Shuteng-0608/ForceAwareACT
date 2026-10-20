@@ -23,11 +23,14 @@ def compute_real_robot_normalization_stats(data_root, episodes, config=None, *, 
                 if valid.any():
                     accumulators[2].update(values[valid])
         else:
-            accumulators[2].update(episode.torque)
+            accumulators[2].update(episode.force)
         count += 1
     if not count:
         raise ValueError("normalization requires explicit training episodes")
     pairs = [accumulator.finalize(minimum_std) for accumulator in accumulators]
+    if config.force_dim == 6:
+        mean, std = accumulators[2].finalize(min(config.force_std_floor))
+        pairs[2] = mean, np.maximum(std, np.asarray(config.force_std_floor))
     return NormalizationStats(
         qpos_mean=tuple(pairs[0][0].tolist()), qpos_std=tuple(pairs[0][1].tolist()),
         action_mean=tuple(pairs[1][0].tolist()), action_std=tuple(pairs[1][1].tolist()),

@@ -1,0 +1,358 @@
+{
+  "version": "wrench6_experiment_preparation_v1",
+  "branch": "codex/ee-wrench6-raw-v3",
+  "conversion_commit": "4ea83dd",
+  "data_root": "/home/stw/Downloads/1mm-x14y08_hdf5_raw_v3",
+  "data_config": "configs/real_robot/right_arm_wrench6.json",
+  "split": "configs/datasets/1mm_x14y08_55_wrench6_v1/split.json",
+  "split_counts": {
+    "train": 40,
+    "validation": 10,
+    "test": 5
+  },
+  "units_confirmation": "User confirmed on 2026-10-20: Fx/Fy/Fz in N, Tx/Ty/Tz in N*m.",
+  "gravity_compensation": "applied_upstream; no additional correction",
+  "coordinate_frame": "right_ft_measurement",
+  "reference_point": "sensor measurement reference; no spatial transform",
+  "model_kinds": [
+    "contact",
+    "motion"
+  ],
+  "action_steps": 20,
+  "force_prediction_steps": 20,
+  "history_duration_s": 0.2,
+  "force_dim": 6,
+  "input_force_shape": [
+    "B",
+    20,
+    8,
+    6
+  ],
+  "endpoint_prediction_shape": [
+    "B",
+    20,
+    6
+  ],
+  "train_sampling_mode": "episodic_uniform",
+  "batch_size": 8,
+  "seed": 0,
+  "steps_per_epoch": 5,
+  "validation_interval_updates": 250,
+  "validation_interval_epochs": 50,
+  "validation_anchor_stride": 10,
+  "max_sampling_epochs": 20000,
+  "minimum_sampling_epochs": 3000,
+  "early_stop_patience_checks": 20,
+  "early_stop_min_relative_improvement": 0.001,
+  "selection_metric": "episode_macro_action_mae_rad",
+  "evaluation_latent": "zero",
+  "optimization": "configs/experiments/1mm_x14y08_55_wrench6_v1/optimization.json",
+  "normalization_source": "40 training recordings; each native sample once",
+  "force_std": [
+    2.19966459274292,
+    1.37911057472229,
+    7.803275108337402,
+    0.178629532456398,
+    0.2541702091693878,
+    0.017487430945038795
+  ],
+  "force_std_floor": [
+    0.01,
+    0.01,
+    0.01,
+    0.001,
+    0.001,
+    0.001
+  ],
+  "floor_active_axes": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "floor_policy": "0.01 N / 0.001 N*m numerical guards; not calibrated noise thresholds",
+  "clipping": false,
+  "filtering": false,
+  "normalization_robust_alternatives": "median/MAD and quantiles recorded; not selected for this version",
+  "noise_calibration": "Low-activity one-second candidates saved for review; no contact-free labels inferred",
+  "training_normalized_abs_p99": [
+    4.635290281836633,
+    3.344419140399908,
+    5.30334799637345,
+    3.372231156762986,
+    5.080161916762169,
+    4.853545304894596
+  ],
+  "training_normalized_abs_max": [
+    11.094862932334726,
+    7.7720766028009605,
+    10.697021416072884,
+    6.29493271933157,
+    10.128079332267585,
+    16.97373320156464
+  ],
+  "full_horizon_slot_coverage": 0.9234346761832865,
+  "minimum_episode_full_horizon_slot_coverage": 0.7918635170603675,
+  "source_hdf5_fingerprints": {
+    "Tianji_Marvin_M6CCS_261020_172343_0": {
+      "sha256": "65048fec4097c5a6be9fe9711656377405ae6c828b853ea0c8a2582cfb7a2d70",
+      "bytes": 1251531181
+    },
+    "Tianji_Marvin_M6CCS_261020_172535_0": {
+      "sha256": "2c4ee4e109ee14e694ffaea5fd182a8637d3701fa7663d4ff958ace837eccd36",
+      "bytes": 970308269
+    },
+    "Tianji_Marvin_M6CCS_261020_172657_0": {
+      "sha256": "6b166e20a4c3ccec301e13be14fb3eadfb240ed67357ed0ad3f75ff8056ee51b",
+      "bytes": 1372570855
+    },
+    "Tianji_Marvin_M6CCS_261020_172907_0": {
+      "sha256": "732aefb849689c3f0c0953a7289a16200105325def39463d25589a5cc1dd7223",
+      "bytes": 931444622
+    },
+    "Tianji_Marvin_M6CCS_261020_173022_0": {
+      "sha256": "a56fb236393e6ef0b6fbce7c22d58fd883fa0bd1645cacf80b5d7f4ae2b28bc0",
+      "bytes": 935295518
+    },
+    "Tianji_Marvin_M6CCS_261020_173133_0": {
+      "sha256": "6df075f9fb1e8be3d64ea080dfaadb017ae12b8d33f3964ef843978820ed7bef",
+      "bytes": 915691872
+    },
+    "Tianji_Marvin_M6CCS_261020_173236_0": {
+      "sha256": "b2cb78ab7034e2afe72d5c057c3fb2b0c9561496f70c5aace3005a04a46fd23e",
+      "bytes": 1026942107
+    },
+    "Tianji_Marvin_M6CCS_261020_173348_0": {
+      "sha256": "ded3fb0e42aeaa8ef5aef140e04861709f132ff3b8b7c6fc21bc6eaed6cca9a2",
+      "bytes": 928213204
+    },
+    "Tianji_Marvin_M6CCS_261020_173526_0": {
+      "sha256": "d0a85e3c1ec8a4fa468ca09dfaf02f8396804f49cbf907a13acc890ca3fe5027",
+      "bytes": 862203801
+    },
+    "Tianji_Marvin_M6CCS_261020_173630_0": {
+      "sha256": "1002bd668ae15cc6f41254105fea36d82eab361a4719f31f514fb8af2af360cd",
+      "bytes": 1289385177
+    },
+    "Tianji_Marvin_M6CCS_261020_173820_0": {
+      "sha256": "0c3d2eedd0ebcf5fe4bed13c4b424f9fe248c84f89e9cb82d80834a2de499f7c",
+      "bytes": 1446941749
+    },
+    "Tianji_Marvin_M6CCS_261020_173948_0": {
+      "sha256": "cbbda12d48ba6437102633b354e8efc860d93c41dc213d737bd3eb236f879b5a",
+      "bytes": 863947572
+    },
+    "Tianji_Marvin_M6CCS_261020_174236_0": {
+      "sha256": "20768d3eafab14a63b3ab5565c127eb177f8d451509e6016702600fcfbd95f21",
+      "bytes": 1091144902
+    },
+    "Tianji_Marvin_M6CCS_261020_174427_0": {
+      "sha256": "c109931a5bf628bc3bac75371c00b7fec73da97ab98b3f1f9385b3107ce24fd6",
+      "bytes": 1407097142
+    },
+    "Tianji_Marvin_M6CCS_261020_174547_0": {
+      "sha256": "2e1b4a5fd6721362f04e4871e8d5b465a83db61fbb3ea6570702a60998360c5b",
+      "bytes": 861480867
+    },
+    "Tianji_Marvin_M6CCS_261020_174655_0": {
+      "sha256": "5f5c8922b57fe1f97b3dbba1696f3aef341b1ad96c0d86e212a87b75ba403974",
+      "bytes": 905531007
+    },
+    "Tianji_Marvin_M6CCS_261020_174817_0": {
+      "sha256": "63dfe726220c9a37986d4b6823d7e62a0df241e01704f6d851be479b8df3eac4",
+      "bytes": 995535898
+    },
+    "Tianji_Marvin_M6CCS_261020_174924_0": {
+      "sha256": "5942ffea68dadbefea6b67ffb6d35b38e5fa1224b30ba4bfbc8d15739875b6c6",
+      "bytes": 1073350412
+    },
+    "Tianji_Marvin_M6CCS_261020_175033_0": {
+      "sha256": "abf4f4445e0c254a2cc0b472dcf0a2cb4fbc9dd84020ce4ff10a052b2fe6f590",
+      "bytes": 1001525199
+    },
+    "Tianji_Marvin_M6CCS_261020_175137_0": {
+      "sha256": "1263168354a5d89af30c5d3ace490e735fe8c06386b3c2c3e28f33f003b80d4e",
+      "bytes": 1236052564
+    },
+    "Tianji_Marvin_M6CCS_261020_175244_0": {
+      "sha256": "91e0b7583771aaa33b6af0499b413541aa7b550f3c1d648cb39a176bd6f5172a",
+      "bytes": 1166997887
+    },
+    "Tianji_Marvin_M6CCS_261020_175356_0": {
+      "sha256": "eb2c2a5b94a8edaafc33bfb29e02ce8b4718f0cfc6b0f13cf23e8b675234ccaa",
+      "bytes": 986631579
+    },
+    "Tianji_Marvin_M6CCS_261020_175512_0": {
+      "sha256": "04487bff8e51b6e8a37c410b940bc953d4714272d833bfacdcaaf4b6f102137c",
+      "bytes": 1023996877
+    },
+    "Tianji_Marvin_M6CCS_261020_175612_0": {
+      "sha256": "112c7f7d562c3fdea8e7c0093bac942f9090bab868e5b3468f01a5eb536dbf9c",
+      "bytes": 1206807785
+    },
+    "Tianji_Marvin_M6CCS_261020_175805_0": {
+      "sha256": "730b1126d7a4009da66d4d987f1707955828dc877be6b142efab4ab69d0d5a7d",
+      "bytes": 941969011
+    },
+    "Tianji_Marvin_M6CCS_261020_190921_0": {
+      "sha256": "f9ac0c2e3d8047b909f88a5c2d9d65cc4020d6ad0566c578ca4ae805de33090a",
+      "bytes": 1280275022
+    },
+    "Tianji_Marvin_M6CCS_261020_191045_0": {
+      "sha256": "6168b9a190541af8d681b551dabf9f791e094c8ae14933d8710bf2326c5fb083",
+      "bytes": 1094111457
+    },
+    "Tianji_Marvin_M6CCS_261020_191156_0": {
+      "sha256": "1a34141d531c2a52d9624756814a41c9814a3b22648bf5e4429d75f396908479",
+      "bytes": 1112017845
+    },
+    "Tianji_Marvin_M6CCS_261020_191310_0": {
+      "sha256": "ae3a4f2fc304a26878a5f796330bfb1a58cb52a52bbf72378dfe95f86d801036",
+      "bytes": 787371269
+    },
+    "Tianji_Marvin_M6CCS_261020_191448_0": {
+      "sha256": "16dc75ea520246d81a15296f16768ea0bbc307025481540ad5e13b0186dfe538",
+      "bytes": 928777220
+    },
+    "Tianji_Marvin_M6CCS_261020_191608_0": {
+      "sha256": "d2a3a07756a0a6489b31b92027cf40997769e2c4817dd8d171d6662099789459",
+      "bytes": 981618034
+    },
+    "Tianji_Marvin_M6CCS_261020_191724_0": {
+      "sha256": "89c819f2cc3f63371366853d41df4394ff6bb56245e30e0825a9ccc52d538e68",
+      "bytes": 989829233
+    },
+    "Tianji_Marvin_M6CCS_261020_191834_0": {
+      "sha256": "30debcf4801c69eda4c46f53e4ef24d7e92c0fff3de3e5c2f4d7641b50b359fb",
+      "bytes": 1367889555
+    },
+    "Tianji_Marvin_M6CCS_261020_191959_0": {
+      "sha256": "581243add7fc6e185ba558821c901b4c7fb1bbe42e21060d20aa522e3219ec00",
+      "bytes": 1159581935
+    },
+    "Tianji_Marvin_M6CCS_261020_192116_0": {
+      "sha256": "3cbf408b1ff04a45201c53ac44e52f18701a52e4961f65829caaca2e61af5752",
+      "bytes": 1706422139
+    },
+    "Tianji_Marvin_M6CCS_261020_192245_0": {
+      "sha256": "fa78ca01ad947d72e840fd5bbf67ef0b5df69c67e8eee0b00bf0e79055f162cd",
+      "bytes": 1125990225
+    },
+    "Tianji_Marvin_M6CCS_261020_192405_0": {
+      "sha256": "e34353e6c546e15cd22056c9ba703d97b10fd7d27aa5994b83cb17db55921271",
+      "bytes": 1262532012
+    },
+    "Tianji_Marvin_M6CCS_261020_192528_0": {
+      "sha256": "8173cbb3f22d5ed1cbb6c4f705f7cbe35c6b431d58fcc362273607f14a1e98e3",
+      "bytes": 845926648
+    },
+    "Tianji_Marvin_M6CCS_261020_192637_0": {
+      "sha256": "d4dc7c535eff2ac0ff4da133c3bf56e6dc153b8e201bdad18b22647e26654c04",
+      "bytes": 983232289
+    },
+    "Tianji_Marvin_M6CCS_261020_192754_0": {
+      "sha256": "1714744a89bada0c41e2e1c0cc5c6e1902bf7140d5c01dcfac967644135205dd",
+      "bytes": 858049313
+    },
+    "Tianji_Marvin_M6CCS_261020_192900_0": {
+      "sha256": "e94a6ada000a7cd77abee5fb5f8e69956621c686ba51643982f10a50c76843f5",
+      "bytes": 1313185927
+    },
+    "Tianji_Marvin_M6CCS_261020_193012_0": {
+      "sha256": "bb42f480d565592c34f65d1be72dfe65c7b85cdc5b40f54520398cdd60330f9b",
+      "bytes": 907985103
+    },
+    "Tianji_Marvin_M6CCS_261020_193116_0": {
+      "sha256": "9b710330c2d76ad03128dab50fa925870bbff73027556d9b895699a10cd2126b",
+      "bytes": 1039133463
+    },
+    "Tianji_Marvin_M6CCS_261020_193244_0": {
+      "sha256": "06d488a76f745e19597604ca14f4ffef8c06fa3c1dedbe269bd2050d80b3f4d4",
+      "bytes": 930414647
+    },
+    "Tianji_Marvin_M6CCS_261020_193350_0": {
+      "sha256": "321ae67c36801d9a8fe53296191be016fb5da8c2d407537e91963422ef6790fe",
+      "bytes": 809548136
+    },
+    "Tianji_Marvin_M6CCS_261020_193459_0": {
+      "sha256": "ba386f802381072f4a1dae38d8367cb9410775e00ac5d340d9f1f04d9d36dba7",
+      "bytes": 1186068686
+    },
+    "Tianji_Marvin_M6CCS_261020_193605_0": {
+      "sha256": "3942d943827d7f79a5ab6836bd873f22f68f18b2ea680775866d85bd02021ccd",
+      "bytes": 972123374
+    },
+    "Tianji_Marvin_M6CCS_261020_193720_0": {
+      "sha256": "440cae253cb14f975ee39ee75d6dbaa18c3742e85d0e340a0d9d934127b966c0",
+      "bytes": 1018676115
+    },
+    "Tianji_Marvin_M6CCS_261020_193840_0": {
+      "sha256": "b02b9f130b9e33f660aa37b984da8585a1b6b641089e096f179335d80803f405",
+      "bytes": 1010798456
+    },
+    "Tianji_Marvin_M6CCS_261020_193953_0": {
+      "sha256": "59ec3992891a92d9e999b09ce3ef0a21e1f1072e08520ca62dcf7d93de577e2d",
+      "bytes": 941539184
+    },
+    "Tianji_Marvin_M6CCS_261020_194057_0": {
+      "sha256": "dcc53b0fd7271a3c602891a1f7e3fc533feb847fb1ac36d7e684b0b22eb60545",
+      "bytes": 803557215
+    },
+    "Tianji_Marvin_M6CCS_261020_194159_0": {
+      "sha256": "250f7ba360d1375247f2b303b92d9f4b02f7297b33c345b012228fcc2bb7ab79",
+      "bytes": 1108719689
+    },
+    "Tianji_Marvin_M6CCS_261020_194306_0": {
+      "sha256": "c49e77be3b3ece3a4a46f721a617d244ce3efb48dabe288b11df7acabb480720",
+      "bytes": 1137674519
+    },
+    "Tianji_Marvin_M6CCS_261020_194655_0": {
+      "sha256": "8d3942415c078a58f93ee7e76c7fe3f5eef7da18740323574ff13080df4b127a",
+      "bytes": 909660699
+    },
+    "Tianji_Marvin_M6CCS_261020_194803_0": {
+      "sha256": "3fba1a4dafcc5a7289e97cde89de6a0491661049beb24818e99f97d4c62881c3",
+      "bytes": 937927997
+    }
+  },
+  "audit_details": "outputs/1mm_x14y08_55_wrench6_v1/preparation/preparation.json",
+  "largest_contact_peak_recording": {
+    "episode_id": "Tianji_Marvin_M6CCS_261020_174427_0",
+    "role": "test",
+    "Fz_min_N": -133.42608858212827
+  },
+  "formal_training_status": "not_started; awaiting user review",
+  "check_mode": "full network, 640x480 RGB x2, batch8, 10 updates per model; not a performance evaluation",
+  "deployment_scope": "training/offline evaluation adapted; real-robot deployment scripts are outside this change",
+  "worst_recording_matching_diagnostic": {
+    "episode": "Tianji_Marvin_M6CCS_261020_193840_0",
+    "source": "ft_sensor",
+    "complete_windows": 254,
+    "raw_samples_per_200ms_mean": 59.86614173228347,
+    "matched_fixed_slots_per_200ms_mean": 47.511811023622045,
+    "log_interval_ms_p01_p50_p99_max": [
+      1.61753204,
+      3.3290379999999997,
+      5.146329919999999,
+      9.100458999999999
+    ],
+    "header_interval_ms_p01_p50_p99_max": [
+      2.43478994,
+      3.3326729999999998,
+      4.3903693599999984,
+      7.777386
+    ],
+    "raw_gaps_greater_10ms": 0,
+    "raw_samples_per_10ms_distribution": {
+      "2": 42,
+      "3": 2483,
+      "4": 25
+    },
+    "production_log_slot_coverage": 0.7918635170603675,
+    "diagnostic_header_plus_constant_offset_slot_coverage": 0.896259842519685,
+    "diagnostic_only": "Header plus median offset is a timing sensitivity check, not a causal availability mapping; production continues log_ns.",
+    "training_change": "none; unmatched fixed slots remain masked"
+  }
+}

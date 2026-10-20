@@ -336,6 +336,10 @@ def render_report(report):
               "loss_force_highrate": "高频力矩L1", "loss_posterior_kl": "后验KL", "loss_prior_match": "先验匹配"}
     if report.get("force_representation") == "flange_force3":
         labels.update(loss_force="三维力端点L1", loss_force_highrate="高频三维力L1")
+    if report.get("force_representation") == "end_effector_wrench6":
+        labels.update(loss_force="六维端点L1", loss_force_highrate="六维区间L1",
+                      loss_force_xyz="三维力端点L1", loss_moment_xyz="三维力矩端点L1",
+                      loss_force_highrate_xyz="三维力区间L1", loss_moment_highrate_xyz="三维力矩区间L1")
     for key, label in labels.items():
         lines.append(f"  {label:<10} {fmt(report['mean_losses'].get(key))} / {fmt(report['latest_losses'].get(key))}")
     lines.append(f"平均取样+训练：{fmt(report['mean_read_train_seconds'], 3)}秒/更新（不含验证和保存）")
@@ -356,6 +360,13 @@ def render_report(report):
     lines.append("外力来源：" + str(report["force_source"] or "—"))
     if report.get("force_representation") == "flange_force3":
         lines.append("力表示：法兰坐标系 Fx/Fy/Fz；物理指标单位 N")
+    if report.get("force_representation") == "end_effector_wrench6":
+        lines.append("力表示：传感器 Fx/Fy/Fz/Tx/Ty/Tz；训练L1为无量纲；物理误差分别为N和N·m")
+        val = report.get("validation", {})
+        for label, prefix in (("区间", ""), ("端点", "_endpoint")):
+            f = val.get(f"episode_macro_force{prefix}_mae_n", val.get(f"force{prefix}_mae_n"))
+            m = val.get(f"episode_macro_moment{prefix}_mae_nm", val.get(f"moment{prefix}_mae_nm"))
+            lines.append(f"  验证{label}：力 {fmt(f, 5)} N；力矩 {fmt(m, 5)} N·m")
     for name, info in report["checkpoints"].items():
         lines.append(f"{name}：" + (f"{info['bytes'] / 1024**3:.2f} GiB；{duration(info['age_s'])}前更新" if info["exists"] else "尚未生成"))
     for gpu in report["gpus"]:

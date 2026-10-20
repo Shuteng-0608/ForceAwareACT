@@ -1,0 +1,46 @@
+{
+  "timestamp_key": "log_ns",
+  "action_rate_hz": 100,
+  "action_grid_phase_mode": "circular_mean_initial_window",
+  "action_grid_phase_window_s": 2.0,
+  "torque_rate_hz": 300,
+  "history_duration_s": 0.2,
+  "camera_names": [
+    "d455",
+    "d405"
+  ],
+  "joint_names": [
+    "Joint1_R",
+    "Joint2_R",
+    "Joint3_R",
+    "Joint4_R",
+    "Joint5_R",
+    "Joint6_R",
+    "Joint7_R"
+  ],
+  "image_height": 480,
+  "image_width": 640,
+  "state_max_age_ms": 20.0,
+  "camera_max_age_ms": 100.0,
+  "action_match_tolerance_ms": 5.0,
+  "torque_match_tolerance_ms": 1.666666,
+  "max_samples_per_interval": 8,
+  "force_representation": "end_effector_wrench6",
+  "wrench_component_units": [
+    "N",
+    "N",
+    "N",
+    "N*m",
+    "N*m",
+    "N*m"
+  ],
+  "wrench_frame": "right_ft_measurement",
+  "force_std_floor": [
+    0.01,
+    0.01,
+    0.01,
+    0.001,
+    0.001,
+    0.001
+  ]
+}

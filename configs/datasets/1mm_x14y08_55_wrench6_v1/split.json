@@ -1,0 +1,357 @@
+{
+  "version": "real_robot_recording_split_v2",
+  "seed": 0,
+  "train_episode_ids": [
+    "Tianji_Marvin_M6CCS_261020_172343_0",
+    "Tianji_Marvin_M6CCS_261020_172657_0",
+    "Tianji_Marvin_M6CCS_261020_172907_0",
+    "Tianji_Marvin_M6CCS_261020_173022_0",
+    "Tianji_Marvin_M6CCS_261020_173133_0",
+    "Tianji_Marvin_M6CCS_261020_173236_0",
+    "Tianji_Marvin_M6CCS_261020_173348_0",
+    "Tianji_Marvin_M6CCS_261020_173630_0",
+    "Tianji_Marvin_M6CCS_261020_173820_0",
+    "Tianji_Marvin_M6CCS_261020_173948_0",
+    "Tianji_Marvin_M6CCS_261020_174547_0",
+    "Tianji_Marvin_M6CCS_261020_174924_0",
+    "Tianji_Marvin_M6CCS_261020_175033_0",
+    "Tianji_Marvin_M6CCS_261020_175137_0",
+    "Tianji_Marvin_M6CCS_261020_175244_0",
+    "Tianji_Marvin_M6CCS_261020_175356_0",
+    "Tianji_Marvin_M6CCS_261020_175512_0",
+    "Tianji_Marvin_M6CCS_261020_175612_0",
+    "Tianji_Marvin_M6CCS_261020_190921_0",
+    "Tianji_Marvin_M6CCS_261020_191045_0",
+    "Tianji_Marvin_M6CCS_261020_191448_0",
+    "Tianji_Marvin_M6CCS_261020_191608_0",
+    "Tianji_Marvin_M6CCS_261020_191724_0",
+    "Tianji_Marvin_M6CCS_261020_191834_0",
+    "Tianji_Marvin_M6CCS_261020_191959_0",
+    "Tianji_Marvin_M6CCS_261020_192116_0",
+    "Tianji_Marvin_M6CCS_261020_192405_0",
+    "Tianji_Marvin_M6CCS_261020_192528_0",
+    "Tianji_Marvin_M6CCS_261020_192637_0",
+    "Tianji_Marvin_M6CCS_261020_192754_0",
+    "Tianji_Marvin_M6CCS_261020_193012_0",
+    "Tianji_Marvin_M6CCS_261020_193244_0",
+    "Tianji_Marvin_M6CCS_261020_193350_0",
+    "Tianji_Marvin_M6CCS_261020_193459_0",
+    "Tianji_Marvin_M6CCS_261020_193720_0",
+    "Tianji_Marvin_M6CCS_261020_193953_0",
+    "Tianji_Marvin_M6CCS_261020_194057_0",
+    "Tianji_Marvin_M6CCS_261020_194159_0",
+    "Tianji_Marvin_M6CCS_261020_194655_0",
+    "Tianji_Marvin_M6CCS_261020_194803_0"
+  ],
+  "validation_episode_ids": [
+    "Tianji_Marvin_M6CCS_261020_172535_0",
+    "Tianji_Marvin_M6CCS_261020_173526_0",
+    "Tianji_Marvin_M6CCS_261020_174655_0",
+    "Tianji_Marvin_M6CCS_261020_174817_0",
+    "Tianji_Marvin_M6CCS_261020_175805_0",
+    "Tianji_Marvin_M6CCS_261020_191310_0",
+    "Tianji_Marvin_M6CCS_261020_192245_0",
+    "Tianji_Marvin_M6CCS_261020_192900_0",
+    "Tianji_Marvin_M6CCS_261020_193116_0",
+    "Tianji_Marvin_M6CCS_261020_193605_0"
+  ],
+  "test_episode_ids": [
+    "Tianji_Marvin_M6CCS_261020_174236_0",
+    "Tianji_Marvin_M6CCS_261020_174427_0",
+    "Tianji_Marvin_M6CCS_261020_191156_0",
+    "Tianji_Marvin_M6CCS_261020_193840_0",
+    "Tianji_Marvin_M6CCS_261020_194306_0"
+  ],
+  "source_groups": {
+    "Tianji_Marvin_M6CCS_261020_172343_0": "bf0aa8c5a030ea2e08653c2aa12c3c39f40e86a6b53ac75563deea420942b221",
+    "Tianji_Marvin_M6CCS_261020_172535_0": "4a5bb41c7c35260fa2ff5c7d617ab45e7e7c66a030cbf362cea3af5f8ece37f1",
+    "Tianji_Marvin_M6CCS_261020_172657_0": "d344502ee428a47cd5882603e9a12359ff4abb66d744818bbff919694fd5de01",
+    "Tianji_Marvin_M6CCS_261020_172907_0": "bfd7b6d76be1bec826a5f8df40fb2883bc75ee7955552cad981dc135cc70182e",
+    "Tianji_Marvin_M6CCS_261020_173022_0": "14ebe957026720aba44cebc860321d060f5bf72a217b176c171814f77bff4250",
+    "Tianji_Marvin_M6CCS_261020_173133_0": "ee6908581277f83dbfaf3bd65ffb9b3c4bd9272d595f360d18e5fdf0ee089a38",
+    "Tianji_Marvin_M6CCS_261020_173236_0": "45750ecc377bd9c2fb8202ffb2fb70d2c999a92a33680a668a32e4a55082b62d",
+    "Tianji_Marvin_M6CCS_261020_173348_0": "be58269fcf8a1b496d9cf6d0f3c851b8a663e79ae03505ec2237973b893245f6",
+    "Tianji_Marvin_M6CCS_261020_173526_0": "e2b7eb7fbdea76912e18e0c22dafebe7ac071ae8c1f863f33565dafbaa223888",
+    "Tianji_Marvin_M6CCS_261020_173630_0": "8e1e46e1f3e84c6d54f7fd566275c85f5446107df2e9d1dc62f77542a93840b7",
+    "Tianji_Marvin_M6CCS_261020_173820_0": "dce9d456b8aaf5c6c1d601365dced48fefab768ceb21631135cda1c51e87cf0c",
+    "Tianji_Marvin_M6CCS_261020_173948_0": "c792a9502d0a98cdf7fcedb24cf43a2b8ae3d010037715813d7a00fc0dfaf59d",
+    "Tianji_Marvin_M6CCS_261020_174236_0": "0169f43795eb03e15dc7460a52b65f6cd0c35853f6f4ff26c7e40665916330f4",
+    "Tianji_Marvin_M6CCS_261020_174427_0": "cc5127822f9a765ba1cfce7572f31bbeca912fdae27dad9c2f43b5942a8f8dcd",
+    "Tianji_Marvin_M6CCS_261020_174547_0": "8286de9fa2e30b5b45059b36b039bb2a37eb305b24b54fcaa2c315a9efb24f10",
+    "Tianji_Marvin_M6CCS_261020_174655_0": "eea2626be53eada338fb11a16a70e7c86c3a08c63a1e98a74c76e1415ea614be",
+    "Tianji_Marvin_M6CCS_261020_174817_0": "0c826d8423ccbdb383e59f42a782c5c5369a2eadeb4465495157218ab416056b",
+    "Tianji_Marvin_M6CCS_261020_174924_0": "0176f3636c485c8b5efe34b70133580b90c247eef610da738a9c65f60acacdcc",
+    "Tianji_Marvin_M6CCS_261020_175033_0": "47cdd5389e2b0e2591bb084aa4cba1ee03d15d4be7a061c0446c082889560ed1",
+    "Tianji_Marvin_M6CCS_261020_175137_0": "e93d2b2bf347e3d9b6d887b5852323fc5b003072a90b79c3c34d9b7ad42b5d81",
+    "Tianji_Marvin_M6CCS_261020_175244_0": "1d5ea41dbd4f23a65037a8ed9c739694f6dd8cd45121a125af36cbd65addef4e",
+    "Tianji_Marvin_M6CCS_261020_175356_0": "ef4bf3a3752434e547efe20f63e3d95728794c849079d1b2e4bc3cd6059535ed",
+    "Tianji_Marvin_M6CCS_261020_175512_0": "f333ab475dd3efcf1d48b5631508f1dd367d1f35f9d71e3eea84506355c60b11",
+    "Tianji_Marvin_M6CCS_261020_175612_0": "7b2a2910108255dc5c7677cfe499a6e0d6eb307bda516e3fb5aec820f1e24c75",
+    "Tianji_Marvin_M6CCS_261020_175805_0": "e664038125f99dc637013005339ac5e93a7a5dff71cccb1950979005c8a8b953",
+    "Tianji_Marvin_M6CCS_261020_190921_0": "c7b1ded107603938b0224f2c3ed625a833e15bd328b181e0da550e8d4bb8eb72",
+    "Tianji_Marvin_M6CCS_261020_191045_0": "19ea2d62f83f4d85794aa913c460b88a9878a55b876a4945153c7ae3531256f8",
+    "Tianji_Marvin_M6CCS_261020_191156_0": "ebf041a68af42ed0d10b9e4bce84a5f0f2e03b2b1ee45e575459ecb9754409cf",
+    "Tianji_Marvin_M6CCS_261020_191310_0": "3b6270327443876f63c1f8dd671e5679e4954a40396195df6ae9d66e57080b65",
+    "Tianji_Marvin_M6CCS_261020_191448_0": "aec0362913527dc065bb64657185ae235b0d984db39e80a6f0c8d2764593a9a2",
+    "Tianji_Marvin_M6CCS_261020_191608_0": "680a27b123cd33edfac36f1bc4902eac8da2622fc92fdeeda5c814e4f6c70120",
+    "Tianji_Marvin_M6CCS_261020_191724_0": "4fa9d6db39e49f67b06f20d7bca87702b666bde7a382bbf50cf27e344f323305",
+    "Tianji_Marvin_M6CCS_261020_191834_0": "45e02a0d60a67e7c0349f11cbdbcf5042e8968c35fc01d6a1c4404cba07d19a0",
+    "Tianji_Marvin_M6CCS_261020_191959_0": "f66ed43c04deef841415e45d61cc3ba16ced03154f99fb0399be2bd636823b80",
+    "Tianji_Marvin_M6CCS_261020_192116_0": "874d8fa6a752fd1f0a72c6f57cbe01af980f67de51ca1ead540de3e29e9cf758",
+    "Tianji_Marvin_M6CCS_261020_192245_0": "28a48d7dd8545d63d1a5d48ae90846c98a8902ee229f0581f86f6c1895157aa2",
+    "Tianji_Marvin_M6CCS_261020_192405_0": "56d0e7fb1e122522d7b8450fc0ad4705db4161ae18100504e4195c8a42d18162",
+    "Tianji_Marvin_M6CCS_261020_192528_0": "97fc489aacde5082be3004a7b75848748bc83e5fc7c5e613bd643d2d11ed743a",
+    "Tianji_Marvin_M6CCS_261020_192637_0": "56f213dfd05856c6a1716381705fdbae59fb4d8acdfebb6028be21cd60e3e4fa",
+    "Tianji_Marvin_M6CCS_261020_192754_0": "94de13c6792ec538ce182d4a8ffc288bcbe9d84d850ef23333254c13ff52f06c",
+    "Tianji_Marvin_M6CCS_261020_192900_0": "251f4f315c5cf5756a74658b0384921e34d3e27de2340e9685f52ee7e1336f4e",
+    "Tianji_Marvin_M6CCS_261020_193012_0": "648685a90f8db68b182792d2a84a2938bf27a66d489f42375bef005774a66bb3",
+    "Tianji_Marvin_M6CCS_261020_193116_0": "e42cb7eddc41f155147261c354b6199479ab67842bf2ebd9dea9867a84271403",
+    "Tianji_Marvin_M6CCS_261020_193244_0": "d04f712db6063c630304f72d5f29d891c053e21f4e88729265c78d64e7d934b3",
+    "Tianji_Marvin_M6CCS_261020_193350_0": "9cc68b121f96b3e215ad0f5a817d8b4ffeda7b9326ef0c93426d7dd7af8d0274",
+    "Tianji_Marvin_M6CCS_261020_193459_0": "e62eeafbe149e8b4c9ae6cfe23aa1b49648d400f9551422937bdff7fccf7dbd4",
+    "Tianji_Marvin_M6CCS_261020_193605_0": "74939fa59bae956af6605b8858cba2f6ae8b9923d58b618cbafddc88b7045c27",
+    "Tianji_Marvin_M6CCS_261020_193720_0": "90d2b25f4baed8d011f052ec779f2b2f3d9b7fc241060bf9d26f327b53f84621",
+    "Tianji_Marvin_M6CCS_261020_193840_0": "2be86f0ac3658909712305a798ba77a024c46f75d01618b52e3f17eb75b9bca8",
+    "Tianji_Marvin_M6CCS_261020_193953_0": "7dc5bdddf99a278ac6d94af0bac3c5af334b81bb6c94bab2162605e9bea7d37d",
+    "Tianji_Marvin_M6CCS_261020_194057_0": "46a972c0757176a612ce4d4b81f72b45be3d8077df7d43b4dc09e82744e4f14d",
+    "Tianji_Marvin_M6CCS_261020_194159_0": "072cb19e65a19d4b3572435f86884080cdaa6571df7c0ceaf5e150a8b2216a6e",
+    "Tianji_Marvin_M6CCS_261020_194306_0": "fa63bb2bad6e4cae58f8a6c4f0007ebeaccff56d644b89e3895f5e2cbf6b7539",
+    "Tianji_Marvin_M6CCS_261020_194655_0": "4d337a08c59413cc83db8dc39b674c0701fd5d9da9dfdbe70b62904811c5c359",
+    "Tianji_Marvin_M6CCS_261020_194803_0": "2bfd384b7109e2deb56b562ec536b7b5fed80ada521599c05bc0c37f65700513"
+  },
+  "condition_groups": {
+    "Tianji_Marvin_M6CCS_261020_172343_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_172535_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_172657_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_172907_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173022_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173133_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173236_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173348_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173526_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173630_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173820_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_173948_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_174236_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_174427_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_174547_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_174655_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_174817_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_174924_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_175033_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_175137_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_175244_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_175356_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_175512_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_175612_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_175805_0": {
+      "point": "x14y08",
+      "session_hour": "17"
+    },
+    "Tianji_Marvin_M6CCS_261020_190921_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191045_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191156_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191310_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191448_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191608_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191724_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191834_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_191959_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_192116_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_192245_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_192405_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_192528_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_192637_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_192754_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_192900_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193012_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193116_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193244_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193350_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193459_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193605_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193720_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193840_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_193953_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_194057_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_194159_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_194306_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_194655_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    },
+    "Tianji_Marvin_M6CCS_261020_194803_0": {
+      "point": "x14y08",
+      "session_hour": "19"
+    }
+  },
+  "allocation_by_session": {
+    "17": [
+      18,
+      5,
+      2
+    ],
+    "19": [
+      22,
+      5,
+      3
+    ]
+  },
+  "split_unit": "complete original recording"
+}
