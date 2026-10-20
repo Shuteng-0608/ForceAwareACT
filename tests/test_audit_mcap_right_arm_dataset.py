@@ -1,8 +1,11 @@
 """MCAP integrity and pre-conversion alignment must match the real reader."""
 
 import importlib.util
+import json
 from pathlib import Path
 import struct
+import subprocess
+import sys
 
 import cv2
 import h5py
@@ -111,6 +114,39 @@ def test_download_identity_failure_blocks_conversion_eligibility(tmp_path):
     result = audit.audit_recording(source, row, tmp_path/"evidence", config.to_dict())
     assert result["status"] == "failed"
     assert "SHA-256" in result["errors"][0]
+
+
+def test_local_files_do_not_inherit_download_verification_or_success_labels(tmp_path):
+    audit, source, _, config = _encoded_source(tmp_path)
+    result = audit.audit_recording(source, None, tmp_path/"evidence", config.to_dict(), group="x14y08")
+    assert result["status"] == "passed", result["errors"]
+    assert result["group"] == "x14y08"
+    assert result["task_success"] is None
+    assert "2026-10-03" not in result["task_success_provenance"]
+    assert result["integrity"]["current_sha256_matches_download"] is None
+    assert result["integrity"]["current_size_matches_download"] is None
+    assert result["integrity"]["download_crc64_match_recorded"] is None
+    assert result["integrity"]["all_advertised_chunk_crcs_passed"]
+    result = audit.audit_recording(source, None, tmp_path/"explicit", config.to_dict(),
+        task_success=False, task_success_provenance="synthetic failed trial")
+    assert result["task_success"] is False
+    assert result["task_success_provenance"] == "synthetic failed trial"
+
+
+def test_local_cli_accepts_condition_without_manifest_and_keeps_unknown_label(tmp_path):
+    audit, source, _, config = _encoded_source(tmp_path/"source")
+    config_path = tmp_path/"config.json"
+    audit.write_json(config_path, config.to_dict())
+    subprocess.run([sys.executable, str(Path(__file__).parents[1]/"scripts/audit_mcap_right_arm_dataset.py"),
+        "--source-root", str(source.parent), "--output-dir", str(tmp_path/"audit"),
+        "--data-config", str(config_path), "--expected-episodes", "1", "--local-files", "--group", "x14y08", "--workers", "1"],
+        check=True, capture_output=True, text=True)
+    result = json.loads((tmp_path/"audit/audit_manifest.json").read_text())
+    assert result["status"] == "passed"
+    assert result["download_manifest_sha256"] is None
+    assert result["episodes"][0]["task_success"] is None
+    assert result["episodes"][0]["group"] == "x14y08"
+    assert result["duplicate_source_sha256"] == []
 
 
 def test_complete_crc_failure_is_detected_even_when_download_hash_is_updated(tmp_path):

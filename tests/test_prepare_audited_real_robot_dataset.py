@@ -75,7 +75,8 @@ def test_audited_conversion_statistics_and_data_batches_complete_without_trainin
         auditor, original, row, config = helper._encoded_source(tmp_path/f"fixture{index}", nonce=str(index))
         source = original.with_name(f"recording_{index}_x13y08.mcap")
         source.write_bytes(original.read_bytes())
-        result = auditor.audit_recording(source, row, audit_dir/"episodes"/source.stem, config.to_dict())
+        result = auditor.audit_recording(source, row, audit_dir/"episodes"/source.stem, config.to_dict(),
+            task_success=True, task_success_provenance="synthetic successful fixture")
         assert result["status"] == "passed", result["errors"]
         episodes.append(result)
     audit = {"status": "passed", "episodes": episodes, "output_dir": str(audit_dir),

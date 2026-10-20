@@ -148,18 +148,22 @@ def alignment_metrics(times, config):
                     "action_source_indices": slots, "next_interval_force_source_indices": force_slots}
 
 
-def audit_recording(source, download_row, destination, config_dict):
+def audit_recording(source, download_row, destination, config_dict, *, group=None,
+                    task_success=None, task_success_provenance="not confirmed for this recording"):
     cv2.setNumThreads(1)
     source, destination = Path(source), Path(destination)
     config = RealRobotDataConfig.from_dict(config_dict)
     result = {"episode_id": source.stem, "source_path": str(source),
-              "group": source.stem.rsplit("_", 1)[-1], "status": "failed", "errors": [], "findings": []}
+              "group": group or source.stem.rsplit("_", 1)[-1], "status": "failed", "errors": [], "findings": [],
+              "task_success": task_success, "task_success_provenance": task_success_provenance}
     try:
         identity = fingerprint(source)
         result.update(source_fingerprint=identity)
-        if identity["sha256"] != download_row["sha256"]:
+        if task_success is not None and type(task_success) is not bool:
+            raise ValueError("task_success must be True, False or None")
+        if download_row is not None and identity["sha256"] != download_row["sha256"]:
             raise ValueError("SHA-256 differs from download manifest")
-        if identity["bytes"] != int(download_row["bytes_downloaded"]) or identity["bytes"] != int(download_row["content_length"]):
+        if download_row is not None and (identity["bytes"] != int(download_row["bytes_downloaded"]) or identity["bytes"] != int(download_row["content_length"])):
             raise ValueError("size differs from download manifest")
         with source.open("rb") as stream:
             summary = make_reader(stream).get_summary()
@@ -187,8 +191,10 @@ def audit_recording(source, download_row, destination, config_dict):
         result["integrity"] = {"complete_message_count": sum(actual_counts.values()),
             "all_records_read": True, "all_advertised_chunk_crcs_passed": True,
             "data_section_crc_present": data_crc_present, "data_section_crc_passed": True if data_crc_present else None,
-            "current_sha256_matches_download": True, "current_size_matches_download": True,
-            "download_crc64_match_recorded": download_row.get("crc64_match", "").lower() == "true"}
+            "current_sha256_matches_download": True if download_row is not None else None,
+            "current_size_matches_download": True if download_row is not None else None,
+            "download_crc64_match_recorded": download_row.get("crc64_match", "").lower() == "true" if download_row is not None else None,
+            "identity_reference": "download_manifest" if download_row is not None else "current_local_file_only"}
         counts = Counter()
         clocks = {stream: [] for stream in RATES}
         numeric = {stream: {field: [] for field in fields} for stream, fields in FIELDS.items()}
@@ -273,8 +279,6 @@ def audit_recording(source, download_row, destination, config_dict):
         if fingerprint(source) != identity:
             raise ValueError("source changed during audit")
         result["selected_message_counts"] = dict(counts)
-        result["task_success"] = True
-        result["task_success_provenance"] = "Human user confirmed all 50 new recordings successful in this task on 2026-10-03"
         result["status"] = "passed_with_findings" if result["findings"] else "passed"
     except Exception as error:
         result["errors"].append(f"{type(error).__name__}: {error}")
@@ -309,46 +313,57 @@ def main(argv=None):
     parser.add_argument("--data-config", type=Path, default=REPO/"configs/real_robot/right_arm.json")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--expected-episodes", type=int, default=50)
-    parser.add_argument("--success-confirmed", action="store_true", required=True)
+    parser.add_argument("--success-confirmed", action="store_true")
+    parser.add_argument("--success-provenance", default=None)
+    parser.add_argument("--local-files", action="store_true", help="audit local files without claiming download-manifest verification")
+    parser.add_argument("--group", help="explicit recording condition when filenames have no condition suffix")
     args = parser.parse_args(argv)
     if args.workers <= 0:
         raise ValueError("workers must be positive")
     source_root, output = args.source_root.resolve(), args.output_dir.resolve()
     if output.exists():
         raise ValueError("audit destination already exists; preserve previous audit")
-    with (source_root/"download_manifest.csv").open(encoding="utf-8-sig") as stream:
-        rows = list(csv.DictReader(stream))
+    if args.success_provenance and not args.success_confirmed:
+        raise ValueError("success provenance requires explicit --success-confirmed")
+    if args.local_files:
+        rows = [{"saved_filename": p.name} for p in sorted(source_root.glob("*.mcap"))]
+    else:
+        with (source_root/"download_manifest.csv").open(encoding="utf-8-sig") as stream:
+            rows = list(csv.DictReader(stream))
     filenames = [r["saved_filename"] for r in rows]
     actual = {p.name for p in source_root.glob("*.mcap")}
     if len(rows) != args.expected_episodes or len(set(filenames)) != len(rows) or set(filenames) != actual:
         raise ValueError("file inventory differs from the expected unique download manifest")
-    if len({r["sha256"] for r in rows}) != len(rows):
+    if not args.local_files and len({r["sha256"] for r in rows}) != len(rows):
         raise ValueError("duplicate source contents require deduplication before split")
     for row in rows:
-        if Path(row["saved_filename"]).name != row["saved_filename"] or not re.search(r"_x\d+y\d+\.mcap$", row["saved_filename"]):
+        if Path(row["saved_filename"]).name != row["saved_filename"] or (not args.group and not re.search(r"_x\d+y\d+\.mcap$", row["saved_filename"])):
             raise ValueError("unexpected recording filename")
-        if row["status"] != "verified" or any(row.get(k, "").lower() != "true" for k in ("size_match", "crc64_match", "mcap_magic_valid")):
+        if not args.local_files and (row["status"] != "verified" or any(row.get(k, "").lower() != "true" for k in ("size_match", "crc64_match", "mcap_magic_valid"))):
             raise ValueError("download manifest contains an unverified file")
     config = RealRobotDataConfig.from_dict(json.loads(args.data_config.read_text()))
     output.mkdir(parents=True)
-    policy = {"hard_gates": ["download SHA-256 and size match", "complete MCAP parse and all advertised CRCs pass",
+    policy = {"hard_gates": ["local SHA-256 stable during audit" if args.local_files else "download SHA-256 and size match", "complete MCAP parse and all advertised CRCs pass",
         "required topics and complete right-arm fields", "all selected numeric values finite",
         "all log clocks strictly increasing", "all images decode at configured resolution",
         "stable action phase resultant >=0.5", "history interval capacity <=8", "valid anchor rate >=95%"],
         "review_findings": ["blank/frozen image indicators", "force slot coverage below90%", "header clock reversal"],
         "gaps": "reported and masked; no interpolation, clock correction, filtering or sample deletion",
-        "success_label": "user confirmed; not inferred from MCAP"}
+        "success_label": "explicitly confirmed; not inferred from MCAP" if args.success_confirmed else "unknown; not inferred from MCAP"}
     report = {"version": "real_robot_mcap_dataset_audit_v1", "created_utc": datetime.now(timezone.utc).isoformat(),
         "source_root": str(source_root), "output_dir": str(output), "status": "auditing",
         "audit_policy": policy, "data_config": config.to_dict(), "data_contract": config.contract_dict(),
-        "download_manifest_sha256": fingerprint(source_root/"download_manifest.csv")["sha256"],
+        "download_manifest_sha256": None if args.local_files else fingerprint(source_root/"download_manifest.csv")["sha256"],
         "code_sha256": {str(p.relative_to(REPO)): fingerprint(p)["sha256"] for p in (Path(__file__),
             REPO/"scripts/convert_mcap_right_arm.py", REPO/"src/force_aware_act/real_robot/sampling.py",
             REPO/"src/force_aware_act/real_robot/reader.py")}, "episodes": []}
     write_json(output/"audit_manifest.json", report)
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = [pool.submit(audit_recording, str(source_root/r["saved_filename"]), r,
-                    str(output/"episodes"/Path(r["saved_filename"]).stem), config.to_dict()) for r in rows]
+        futures = [pool.submit(audit_recording, str(source_root/r["saved_filename"]), None if args.local_files else r,
+                    str(output/"episodes"/Path(r["saved_filename"]).stem), config.to_dict(), group=args.group,
+                    task_success=True if args.success_confirmed else None,
+                    task_success_provenance=(args.success_provenance or "explicit --success-confirmed for this audit")
+                        if args.success_confirmed else "not confirmed for this recording") for r in rows]
         for future in as_completed(futures):
             episode = future.result()
             report["episodes"].append(episode)
@@ -358,7 +373,9 @@ def main(argv=None):
                 "valid_anchors": episode.get("alignment", {}).get("valid_anchors")}), flush=True)
     report["episodes"].sort(key=lambda r: r["episode_id"])
     report["summary"] = summarize(report["episodes"])
-    report["status"] = "passed" if not report["summary"]["failed_episodes"] else "failed"
+    hashes = Counter(r["source_fingerprint"]["sha256"] for r in report["episodes"] if "source_fingerprint" in r)
+    report["duplicate_source_sha256"] = [sha for sha, count in hashes.items() if count > 1]
+    report["status"] = "passed" if not report["summary"]["failed_episodes"] and not report["duplicate_source_sha256"] else "failed"
     report["completed_utc"] = datetime.now(timezone.utc).isoformat()
     write_json(output/"audit_manifest.json", report)
     print(json.dumps({"status": report["status"], **report["summary"]}), flush=True)
