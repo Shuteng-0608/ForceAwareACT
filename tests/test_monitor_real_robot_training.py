@@ -114,6 +114,24 @@ def test_force3_monitor_labels_are_force_not_joint_torque(tmp_path):
     assert "物理指标单位 N" in rendered
 
 
+def test_sensor_force3_monitor_preserves_sensor_frame_and_has_no_moment_metrics(tmp_path):
+    m = _module()
+    run, reader = _fixture(tmp_path, m)
+    path = run / "run_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["data_config"] = {"force_representation": "end_effector_force3"}
+    manifest["data_contract"].update(force_source_topic="/io_teleop/right/ft_sensor",
+                                     force_coordinate_frame="right_ft_measurement")
+    path.write_text(json.dumps(manifest))
+    report = m.build_report(run, reader, m.WallRate(), processes=[], include_gpu=False)
+    report["validation"] = {"episode_macro_force_mae_n": 1.2, "episode_macro_force_endpoint_mae_n": 1.3}
+    rendered = m.render_report(report)
+    assert "传感器 Fx/Fy/Fz" in rendered and "right_ft_measurement" in rendered
+    assert "三维力端点L1" in rendered and "高频三维力L1" in rendered
+    assert "1.20000 N" in rendered and "1.30000 N" in rendered
+    assert "力矩" not in rendered and "法兰" not in rendered
+
+
 def test_old_summary_is_ignored_during_resume_and_after_later_steps(tmp_path):
     m = _module()
     run, reader = _fixture(tmp_path, m)

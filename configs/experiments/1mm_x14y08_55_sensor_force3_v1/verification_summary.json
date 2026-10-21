@@ -1,0 +1,70 @@
+{
+  "version": "sensor_force3_implementation_verification_v1",
+  "date": "2026-10-21",
+  "branch": "codex/ee-force3-raw-v3",
+  "base_commit": "321550bc7b7e47fa71cd3e52c847f6fe9f6b51dc",
+  "tests": {
+    "passed": 196,
+    "command": "PYTHONPATH=src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m pytest tests/test_real_robot*.py tests/test_prepare_sensor_force3_training.py tests/test_prepare_wrench6_training.py tests/test_monitor_real_robot_training.py -q"
+  },
+  "bounded_checks": {
+    "contact": {
+      "mode": "test",
+      "updates": 10,
+      "sampling_epochs": 2,
+      "batch_size": 8,
+      "model_force_dim": 3,
+      "all_losses_and_gradient_norms_finite": true,
+      "normalization_matches_reviewed_wrench6_force_channels": true,
+      "only_model_config_change_from_wrench6": "force_dim 6 -> 3",
+      "source_hdf5_sha256_verified": 55,
+      "sampling_indices_equal_to_wrench6_short_check": true,
+      "each_training_episode_once_per_epoch": true,
+      "validation_windows": 2505,
+      "validation_episodes": 10,
+      "validation_indices_sha256": "c6fc8a74a922e4eeb2cdcd3f9cafb250679aa4b5c3950eab8e30df85c1b20ff7",
+      "validation_indices_exactly_equal_to_wrench6": true,
+      "checkpoint_round_trip": "passed",
+      "peak_allocated_gib": 3.8301358222961426,
+      "peak_reserved_gib": 4.58203125,
+      "seconds_per_update": 0.35249410710239315,
+      "validation_seconds": 43.76558250800008,
+      "checkpoint": "outputs/1mm_x14y08_55_sensor_force3_v1/checks/contact_fullnet/last.pt",
+      "short_test_only_not_a_model_quality_comparison": true
+    },
+    "motion": {
+      "mode": "test",
+      "updates": 10,
+      "sampling_epochs": 2,
+      "batch_size": 8,
+      "model_force_dim": 3,
+      "all_losses_and_gradient_norms_finite": true,
+      "normalization_matches_reviewed_wrench6_force_channels": true,
+      "only_model_config_change_from_wrench6": "force_dim 6 -> 3",
+      "source_hdf5_sha256_verified": 55,
+      "sampling_indices_equal_to_wrench6_short_check": true,
+      "each_training_episode_once_per_epoch": true,
+      "validation_windows": 2505,
+      "validation_episodes": 10,
+      "validation_indices_sha256": "c6fc8a74a922e4eeb2cdcd3f9cafb250679aa4b5c3950eab8e30df85c1b20ff7",
+      "validation_indices_exactly_equal_to_wrench6": true,
+      "checkpoint_round_trip": "passed",
+      "peak_allocated_gib": 3.798811912536621,
+      "peak_reserved_gib": 4.505859375,
+      "seconds_per_update": 0.34230834828922524,
+      "validation_seconds": 41.58977521499037,
+      "checkpoint": "outputs/1mm_x14y08_55_sensor_force3_v1/checks/motion_fullnet/last.pt",
+      "short_test_only_not_a_model_quality_comparison": true
+    }
+  },
+  "dataset_unchanged": true,
+  "formal_training_started": false,
+  "legacy_wrench6_serialized_data_contract_unchanged": true,
+  "launcher_arguments_verified": [
+    "contact train --help",
+    "motion train --help"
+  ],
+  "unused_moment_invariance_test": "NaN/Inf/large changes to Tx/Ty/Tz leave force3 normalization, packed inputs/labels, deterministic posterior outputs, predictions and losses unchanged",
+  "remote_4090_checkout_updated": false,
+  "status": "implementation and bounded checks complete; awaiting user review"
+}

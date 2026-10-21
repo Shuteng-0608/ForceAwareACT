@@ -43,9 +43,10 @@ def batches_for_indices(dataset, indices, batch_size):
 def aggregate_episode_metrics(per_episode):
     if not per_episode:
         raise ValueError("evaluation requires at least one episode")
-    if next(iter(per_episode.values())).get("force_representation") == "end_effector_wrench6":
-        from .wrench_metrics import aggregate_wrench6_metrics
-        return aggregate_wrench6_metrics(per_episode)
+    if any(row.get("force_representation") in {"end_effector_wrench6", "end_effector_force3"}
+           for row in per_episode.values()):
+        from .wrench_metrics import aggregate_sensor_force_metrics
+        return aggregate_sensor_force_metrics(per_episode)
     result = {"windows": sum(row["windows"] for row in per_episode.values()), "per_episode": per_episode}
     force3 = next(iter(per_episode.values())).get("force_representation") == "flange_force3"
     metrics = (("action", "rad"), ("force", "n"), ("force_endpoint", "n")) if force3 else (("action", "rad"), ("torque", "nm"), ("torque_endpoint", "nm"))
@@ -78,7 +79,8 @@ def aggregate_episode_metrics(per_episode):
 def evaluate_episodes(kind, model, dataset, indices, normalization, device, batch_size, *, detailed=False, force_evaluation_steps=None):
     per_episode = {
         episode: evaluate(kind, model, batches_for_indices(dataset, locations, batch_size), normalization, device, detailed=detailed,
-                          force_evaluation_steps=force_evaluation_steps)
+                          force_evaluation_steps=force_evaluation_steps,
+                          force_representation=dataset.data_config.force_representation)
         for episode, locations in indices.items()
     }
     return aggregate_episode_metrics(per_episode)

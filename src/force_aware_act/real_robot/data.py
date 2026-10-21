@@ -105,7 +105,7 @@ class RealRobotHighRateDataset(Dataset):
              "source_timestamp_ns": None if index < 0 else int(episode.torque_timestamps_ns[index])}
             for slot, index in enumerate(force_indices[0])]
         history = pack_torque_history(episode.torque_timestamps_ns, episode.force, anchor, self.data_config)
-        if self.data_config.force_dim == 3:
+        if self.data_config.force_representation == "flange_force3":
             future = pack_future_torque(episode.torque_timestamps_ns, episode.force, anchor, force_count, self.data_config, strict_horizon=strict_horizon)
             endpoint = self.data_config.samples_per_action - 1
             force_trace.update(
@@ -117,7 +117,7 @@ class RealRobotHighRateDataset(Dataset):
                 index = slot["hdf5_index"]
                 slot["paired_state_hdf5_index"] = None if index < 0 else int(episode.force.state_indices[index])
                 slot["raw_disturbance_log_ns"] = None if index < 0 else int(episode.timestamps["disturbance"][index])
-        if self.data_config.force_dim == 6:
+        if self.data_config.uses_wrench_sensor:
             force_trace.update(hdf5_indices=force_indices.tolist(), target_timestamps_ns=force_targets.tolist(),
                                timestamp_semantics="raw ft_sensor log_ns")
         return {"episode_id": self.episodes[episode_index].episode_id, "anchor_grid_index": timestep,
@@ -126,16 +126,20 @@ class RealRobotHighRateDataset(Dataset):
                 "history_actual_sample_count": history.valid_sample_count,
                 "force_source_topic": episode.provenance["force_source_topic"],
                 "force_timestamp_stream": self.data_config.force_timestamp_stream,
-                "qpos_unit": "rad", "action_unit": "rad", "torque_unit": "N*m",
+                "qpos_unit": "rad", "action_unit": "rad",
+                **({"torque_unit": "N*m"} if self.data_config.force_representation != "end_effector_force3" else {}),
                 **({"force_representation": "flange_force3", "force_unit": "N",
                     "force_conversion": episode.force.diagnostics,
                     "future_force_valid_samples": int((~future.sample_padding_mask).sum())}
-                   if self.data_config.force_dim == 3 else {}),
-                **({"force_representation": "end_effector_wrench6",
+                   if self.data_config.force_representation == "flange_force3" else {}),
+                **({"force_representation": self.data_config.force_representation,
                     "force_component_units": self.data_config.wrench_component_units,
                     "force_coordinate_frame": self.data_config.wrench_frame,
                     "primary_force_dataset": "observations/ee_wrench"}
-                   if self.data_config.force_dim == 6 else {})}
+                   if self.data_config.uses_wrench_sensor else {}),
+                **({"force_axes": ["Fx", "Fy", "Fz"], "force_channel_indices": [0, 1, 2],
+                    "force_unit": "N", "moment_input": False, "moment_target": False}
+                   if self.data_config.force_representation == "end_effector_force3" else {})}
 
     def __getitem__(self, item):
         episode_index, timestep = self.index[item]

@@ -212,15 +212,20 @@ def deployment_predictions(kind, model, batch):
 
 
 @torch.no_grad()
-def evaluate(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None):
+def evaluate(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None,
+             force_representation=None):
     """Global valid-scalar deployment errors, never posterior-assisted validation."""
     if force_evaluation_steps is not None:
         if kind == "act" or type(force_evaluation_steps) is not int or not 1 <= force_evaluation_steps <= model.config.force_prediction_len:
             raise ValueError("force_evaluation_steps must fit the model force prediction horizon")
-    if len(normalization.force_std) == 6:
-        from .wrench_metrics import evaluate_wrench6
-        return evaluate_wrench6(kind, model, batches, normalization, device,
-                               detailed=detailed, force_evaluation_steps=force_evaluation_steps)
+    # Historical callers infer the old representations; dataset-aware callers supply provenance.
+    if force_representation is None:
+        force_representation = {3: "flange_force3", 6: "end_effector_wrench6", 7: "joint_torque7"}[len(normalization.force_std)]
+    if force_representation in {"end_effector_wrench6", "end_effector_force3"}:
+        from .wrench_metrics import evaluate_sensor_force
+        return evaluate_sensor_force(kind, model, batches, normalization, device,
+                                     force_representation=force_representation,
+                                     detailed=detailed, force_evaluation_steps=force_evaluation_steps)
     previous = model.training
     model.eval()
     force3 = len(normalization.force_std) == 3

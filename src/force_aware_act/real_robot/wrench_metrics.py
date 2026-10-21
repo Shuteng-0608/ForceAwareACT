@@ -1,4 +1,4 @@
-"""Six-axis sensor diagnostics: dimensionless training losses and separate N/N*m errors."""
+"""Measured sensor force diagnostics with explicit channel selection and SI units."""
 
 import numpy as np
 import torch
@@ -42,8 +42,15 @@ def _summarize(sums):
 
 
 @torch.no_grad()
-def evaluate_wrench6(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None):
+def evaluate_sensor_force(kind, model, batches, normalization, device, *, force_representation,
+                          detailed=False, force_evaluation_steps=None):
     from .training import deployment_predictions
+    dimension = {"end_effector_wrench6": 6, "end_effector_force3": 3}[force_representation]
+    if len(normalization.force_std) != dimension:
+        raise ValueError("sensor representation and normalization dimensions disagree")
+    groups = (("force", slice(0, 3), "n"),)
+    if dimension == 6:
+        groups += (("moment", slice(3, 6), "nm"),)
     sums = {}
     windows = 0
 
@@ -84,17 +91,18 @@ def evaluate_wrench6(kind, model, batches, normalization, device, *, detailed=Fa
                 prediction, target, padding = prediction[:, :count], target[:, :count], padding[:, :count]
                 if prediction.shape != target.shape:
                     raise ValueError("wrench predictions and labels disagree")
-                hold_target = hold.view(len(hold), *([1] * (target.ndim - 2)), 6).expand_as(target)
-                add(f"wrench{suffix}_normalized_mae", prediction, target, padding, [1.] * 6)
-                for label, section, unit in (("force", slice(0, 3), "n"), ("moment", slice(3, 6), "nm")):
+                hold_target = hold.view(len(hold), *([1] * (target.ndim - 2)), dimension).expand_as(target)
+                if dimension == 6:
+                    add(f"wrench{suffix}_normalized_mae", prediction, target, padding, [1.] * 6)
+                for label, section, unit in groups:
                     std = normalization.force_std[section]
                     add(f"{label}{suffix}_mae_{unit}", prediction[..., section], target[..., section], padding, std)
                     add(f"{label}_hold{suffix}_mae_{unit}", hold_target[..., section], target[..., section], padding, std)
                     add(f"{label}{suffix}_normalized_mae", prediction[..., section], target[..., section], padding, [1.] * 3)
     finally:
         model.train(previous)
-    result = {"windows": windows, "force_representation": "end_effector_wrench6",
-              "force_component_units": ["N"] * 3 + ["N*m"] * 3, **_summarize(sums)}
+    result = {"windows": windows, "force_representation": force_representation,
+              "force_component_units": (["N"] * 3 + ["N*m"] * 3)[:dimension], **_summarize(sums)}
     # Keep the action count key shared with legacy evaluation consumers.
     result["action_valid_scalars"] = result["action_mae_rad_valid_scalars"]
     if kind != "act":
@@ -102,12 +110,21 @@ def evaluate_wrench6(kind, model, batches, normalization, device, *, detailed=Fa
     return result
 
 
-def aggregate_wrench6_metrics(per_episode):
+def evaluate_wrench6(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None):
+    """Compatibility entry point for existing six-axis evaluations."""
+    return evaluate_sensor_force(kind, model, batches, normalization, device,
+                                 force_representation="end_effector_wrench6", detailed=detailed,
+                                 force_evaluation_steps=force_evaluation_steps)
+
+
+def aggregate_sensor_force_metrics(per_episode):
     rows = list(per_episode.values())
-    if any(r.get("force_representation") != "end_effector_wrench6" for r in rows):
+    representation = rows[0].get("force_representation")
+    if representation not in {"end_effector_wrench6", "end_effector_force3"} or any(
+            r.get("force_representation") != representation for r in rows):
         raise ValueError("mixed force representations in episode evaluation")
     result = {"windows": sum(r["windows"] for r in rows), "per_episode": per_episode,
-              "force_representation": "end_effector_wrench6", "force_component_units": rows[0]["force_component_units"]}
+              "force_representation": representation, "force_component_units": rows[0]["force_component_units"]}
     keys = [key for key in rows[0] if key + "_valid_scalars" in rows[0]]
     for key in keys:
         counts = [r[key + "_valid_scalars"] for r in rows]
@@ -125,3 +142,10 @@ def aggregate_wrench6_metrics(per_episode):
                 raise ValueError("episodes must use the same force evaluation horizon")
             result[key] = rows[0][key]
     return result
+
+
+def aggregate_wrench6_metrics(per_episode):
+    """Compatibility entry point retaining the six-axis-only contract."""
+    if any(row.get("force_representation") != "end_effector_wrench6" for row in per_episode.values()):
+        raise ValueError("mixed force representations in episode evaluation")
+    return aggregate_sensor_force_metrics(per_episode)

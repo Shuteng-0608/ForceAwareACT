@@ -47,15 +47,15 @@ class RawEpisode:
         self.diagnostics = {"timestamp_key": self.config.timestamp_key, "streams": {}}
         with h5py.File(self.path, "r") as handle:
             schema = self.config.raw_schema_version
-            wrench6 = self.config.force_dim == 6
-            force_key = "observations/ee_wrench" if wrench6 else "observations/joint_external_torque"
+            sensor_wrench = self.config.uses_wrench_sensor
+            force_key = "observations/ee_wrench" if sensor_wrench else "observations/joint_external_torque"
             force_stream = self.config.force_timestamp_stream
-            force_topic = WRENCH_TOPIC if wrench6 else EXTERNAL_TORQUE_TOPIC
+            force_topic = WRENCH_TOPIC if sensor_wrench else EXTERNAL_TORQUE_TOPIC
             if _text(handle.attrs.get("schema_version", "")) != schema:
                 raise ValueError(f"{self.path}: unsupported raw schema; expected {schema}")
             if _text(handle.attrs.get("arm", "")) != "right":
                 raise ValueError("raw episode must explicitly identify the right arm")
-            expected_rep = "end_effector_wrench6" if wrench6 else "joint_external_torque"
+            expected_rep = "end_effector_wrench6" if sensor_wrench else "joint_external_torque"
             if _text(handle.attrs.get("force_representation", "")) != expected_rep:
                 raise ValueError(f"expected {expected_rep}")
             force = handle[force_key]
@@ -65,7 +65,7 @@ class RawEpisode:
                     raise ValueError(f"force {name} must be {expected!r}")
             if _text(handle["timestamps/" + force_stream].attrs.get("source_topic", "")) != force_topic:
                 raise ValueError("force timestamps must originate from the selected force topic")
-            if wrench6:
+            if sensor_wrench:
                 axes = tuple(_text(x) for x in handle["metadata/ee_wrench_axes"][...])
                 if axes != WRENCH_AXES:
                     raise ValueError("ee_wrench axes must be Fx/Fy/Fz/Tx/Ty/Tz")
@@ -128,16 +128,20 @@ class RawEpisode:
                     unit = _text(handle[key].attrs["unit"])
                     if unit not in allowed_units[key]:
                         raise ValueError(f"{key}: unit {unit!r} contradicts the real-robot data contract")
-                values = np.asarray(handle[key][...], dtype=np.float64)
-                dimension = 6 if wrench6 and key == force_key else 7
-                if values.shape != (len(self.timestamps[stream]), dimension):
+                dimension = 6 if sensor_wrench and key == force_key else 7
+                if handle[key].shape != (len(self.timestamps[stream]), dimension):
                     raise ValueError(f"{key}: expected independent stream shape [N_{stream}, {dimension}]")
+                # Validate the six-axis source schema, but read only the selected channels.
+                # Unused moments cannot affect force3 normalization, masks or model inputs.
+                selected = (handle[key][:, :self.config.force_dim] if sensor_wrench and key == force_key
+                            else handle[key][...])
+                values = np.asarray(selected, dtype=np.float64)
                 if not np.isfinite(values).all():
                     raise ValueError(f"{key}: non-finite raw measurements require explicit quality review")
                 numeric[key] = values
             self.qpos = numeric["observations/joint_pos"]
             self.qvel = numeric["observations/joint_vel"]  # retained for audit; never a model input
-            # Historical attribute name; for raw_v3 this is exclusively measured wrench6.
+            # Historical attribute name; raw_v3 contains only the selected sensor channels.
             self.torque = numeric[force_key]
             self.action = numeric["action"]
             for camera in self.config.camera_names:
@@ -189,7 +193,7 @@ class RawEpisode:
         reasons = {"missing_current_action": 0, "stale_or_missing_state": 0,
                    "stale_or_missing_camera": 0, "empty_torque_history": 0}
         valid = []
-        force_valid = (self.force.valid_samples if self.config.force_dim == 3
+        force_valid = (self.force.valid_samples if self.config.force_representation == "flange_force3"
                        else np.ones(len(self.torque), dtype=np.bool_))
         force_prefix = np.r_[0, np.cumsum(force_valid)]
         for index, anchor in enumerate(self.anchor_timestamps_ns):

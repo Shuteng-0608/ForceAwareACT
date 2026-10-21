@@ -1,0 +1,249 @@
+{
+  "version": "sensor_force3_ablation_v1",
+  "date": "2026-10-21",
+  "branch": "codex/ee-force3-raw-v3",
+  "base_commit": "321550bc7b7e47fa71cd3e52c847f6fe9f6b51dc",
+  "baseline_recipe": "configs/experiments/1mm_x14y08_55_wrench6_v1/preparation_summary.json",
+  "data_root": "/home/stw/Downloads/1mm-x14y08_hdf5_raw_v3",
+  "data_config": "configs/real_robot/right_arm_sensor_force3.json",
+  "data_contract": {
+    "sampling_version": "right_arm_available_clock_100hz_torque300hz_phase_v2",
+    "raw_schema_version": "real_robot_right_arm_raw_v3",
+    "contact_representation": "end_effector_force3",
+    "force_source_topic": "/io_teleop/right/ft_sensor",
+    "force_source_field": "effort",
+    "force_timestamp_stream": "ft_sensor",
+    "gravity_compensation": "applied_upstream",
+    "internal_torque_input": false,
+    "qvel_input": false,
+    "qpos_unit": "rad",
+    "action_unit": "rad",
+    "joint_names": [
+      "Joint1_R",
+      "Joint2_R",
+      "Joint3_R",
+      "Joint4_R",
+      "Joint5_R",
+      "Joint6_R",
+      "Joint7_R"
+    ],
+    "camera_names": [
+      "d455",
+      "d405"
+    ],
+    "image_preprocessing": "RGB uint8 / 255; bilinear antialias resize to model dimensions; optional ImageNet normalization from model config",
+    "synthetic_terminal_hold": false,
+    "input_clock_semantics": "recorder availability proxy; headers are diagnostics only",
+    "config": {
+      "timestamp_key": "log_ns",
+      "action_rate_hz": 100,
+      "action_grid_phase_mode": "circular_mean_initial_window",
+      "action_grid_phase_window_s": 2.0,
+      "torque_rate_hz": 300,
+      "history_duration_s": 0.2,
+      "camera_names": [
+        "d455",
+        "d405"
+      ],
+      "joint_names": [
+        "Joint1_R",
+        "Joint2_R",
+        "Joint3_R",
+        "Joint4_R",
+        "Joint5_R",
+        "Joint6_R",
+        "Joint7_R"
+      ],
+      "image_height": 480,
+      "image_width": 640,
+      "state_max_age_ms": 20.0,
+      "camera_max_age_ms": 100.0,
+      "action_match_tolerance_ms": 5.0,
+      "torque_match_tolerance_ms": 1.666666,
+      "max_samples_per_interval": 8,
+      "force_representation": "end_effector_force3",
+      "wrench_component_units": [
+        "N",
+        "N",
+        "N"
+      ],
+      "wrench_frame": "right_ft_measurement",
+      "force_std_floor": [
+        0.01,
+        0.01,
+        0.01
+      ]
+    },
+    "force_dim": 3,
+    "primary_force_dataset": "observations/ee_wrench",
+    "force_axes": [
+      "Fx",
+      "Fy",
+      "Fz"
+    ],
+    "force_component_units": [
+      "N",
+      "N",
+      "N"
+    ],
+    "force_coordinate_frame": "right_ft_measurement",
+    "force_reference_point": "sensor measurement reference; no spatial transform applied",
+    "force_units_provenance": "explicit training configuration; raw source_native metadata retained",
+    "normalization_policy": "training native samples once; per-axis z-score with configured floors; no clipping",
+    "additional_gravity_compensation": false,
+    "force_unit": "N",
+    "source_force_axes": [
+      "Fx",
+      "Fy",
+      "Fz",
+      "Tx",
+      "Ty",
+      "Tz"
+    ],
+    "source_force_component_units": [
+      "N",
+      "N",
+      "N",
+      "N*m",
+      "N*m",
+      "N*m"
+    ],
+    "force_channel_indices": [
+      0,
+      1,
+      2
+    ],
+    "channel_selection": "observations/ee_wrench[:, :3]; before normalization and encoding",
+    "moment_input": false,
+    "moment_target": false
+  },
+  "split": "configs/datasets/1mm_x14y08_55_wrench6_v1/split.json",
+  "split_sha256": "0caf95dc0c14d2c13f5d95a8076459d5fb807ff2d70763df7b9c6ff756d0ebba",
+  "split_counts": {
+    "train": 40,
+    "validation": 10,
+    "test": 5
+  },
+  "normalization_source": "training recordings only; native selected samples once",
+  "normalization_matches_wrench6_force_channels": true,
+  "normalization": {
+    "qpos_mean": [
+      -1.4779362678527832,
+      -1.3874324560165405,
+      1.5034154653549194,
+      -1.420663833618164,
+      0.1897859275341034,
+      -0.06996707618236542,
+      -0.03512604534626007
+    ],
+    "qpos_std": [
+      0.20025533437728882,
+      0.06650549173355103,
+      0.07726994156837463,
+      0.22895561158657074,
+      0.08033404499292374,
+      0.03750388324260712,
+      0.04909307137131691
+    ],
+    "action_mean": [
+      -1.4756237268447876,
+      -1.3877750635147095,
+      1.5019490718841553,
+      -1.4190140962600708,
+      0.18990173935890198,
+      -0.07046095281839371,
+      -0.03451770544052124
+    ],
+    "action_std": [
+      0.1998901069164276,
+      0.06603654474020004,
+      0.07772407680749893,
+      0.2282339185476303,
+      0.0801696702837944,
+      0.037329480051994324,
+      0.04902629926800728
+    ],
+    "force_mean": [
+      0.5170607566833496,
+      0.1106552928686142,
+      -2.1973886489868164
+    ],
+    "force_std": [
+      2.19966459274292,
+      1.37911057472229,
+      7.803275108337402
+    ],
+    "minimum_std": 0.01
+  },
+  "force_std_floor": [
+    0.01,
+    0.01,
+    0.01
+  ],
+  "floor_active_axes": [
+    false,
+    false,
+    false
+  ],
+  "floor_policy": "numerical guards; not calibrated noise thresholds",
+  "filtering": false,
+  "clipping": false,
+  "additional_bias_subtraction": false,
+  "model_kinds": [
+    "contact",
+    "motion"
+  ],
+  "model_reuse": "existing force_dim=3 encoders, pooling and prediction heads; no architecture module changes",
+  "action_steps": 20,
+  "force_prediction_steps": 20,
+  "history_duration_s": 0.2,
+  "force_dim": 3,
+  "history_and_highrate_shape": [
+    "B",
+    20,
+    8,
+    3
+  ],
+  "endpoint_shape": [
+    "B",
+    20,
+    3
+  ],
+  "action_shape": [
+    "B",
+    20,
+    7
+  ],
+  "optimization": "configs/experiments/1mm_x14y08_55_sensor_force3_v1/optimization.json",
+  "loss_coefficient_policy": {
+    "endpoint": 0.5,
+    "interval": 0.25,
+    "reason": "Preserve coefficients of the force XYZ group in the six-channel reference (endpoint 1.0/2; interval 0.5/2). Moment supervision removed.",
+    "gradient_equivalence_claim": false,
+    "moment_input": false,
+    "moment_target": false
+  },
+  "alignment_verification": {
+    "recordings": 55,
+    "all_native_force_channels_and_time_mappings_equal": true,
+    "packed_window_probes": 165,
+    "all_probe_values_times_masks_equal": true
+  },
+  "processing_record": "outputs/1mm_x14y08_55_sensor_force3_v1/preparation/preparation.json",
+  "source_identity_policy": "source MCAP hashes checked against split; file size/mtime preserved during preparation; full HDF5 SHA256 checked in bounded training verification",
+  "formal_training_started": false,
+  "deployment_scope": "training and offline evaluation only; sensor frame retained; live robot adapter not changed",
+  "train_sampling_mode": "episodic_uniform",
+  "batch_size": 8,
+  "seed": 0,
+  "steps_per_epoch": 5,
+  "validation_interval_updates": 250,
+  "validation_interval_epochs": 50,
+  "validation_anchor_stride": 10,
+  "max_sampling_epochs": 20000,
+  "minimum_sampling_epochs": 3000,
+  "early_stop_patience_checks": 20,
+  "early_stop_min_relative_improvement": 0.001,
+  "selection_metric": "episode_macro_action_mae_rad",
+  "evaluation_latent": "zero"
+}

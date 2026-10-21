@@ -17,7 +17,7 @@ def compute_real_robot_normalization_stats(data_root, episodes, config=None, *, 
         episode = RawEpisode(record.resolve(data_root), config)
         for accumulator, values in zip(accumulators[:2], (episode.qpos, episode.action)):
             accumulator.update(values)
-        if config.force_dim == 3:
+        if config.force_representation == "flange_force3":
             for start in range(0, len(episode.torque), 2048):
                 values, valid = episode.force.read(slice(start, start + 2048))
                 if valid.any():
@@ -28,7 +28,7 @@ def compute_real_robot_normalization_stats(data_root, episodes, config=None, *, 
     if not count:
         raise ValueError("normalization requires explicit training episodes")
     pairs = [accumulator.finalize(minimum_std) for accumulator in accumulators]
-    if config.force_dim == 6:
+    if config.uses_wrench_sensor:
         mean, std = accumulators[2].finalize(min(config.force_std_floor))
         pairs[2] = mean, np.maximum(std, np.asarray(config.force_std_floor))
     return NormalizationStats(

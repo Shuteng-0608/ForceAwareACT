@@ -140,8 +140,8 @@ def parser():
                         help="test: held-out full-network check, explicit budget up to 300 updates")
     result.add_argument("--model", choices=MODEL_KINDS, default="contact")
     result.add_argument("--data-config", type=Path)
-    result.add_argument("--force-representation", choices=("joint_torque7", "flange_force3", "end_effector_wrench6"),
-                        help="Select external joint torque, derived flange force3, or measured raw_v3 wrench6")
+    result.add_argument("--force-representation", choices=("joint_torque7", "flange_force3", "end_effector_wrench6", "end_effector_force3"),
+                        help="Select joint torque, derived flange force3, or raw_v3 sensor wrench6/force3")
     result.add_argument("--optimization-config", type=Path)
     result.add_argument("--split", type=Path, help="JSON with train_episode_ids and validation_episode_ids")
     result.add_argument("--resume", type=Path)
@@ -210,7 +210,7 @@ def main(argv=None):
     data_config = RealRobotDataConfig.from_dict(json.loads(args.data_config.read_text())) if args.data_config else RealRobotDataConfig()
     if args.force_representation is not None:
         data_config = replace(data_config, force_representation=args.force_representation)
-    if args.model == "act" and data_config.force_dim == 3:
+    if args.model == "act" and data_config.force_representation == "flange_force3":
         raise ValueError("ACT has no force input; choose contact/motion/dual-zero for flange_force3")
     records = discover_real_robot_episodes(args.data_root, data_config)
     if not records:
@@ -355,7 +355,8 @@ def main(argv=None):
                                               normalization, device, args.batch_size)
             else:
                 evaluated = evaluate(args.model, model, validation_batches(
-                    evaluation_data, args.batch_size, max_windows=2 if args.mode == "smoke" else None), normalization, device)
+                    evaluation_data, args.batch_size, max_windows=2 if args.mode == "smoke" else None), normalization, device,
+                    force_representation=data_config.force_representation)
             validation_seconds += time.perf_counter() - tick
             # A same-recording smoke check is explicitly not a held-out estimate.
             row["held_out_validation" if validation_data is not None else "same_recording_smoke_check"] = evaluated

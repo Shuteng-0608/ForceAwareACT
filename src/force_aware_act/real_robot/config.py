@@ -38,16 +38,16 @@ class RealRobotDataConfig:
     force_std_floor: tuple[float, ...] | None = None
 
     def __post_init__(self):
-        if self.force_representation not in {"joint_torque7", "flange_force3", "end_effector_wrench6"}:
+        if self.force_representation not in {"joint_torque7", "flange_force3", "end_effector_wrench6", "end_effector_force3"}:
             raise ValueError("unsupported force_representation")
-        if self.force_representation == "end_effector_wrench6":
-            if self.wrench_component_units is None or tuple(self.wrench_component_units) != WRENCH_UNITS:
-                raise ValueError("wrench_component_units must explicitly confirm N/N*m in fixed axis order")
+        if self.uses_wrench_sensor:
+            if self.wrench_component_units is None or tuple(self.wrench_component_units) != WRENCH_UNITS[:self.force_dim]:
+                raise ValueError("wrench_component_units must explicitly confirm selected SI units in fixed axis order")
             if not isinstance(self.wrench_frame, str) or not self.wrench_frame.strip():
                 raise ValueError("wrench_frame must explicitly identify the measurement frame")
-            if (self.force_std_floor is None or len(self.force_std_floor) != 6
+            if (self.force_std_floor is None or len(self.force_std_floor) != self.force_dim
                     or any(isinstance(v, bool) or not math.isfinite(v) or v <= 0 for v in self.force_std_floor)):
-                raise ValueError("force_std_floor requires six finite positive per-axis values")
+                raise ValueError(f"force_std_floor requires {self.force_dim} finite positive per-axis values")
         elif any(v is not None for v in (self.wrench_component_units, self.wrench_frame, self.force_std_floor)):
             raise ValueError("wrench-only configuration on a legacy force representation")
         if self.timestamp_key != "log_ns":
@@ -87,15 +87,20 @@ class RealRobotDataConfig:
 
     @property
     def force_dim(self):
-        return {"flange_force3": 3, "joint_torque7": 7, "end_effector_wrench6": 6}[self.force_representation]
+        return {"flange_force3": 3, "joint_torque7": 7, "end_effector_wrench6": 6,
+                "end_effector_force3": 3}[self.force_representation]
+
+    @property
+    def uses_wrench_sensor(self):
+        return self.force_representation in {"end_effector_wrench6", "end_effector_force3"}
 
     @property
     def raw_schema_version(self):
-        return WRENCH_SCHEMA_VERSION if self.force_dim == 6 else RAW_SCHEMA_VERSION
+        return WRENCH_SCHEMA_VERSION if self.uses_wrench_sensor else RAW_SCHEMA_VERSION
 
     @property
     def force_timestamp_stream(self):
-        return "ft_sensor" if self.force_dim == 6 else "disturbance"
+        return "ft_sensor" if self.uses_wrench_sensor else "disturbance"
 
     @property
     def action_period_ns(self):
@@ -162,15 +167,21 @@ class RealRobotDataConfig:
             result.update(contact_representation="flange_force3", force_unit="N",
                           force_dim=3, force_conversion=conversion_contract(),
                           input_clock_semantics="recorder availability proxy; exact header identity pairs source frames; force available at max(source log times)")
-        if self.force_dim == 6:
+        if self.uses_wrench_sensor:
             result.update(raw_schema_version=WRENCH_SCHEMA_VERSION,
-                          contact_representation="end_effector_wrench6", force_dim=6,
+                          contact_representation=self.force_representation, force_dim=self.force_dim,
                           primary_force_dataset="observations/ee_wrench", force_source_topic=WRENCH_TOPIC,
                           force_timestamp_stream="ft_sensor", gravity_compensation="applied_upstream",
-                          force_axes=WRENCH_AXES, force_component_units=WRENCH_UNITS,
+                          force_axes=WRENCH_AXES[:self.force_dim], force_component_units=WRENCH_UNITS[:self.force_dim],
                           force_coordinate_frame=self.wrench_frame,
                           force_reference_point="sensor measurement reference; no spatial transform applied",
                           force_units_provenance="explicit training configuration; raw source_native metadata retained",
                           normalization_policy="training native samples once; per-axis z-score with configured floors; no clipping",
                           additional_gravity_compensation=False)
+            if self.force_representation == "end_effector_force3":
+                result.pop("torque_unit")
+                result.update(force_unit="N", source_force_axes=WRENCH_AXES,
+                              source_force_component_units=WRENCH_UNITS, force_channel_indices=(0, 1, 2),
+                              channel_selection="observations/ee_wrench[:, :3]; before normalization and encoding",
+                              moment_input=False, moment_target=False)
         return result

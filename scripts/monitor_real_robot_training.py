@@ -303,6 +303,7 @@ def build_report(run_dir, reader, rate, *, now=None, processes=None, include_gpu
             "early_stopping_state": stopping,
             "force_source": manifest.get("data_contract", {}).get("force_source_topic"),
             "force_representation": manifest.get("data_config", {}).get("force_representation", "joint_torque7"),
+            "force_coordinate_frame": manifest.get("data_contract", {}).get("force_coordinate_frame"),
             "checkpoints": {n: checkpoint_info(run_dir / n, now) for n in ("best.pt", "last.pt")},
             "gpus": gpu_snapshot(process["pid"] if process else None) if include_gpu else [],
             "warnings": warnings})
@@ -334,7 +335,7 @@ def render_report(report):
              f"最近{report['recent_window_rows']}步均值 / 最新值："]
     labels = {"loss_total": "总损失", "loss_action": "动作L1", "loss_force": "力矩端点L1",
               "loss_force_highrate": "高频力矩L1", "loss_posterior_kl": "后验KL", "loss_prior_match": "先验匹配"}
-    if report.get("force_representation") == "flange_force3":
+    if report.get("force_representation") in ("flange_force3", "end_effector_force3"):
         labels.update(loss_force="三维力端点L1", loss_force_highrate="高频三维力L1")
     if report.get("force_representation") == "end_effector_wrench6":
         labels.update(loss_force="六维端点L1", loss_force_highrate="六维区间L1",
@@ -360,6 +361,13 @@ def render_report(report):
     lines.append("外力来源：" + str(report["force_source"] or "—"))
     if report.get("force_representation") == "flange_force3":
         lines.append("力表示：法兰坐标系 Fx/Fy/Fz；物理指标单位 N")
+    if report.get("force_representation") == "end_effector_force3":
+        lines.append("力表示：传感器 Fx/Fy/Fz；坐标系 " + str(report.get("force_coordinate_frame") or "—") +
+                     "；训练L1为无量纲；物理指标单位 N")
+        val = report.get("validation", {})
+        for label, suffix in (("区间", ""), ("端点", "_endpoint")):
+            force = val.get(f"episode_macro_force{suffix}_mae_n", val.get(f"force{suffix}_mae_n"))
+            lines.append(f"  验证{label}：力 {fmt(force, 5)} N")
     if report.get("force_representation") == "end_effector_wrench6":
         lines.append("力表示：传感器 Fx/Fy/Fz/Tx/Ty/Tz；训练L1为无量纲；物理误差分别为N和N·m")
         val = report.get("validation", {})
