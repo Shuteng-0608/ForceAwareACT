@@ -13,6 +13,7 @@ WRENCH_AXES = ("Fx", "Fy", "Fz", "Tx", "Ty", "Tz")
 WRENCH_UNITS = ("N", "N", "N", "N*m", "N*m", "N*m")
 LEGACY_REAL_ROBOT_SAMPLING_VERSION = "right_arm_available_clock_100hz_torque300hz_v1"
 REAL_ROBOT_SAMPLING_VERSION = "right_arm_available_clock_100hz_torque300hz_phase_v2"
+INDEPENDENT_HISTORY_SAMPLING_VERSION = "right_arm_available_clock_100hz_torque300hz_history_v3"
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,9 @@ class RealRobotDataConfig:
     action_match_tolerance_ms: float = 5.0
     torque_match_tolerance_ms: float = 1.666666
     max_samples_per_interval: int = 8
+    # None retains the original action-period grouping and shared capacity.
+    history_interval_ms: int | None = None
+    history_max_samples_per_interval: int | None = None
     force_representation: str = "joint_torque7"
     wrench_component_units: tuple[str, ...] | None = None
     wrench_frame: str | None = None
@@ -70,6 +74,12 @@ class RealRobotDataConfig:
                 raise ValueError(f"{name} must be a positive integer")
         if self.max_samples_per_interval < self.samples_per_action:
             raise ValueError("sample capacity must include all three future torque slots")
+        for name in ("history_interval_ms", "history_max_samples_per_interval"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value <= 0):
+                raise ValueError(f"{name} must be a positive integer or None")
+        if self.history_sample_capacity < math.ceil(self.history_period_ns * self.torque_rate_hz / 1e9):
+            raise ValueError("history sample capacity must cover the nominal samples per interval")
         for name in ("history_duration_s", "state_max_age_ms", "camera_max_age_ms",
                      "action_match_tolerance_ms", "torque_match_tolerance_ms"):
             value = getattr(self, name)
@@ -78,8 +88,9 @@ class RealRobotDataConfig:
         if not math.isclose(self.history_duration_s * self.action_rate_hz,
                             round(self.history_duration_s * self.action_rate_hz), abs_tol=1e-8):
             raise ValueError("history duration must contain a whole number of action intervals")
-        if self.history_intervals < 1:
-            raise ValueError("history duration must include at least one action interval")
+        history_count = self.history_duration_s * 1e9 / self.history_period_ns
+        if self.history_intervals < 1 or not math.isclose(history_count, self.history_intervals, abs_tol=1e-8):
+            raise ValueError("history duration must contain a whole number of history intervals")
         if self.action_match_tolerance_ms * 1e6 > self.action_period_ns / 2:
             raise ValueError("action tolerance must not exceed half an action period")
         if self.torque_match_tolerance_ms * 1e6 > 1e9 / self.torque_rate_hz / 2:
@@ -108,7 +119,15 @@ class RealRobotDataConfig:
 
     @property
     def history_intervals(self):
-        return round(self.history_duration_s * self.action_rate_hz)
+        return round(self.history_duration_s * 1e9 / self.history_period_ns)
+
+    @property
+    def history_period_ns(self):
+        return self.action_period_ns if self.history_interval_ms is None else self.history_interval_ms * 1_000_000
+
+    @property
+    def history_sample_capacity(self):
+        return self.max_samples_per_interval if self.history_max_samples_per_interval is None else self.history_max_samples_per_interval
 
     @property
     def samples_per_action(self):
@@ -124,7 +143,8 @@ class RealRobotDataConfig:
 
     def to_dict(self):
         values = asdict(self)
-        for name in ("wrench_component_units", "wrench_frame", "force_std_floor"):
+        for name in ("wrench_component_units", "wrench_frame", "force_std_floor",
+                     "history_interval_ms", "history_max_samples_per_interval"):
             if values[name] is None:
                 values.pop(name)
         if self.force_representation == "joint_torque7":
@@ -162,6 +182,13 @@ class RealRobotDataConfig:
                 "synthetic_terminal_hold": False,
                 "input_clock_semantics": "recorder availability proxy; headers are diagnostics only",
                 "config": self.to_dict()}
+        if self.history_interval_ms is not None or self.history_max_samples_per_interval is not None:
+            result.update(sampling_version=INDEPENDENT_HISTORY_SAMPLING_VERSION,
+                          history_packing={"duration_s": self.history_duration_s,
+                              "interval_ns": self.history_period_ns, "interval_count": self.history_intervals,
+                              "sample_capacity": self.history_sample_capacity,
+                              "boundary": "(left,right]", "samples": "all_native_available_samples",
+                              "overflow": "error_no_truncation"})
         if self.force_representation == "flange_force3":
             from .flange_force import conversion_contract
             result.update(contact_representation="flange_force3", force_unit="N",

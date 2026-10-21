@@ -44,14 +44,15 @@ class ACTAlignedHighRateBatch:
         f = config.force_prediction_len
         h = config.max_online_force_intervals
         s = config.max_force_samples_per_interval
+        online_s = config.online_force_sample_capacity
         expected = {
             "images": (b, config.num_cameras, 3, config.image_height, config.image_width),
             "qpos": (b, config.q_dim),
             "action_chunk": (b, k, config.action_dim),
             "action_padding_mask": (b, k),
-            "online_force_intervals": (b, h, s, config.force_dim),
-            "online_force_relative_time": (b, h, s),
-            "online_force_sample_padding_mask": (b, h, s),
+            "online_force_intervals": (b, h, online_s, config.force_dim),
+            "online_force_relative_time": (b, h, online_s),
+            "online_force_sample_padding_mask": (b, h, online_s),
             "online_force_interval_padding_mask": (b, h),
             "future_force_intervals": (b, f, s, config.force_dim),
             "future_force_relative_time": (b, f, s),

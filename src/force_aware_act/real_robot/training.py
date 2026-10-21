@@ -72,8 +72,11 @@ def make_model_config(kind, data_config, *, compact=False, chunk_len=100, pretra
         force_dim=data_config.force_dim, force_sample_rate_hz=data_config.torque_rate_hz,
         policy_sample_rate_hz=data_config.action_rate_hz,
         online_force_window_len=round(data_config.history_duration_s * data_config.torque_rate_hz),
-        max_online_force_intervals=round(data_config.history_duration_s * data_config.action_rate_hz),
+        max_online_force_intervals=data_config.history_intervals,
         max_force_samples_per_interval=data_config.max_samples_per_interval,
+        max_online_force_samples_per_interval=data_config.history_max_samples_per_interval,
+        online_force_interval_duration_s=(data_config.history_period_ns / 1e9
+                                         if data_config.history_interval_ms is not None else None),
     )
     if compact:
         values.update(local_force_dim=16, local_force_encoder_layers=1)

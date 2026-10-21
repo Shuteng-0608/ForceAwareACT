@@ -91,7 +91,7 @@ class RealRobotObservationBuffer:
                             ("image_capacity", image_capacity)):
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
-        if state_capacity < config.history_intervals * config.max_samples_per_interval:
+        if state_capacity < config.history_intervals * config.history_sample_capacity:
             raise ValueError("state_capacity cannot truncate a full configured history window")
         self.config = config
         self._states: deque[_StateMessage] = deque(maxlen=state_capacity)
@@ -295,6 +295,10 @@ class RealRobotPolicyAdapter:
                 raise ValueError("model nominal history sample count differs from the data contract")
             if config.max_force_samples_per_interval != self.data_config.max_samples_per_interval:
                 raise ValueError("model interval capacity differs from the data contract")
+            if config.online_force_sample_capacity != self.data_config.history_sample_capacity:
+                raise ValueError("model online capacity differs from the data contract")
+            if round(config.online_force_interval_s * 1e9) != self.data_config.history_period_ns:
+                raise ValueError("model history interval duration differs from the data contract")
         for prefix, dimension in dimensions.items():
             for suffix in ("mean", "std"):
                 values = np.asarray(self.normalization.get(f"{prefix}_{suffix}"), dtype=np.float64)

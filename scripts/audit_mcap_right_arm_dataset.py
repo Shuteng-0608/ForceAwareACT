@@ -118,13 +118,12 @@ def alignment_metrics(times, config):
         reasons[reason] = int((remaining & ~ok).sum())
         remaining &= ok
     valid = np.flatnonzero(remaining)
-    edges = (int(anchors[0])-round(config.history_duration_s*1e9)
-             + np.arange(len(anchors)+config.history_intervals, dtype=np.int64)*config.action_period_ns)
+    edges = (anchors[:, None] - config.history_intervals * config.history_period_ns
+             + np.arange(config.history_intervals + 1, dtype=np.int64) * config.history_period_ns)
     bin_counts = np.diff(np.searchsorted(force_times, edges, side="right"))
-    windows = np.lib.stride_tricks.sliding_window_view(bin_counts, config.history_intervals)
-    maximum = int(windows[valid].max()) if len(valid) else 0
-    if maximum > config.max_samples_per_interval:
-        raise ValueError(f"torque history capacity exceeded: {maximum}>{config.max_samples_per_interval}")
+    maximum = int(bin_counts[valid].max()) if len(valid) else 0
+    if maximum > config.history_sample_capacity:
+        raise ValueError(f"torque history capacity exceeded: {maximum}>{config.history_sample_capacity}")
     force_slots, force_targets = future_torque_slot_indices(
         force_times, int(anchors[0]), len(anchors), config)
     selected = force_slots[valid]

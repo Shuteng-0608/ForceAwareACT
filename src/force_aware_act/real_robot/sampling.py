@@ -76,17 +76,17 @@ def _read_force(values, indices, dimension):
 def pack_torque_history(timestamps_ns, values, anchor_ns, config: RealRobotDataConfig):
     """Keep every actual sample in (anchor-duration, anchor], including real gaps."""
     times = np.asarray(timestamps_ns, dtype=np.int64)
-    n, capacity = config.history_intervals, config.max_samples_per_interval
+    n, capacity = config.history_intervals, config.history_sample_capacity
     packed = np.zeros((n, capacity, config.force_dim), dtype=np.float32)
     relative = np.zeros((n, capacity), dtype=np.float32)
     mask = np.ones((n, capacity), dtype=np.bool_)
     counts = np.zeros(n, dtype=np.int64)
-    start = int(anchor_ns) - n * config.action_period_ns
+    start = int(anchor_ns) - n * config.history_period_ns
     begin, end = np.searchsorted(times, [start, int(anchor_ns)], side="right")
     selected, selected_valid = _read_force(values, slice(begin, end), config.force_dim)
     for interval in range(n):
-        left = start + interval * config.action_period_ns
-        right = left + config.action_period_ns
+        left = start + interval * config.history_period_ns
+        right = left + config.history_period_ns
         lo = int(np.searchsorted(times, left, side="right"))
         hi = int(np.searchsorted(times, right, side="right"))
         count = hi - lo

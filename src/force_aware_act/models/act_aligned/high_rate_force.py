@@ -75,6 +75,8 @@ class ACTAlignedHighRateForceEncoder(nn.Module):
         relative_times: torch.Tensor,
         sample_padding_mask: torch.Tensor,
         interval_padding_mask: torch.Tensor,
+        *,
+        sample_capacity: int | None = None,
     ) -> torch.Tensor:
         """Return tokens with shape ``[B, interval_count, d_model]``."""
 
@@ -83,6 +85,7 @@ class ACTAlignedHighRateForceEncoder(nn.Module):
             relative_times,
             sample_padding_mask,
             interval_padding_mask,
+            sample_capacity=sample_capacity,
         )
         batch_size, interval_count, sample_count, _ = force_intervals.shape
         flat_force = force_intervals.reshape(
@@ -159,13 +162,17 @@ class ACTAlignedHighRateForceEncoder(nn.Module):
         relative_times: torch.Tensor,
         sample_padding_mask: torch.Tensor,
         interval_padding_mask: torch.Tensor,
+        *,
+        sample_capacity: int | None = None,
     ) -> None:
         if not isinstance(force_intervals, torch.Tensor):
             raise TypeError("force_intervals must be a torch.Tensor")
-        expected_suffix = (
-            self.config.max_force_samples_per_interval,
-            self.config.force_dim,
-        )
+        capacity = self.config.max_force_samples_per_interval if sample_capacity is None else sample_capacity
+        if type(capacity) is not int or capacity not in {
+            self.config.max_force_samples_per_interval, self.config.online_force_sample_capacity
+        }:
+            raise ValueError("sample capacity must match an online or future force contract")
+        expected_suffix = (capacity, self.config.force_dim)
         if force_intervals.ndim != 4 or tuple(force_intervals.shape[-2:]) != expected_suffix:
             raise ValueError(
                 "force_intervals must have shape "

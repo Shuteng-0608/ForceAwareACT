@@ -48,6 +48,10 @@ class RealRobotHighRateDataset(Dataset):
             raise ValueError("model history interval count does not match real time duration")
         if model_config.max_force_samples_per_interval != self.data_config.max_samples_per_interval:
             raise ValueError("model force sample capacity does not match data contract")
+        if model_config.online_force_sample_capacity != self.data_config.history_sample_capacity:
+            raise ValueError("model online sample capacity does not match data contract")
+        if round(model_config.online_force_interval_s * 1e9) != self.data_config.history_period_ns:
+            raise ValueError("model history interval duration does not match data contract")
         if model_config.force_sample_rate_hz != self.data_config.torque_rate_hz:
             raise ValueError("model force sample rate does not match 300 Hz data contract")
         if model_config.policy_sample_rate_hz != self.data_config.action_rate_hz:
@@ -124,6 +128,10 @@ class RealRobotHighRateDataset(Dataset):
                 "observation": episode.observation_trace(anchor), "action": action_trace,
                 ("future_force" if self.data_config.force_dim in (3, 6) else "future_torque"): force_trace,
                 "history_actual_sample_count": history.valid_sample_count,
+                "history_interval_ns": self.data_config.history_period_ns,
+                "history_interval_count": self.data_config.history_intervals,
+                "history_sample_capacity": self.data_config.history_sample_capacity,
+                "history_sample_counts": history.sample_counts.tolist(),
                 "force_source_topic": episode.provenance["force_source_topic"],
                 "force_timestamp_stream": self.data_config.force_timestamp_stream,
                 "qpos_unit": "rad", "action_unit": "rad",

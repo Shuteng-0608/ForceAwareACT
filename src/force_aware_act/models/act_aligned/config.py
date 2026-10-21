@@ -293,6 +293,9 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
     online_force_window_len: int = 100
     max_force_samples_per_interval: int = 20
     max_online_force_intervals: int = 7
+    # Online history may have wider intervals; future heads retain their capacity.
+    max_online_force_samples_per_interval: int | None = None
+    online_force_interval_duration_s: float | None = None
     local_force_dim: int = 128
     local_force_encoder_layers: int = 4
 
@@ -330,6 +333,28 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
             )
         if self.local_force_dim % 2 != 0:
             raise ValueError("local_force_dim must be even for time encoding")
+        capacity = self.max_online_force_samples_per_interval
+        if capacity is not None and (type(capacity) is not int or capacity <= 0):
+            raise ValueError("max_online_force_samples_per_interval must be a positive integer or None")
+        duration = self.online_force_interval_duration_s
+        if duration is not None:
+            if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
+                raise ValueError("online_force_interval_duration_s must be finite and positive")
+            if not math.isclose(duration * self.max_online_force_intervals,
+                                self.online_force_window_len / self.force_sample_rate_hz):
+                raise ValueError("online interval duration/count must cover the nominal history window")
+            if self.online_force_sample_capacity < math.ceil(duration * self.force_sample_rate_hz):
+                raise ValueError("online sample capacity cannot hold the nominal history interval")
+
+    @property
+    def online_force_sample_capacity(self) -> int:
+        return (self.max_force_samples_per_interval if self.max_online_force_samples_per_interval is None
+                else self.max_online_force_samples_per_interval)
+
+    @property
+    def online_force_interval_s(self) -> float:
+        return (1.0 / self.policy_sample_rate_hz if self.online_force_interval_duration_s is None
+                else self.online_force_interval_duration_s)
 
     @property
     def bounds_force_source_timestamps(self) -> bool:
@@ -381,6 +406,8 @@ class ACTAlignedHighRateConfig(ACTAlignedConfig):
                     self.max_force_samples_per_interval
                 ),
                 "max_online_force_intervals": self.max_online_force_intervals,
+                "online_force_sample_capacity": self.online_force_sample_capacity,
+                "online_force_interval_s": self.online_force_interval_s,
                 "local_force_dim": self.local_force_dim,
                 "local_force_encoder_layers": self.local_force_encoder_layers,
                 "shared_local_force_encoder": True,
@@ -420,4 +447,8 @@ def canonical_model_config(values: dict) -> dict:
         result.setdefault("strict_force_horizon", False)
         if result.get("force_prediction_steps") is None:
             result["force_prediction_steps"] = result.get("chunk_len", 100)
+        if result.get("max_online_force_samples_per_interval") is None:
+            result["max_online_force_samples_per_interval"] = result.get("max_force_samples_per_interval", 20)
+        if result.get("online_force_interval_duration_s") is None:
+            result["online_force_interval_duration_s"] = 1.0 / result.get("policy_sample_rate_hz", 30.0)
     return result

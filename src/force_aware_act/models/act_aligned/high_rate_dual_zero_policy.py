@@ -156,6 +156,7 @@ class ACTAlignedHighRateDualZeroPolicy(nn.Module):
             relative_time,
             sample_padding_mask,
             interval_padding_mask,
+            sample_capacity=self.config.online_force_sample_capacity,
         )
         online_force = self.online_force_encoder(
             interval_tokens,

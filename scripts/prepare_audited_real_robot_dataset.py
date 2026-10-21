@@ -78,7 +78,10 @@ def validate_data_batches(output_root, records, stats, config):
         force_sample_rate_hz=config.torque_rate_hz, policy_sample_rate_hz=config.action_rate_hz,
         online_force_window_len=round(config.history_duration_s*config.torque_rate_hz),
         max_online_force_intervals=config.history_intervals,
-        max_force_samples_per_interval=config.max_samples_per_interval)
+        max_force_samples_per_interval=config.max_samples_per_interval,
+        max_online_force_samples_per_interval=config.history_max_samples_per_interval,
+        online_force_interval_duration_s=(config.history_period_ns / 1e9
+                                         if config.history_interval_ms is not None else None))
     dataset = RealRobotHighRateDataset(output_root, records, stats, model_config, config)
     offset = 0
     chosen = []
