@@ -219,3 +219,44 @@ def test_cli_json_is_readable_and_accepts_completed_run_without_torch(tmp_path, 
 def test_cli_rejects_invalid_polling_controls(option, value):
     with pytest.raises(SystemExit):
         _module().main([option, value])
+
+
+@pytest.mark.parametrize("representation", ["end_effector_force3", "end_effector_wrench6"])
+def test_multi_metric_monitor_displays_independent_patience_and_best_files(tmp_path, representation):
+    from force_aware_act.real_robot.multi_metric_control import MultiMetricController, validation_objectives
+    from force_aware_act.real_robot.training_control import EarlyStoppingConfig
+    m = _module()
+    run, reader = _fixture(tmp_path, m)
+    manifest_path = run / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    objectives = validation_objectives("contact", representation, "episode_macro_action_mae_rad")
+    manifest["run_config"]["validation_objectives"] = objectives
+    manifest["run_config"]["early_stopping_config"] = {"minimum_epochs": 0, "patience": 2,
+                                                         "minimum_relative_improvement": .001}
+    manifest["data_config"] = {"force_representation": representation}
+    manifest_path.write_text(json.dumps(manifest))
+    control = MultiMetricController(EarlyStoppingConfig(0, 2, .001), objectives)
+    rows = []
+    for epoch in (1, 2, 3):
+        force = 1 if epoch == 1 else .8
+        values = {"episode_macro_action_mae_rad": 1., "episode_macro_force_mae_n": force,
+                  "episode_macro_force_endpoint_mae_n": force,
+                  "episode_macro_moment_mae_nm": force, "episode_macro_moment_endpoint_mae_nm": force}
+        control.update(values, completed_epochs=epoch, step=epoch * 6)
+        row = _row(epoch * 6, 1.)
+        row.update(held_out_validation=values, early_stopping=control.state_dict(),
+                   validation_objective_values=dict(control.values),
+                   best_checkpoints={name: dict(best) for name, best in control.best.items()})
+        rows.append(row)
+    (run / "metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    (run / "best_force.pt").write_bytes(b"test checkpoint metadata only")
+    report = m.build_report(run, reader, m.WallRate(), processes=[_process(run)], include_gpu=False)
+    rendered = m.render_report(report)
+    assert "全部指标连续 2 次验证" in rendered
+    assert "未充分改善 2/2" in rendered and "未充分改善 1/2" in rendered
+    assert "端点2/3＋区间1/3" in rendered
+    assert report["best_checkpoints"]["force"]["step"] == 12
+    assert report["checkpoints"]["best_force.pt"]["exists"]
+    assert ("best_moment.pt" in report["checkpoints"]) == (representation == "end_effector_wrench6")
+    assert ("三维力矩综合MAE" in rendered) == (representation == "end_effector_wrench6")
+    assert not report["early_stopping_state"]["stopped"]

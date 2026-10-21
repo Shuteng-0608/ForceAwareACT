@@ -1,0 +1,2115 @@
+{
+  "source": "4090 raw_v3 wrench6 completed runs, 2026-10-21",
+  "selection_metric": "episode_macro_action_mae_rad",
+  "models": {
+    "contact": [
+      {
+        "step": 250,
+        "epoch": 50,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.014220307454449424,
+          "episode_macro_force_endpoint_mae_n": 0.9614994310665136,
+          "episode_macro_force_mae_n": 1.046725986524001,
+          "episode_macro_moment_endpoint_mae_nm": 0.046672387832231606,
+          "episode_macro_moment_mae_nm": 0.04892891360038127
+        }
+      },
+      {
+        "step": 500,
+        "epoch": 100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.008061548667665971,
+          "episode_macro_force_endpoint_mae_n": 0.7970475302364929,
+          "episode_macro_force_mae_n": 0.8064509861771565,
+          "episode_macro_moment_endpoint_mae_nm": 0.037427431732177094,
+          "episode_macro_moment_mae_nm": 0.036140678134292795
+        }
+      },
+      {
+        "step": 750,
+        "epoch": 150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0069323729808971595,
+          "episode_macro_force_endpoint_mae_n": 0.7475872240943683,
+          "episode_macro_force_mae_n": 0.7067550783336516,
+          "episode_macro_moment_endpoint_mae_nm": 0.03538713277421984,
+          "episode_macro_moment_mae_nm": 0.03498487668443193
+        }
+      },
+      {
+        "step": 1000,
+        "epoch": 200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007011937737198805,
+          "episode_macro_force_endpoint_mae_n": 0.7362097825918457,
+          "episode_macro_force_mae_n": 0.73696092962839,
+          "episode_macro_moment_endpoint_mae_nm": 0.032211201632880694,
+          "episode_macro_moment_mae_nm": 0.034025210232781766
+        }
+      },
+      {
+        "step": 1250,
+        "epoch": 250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.009553315897687913,
+          "episode_macro_force_endpoint_mae_n": 0.6357453007820419,
+          "episode_macro_force_mae_n": 0.6819381463728101,
+          "episode_macro_moment_endpoint_mae_nm": 0.03172926904918662,
+          "episode_macro_moment_mae_nm": 0.03240899677587137
+        }
+      },
+      {
+        "step": 1500,
+        "epoch": 300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006045034375527215,
+          "episode_macro_force_endpoint_mae_n": 0.6558331654013914,
+          "episode_macro_force_mae_n": 0.6710790368487846,
+          "episode_macro_moment_endpoint_mae_nm": 0.02962416320109823,
+          "episode_macro_moment_mae_nm": 0.030387508675666298
+        }
+      },
+      {
+        "step": 1750,
+        "epoch": 350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005779073936439434,
+          "episode_macro_force_endpoint_mae_n": 0.632705438154269,
+          "episode_macro_force_mae_n": 0.6315935376450572,
+          "episode_macro_moment_endpoint_mae_nm": 0.03203396663588506,
+          "episode_macro_moment_mae_nm": 0.03202219280005728
+        }
+      },
+      {
+        "step": 2000,
+        "epoch": 400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0051624247244690565,
+          "episode_macro_force_endpoint_mae_n": 0.561380411648078,
+          "episode_macro_force_mae_n": 0.6004924100828192,
+          "episode_macro_moment_endpoint_mae_nm": 0.030564012740310897,
+          "episode_macro_moment_mae_nm": 0.029929592757100144
+        }
+      },
+      {
+        "step": 2250,
+        "epoch": 450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005560513192255352,
+          "episode_macro_force_endpoint_mae_n": 0.6388703210483594,
+          "episode_macro_force_mae_n": 0.6280672352253476,
+          "episode_macro_moment_endpoint_mae_nm": 0.03041025229916423,
+          "episode_macro_moment_mae_nm": 0.03006659131181516
+        }
+      },
+      {
+        "step": 2500,
+        "epoch": 500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004639443797921628,
+          "episode_macro_force_endpoint_mae_n": 0.5938141507794517,
+          "episode_macro_force_mae_n": 0.5918905522258874,
+          "episode_macro_moment_endpoint_mae_nm": 0.027598054030395086,
+          "episode_macro_moment_mae_nm": 0.028589954616851022
+        }
+      },
+      {
+        "step": 2750,
+        "epoch": 550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00775166063841784,
+          "episode_macro_force_endpoint_mae_n": 0.6308062584584646,
+          "episode_macro_force_mae_n": 0.6454644128801631,
+          "episode_macro_moment_endpoint_mae_nm": 0.032946818293152665,
+          "episode_macro_moment_mae_nm": 0.0311280050178058
+        }
+      },
+      {
+        "step": 3000,
+        "epoch": 600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004771260330109386,
+          "episode_macro_force_endpoint_mae_n": 0.5540458843924927,
+          "episode_macro_force_mae_n": 0.6059519916777483,
+          "episode_macro_moment_endpoint_mae_nm": 0.028189893429609942,
+          "episode_macro_moment_mae_nm": 0.027254174523777396
+        }
+      },
+      {
+        "step": 3250,
+        "epoch": 650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004683370819436454,
+          "episode_macro_force_endpoint_mae_n": 0.5961612490895453,
+          "episode_macro_force_mae_n": 0.612112249436613,
+          "episode_macro_moment_endpoint_mae_nm": 0.02795757237405394,
+          "episode_macro_moment_mae_nm": 0.028968895366752512
+        }
+      },
+      {
+        "step": 3500,
+        "epoch": 700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0050620405968134965,
+          "episode_macro_force_endpoint_mae_n": 0.623604513109449,
+          "episode_macro_force_mae_n": 0.5708167743978437,
+          "episode_macro_moment_endpoint_mae_nm": 0.027799818552360474,
+          "episode_macro_moment_mae_nm": 0.029048609042970373
+        }
+      },
+      {
+        "step": 3750,
+        "epoch": 750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004594969477170896,
+          "episode_macro_force_endpoint_mae_n": 0.6639851658858154,
+          "episode_macro_force_mae_n": 0.6475553093153882,
+          "episode_macro_moment_endpoint_mae_nm": 0.0264651422345691,
+          "episode_macro_moment_mae_nm": 0.030202088541833205
+        }
+      },
+      {
+        "step": 4000,
+        "epoch": 800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007324971694989026,
+          "episode_macro_force_endpoint_mae_n": 0.5554831862285765,
+          "episode_macro_force_mae_n": 0.6122002489645517,
+          "episode_macro_moment_endpoint_mae_nm": 0.027092832044899616,
+          "episode_macro_moment_mae_nm": 0.027649121118759463
+        }
+      },
+      {
+        "step": 4250,
+        "epoch": 850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004583066214808097,
+          "episode_macro_force_endpoint_mae_n": 0.5476455182304124,
+          "episode_macro_force_mae_n": 0.583807568684356,
+          "episode_macro_moment_endpoint_mae_nm": 0.028624528696322322,
+          "episode_macro_moment_mae_nm": 0.02871468685097205
+        }
+      },
+      {
+        "step": 4500,
+        "epoch": 900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004455684933456538,
+          "episode_macro_force_endpoint_mae_n": 0.5161787815723381,
+          "episode_macro_force_mae_n": 0.5167693968451083,
+          "episode_macro_moment_endpoint_mae_nm": 0.026487987171346462,
+          "episode_macro_moment_mae_nm": 0.026269747147236587
+        }
+      },
+      {
+        "step": 4750,
+        "epoch": 950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005245423105953375,
+          "episode_macro_force_endpoint_mae_n": 0.5863443295324883,
+          "episode_macro_force_mae_n": 0.5946698395502144,
+          "episode_macro_moment_endpoint_mae_nm": 0.029798161585836248,
+          "episode_macro_moment_mae_nm": 0.029330692289575716
+        }
+      },
+      {
+        "step": 5000,
+        "epoch": 1000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005132744446907327,
+          "episode_macro_force_endpoint_mae_n": 0.5715461886645297,
+          "episode_macro_force_mae_n": 0.582281757163958,
+          "episode_macro_moment_endpoint_mae_nm": 0.027947201068145,
+          "episode_macro_moment_mae_nm": 0.02813245173463495
+        }
+      },
+      {
+        "step": 5250,
+        "epoch": 1050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00779448791012533,
+          "episode_macro_force_endpoint_mae_n": 0.5473723359506677,
+          "episode_macro_force_mae_n": 0.5801025177920074,
+          "episode_macro_moment_endpoint_mae_nm": 0.026867064011693243,
+          "episode_macro_moment_mae_nm": 0.027008711895801722
+        }
+      },
+      {
+        "step": 5500,
+        "epoch": 1100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007379318928711543,
+          "episode_macro_force_endpoint_mae_n": 0.5295564142437778,
+          "episode_macro_force_mae_n": 0.5254605315783341,
+          "episode_macro_moment_endpoint_mae_nm": 0.0280928518366688,
+          "episode_macro_moment_mae_nm": 0.027949627407383788
+        }
+      },
+      {
+        "step": 5750,
+        "epoch": 1150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005852068444190879,
+          "episode_macro_force_endpoint_mae_n": 0.5825766799979835,
+          "episode_macro_force_mae_n": 0.6054579873714017,
+          "episode_macro_moment_endpoint_mae_nm": 0.03184656587250234,
+          "episode_macro_moment_mae_nm": 0.030609840680893768
+        }
+      },
+      {
+        "step": 6000,
+        "epoch": 1200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005605640801120029,
+          "episode_macro_force_endpoint_mae_n": 0.5513635066934199,
+          "episode_macro_force_mae_n": 0.5899154673984905,
+          "episode_macro_moment_endpoint_mae_nm": 0.029062839472739705,
+          "episode_macro_moment_mae_nm": 0.029140038236840936
+        }
+      },
+      {
+        "step": 6250,
+        "epoch": 1250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0049437887640043175,
+          "episode_macro_force_endpoint_mae_n": 0.514462013333148,
+          "episode_macro_force_mae_n": 0.5694371420726676,
+          "episode_macro_moment_endpoint_mae_nm": 0.028622132983729474,
+          "episode_macro_moment_mae_nm": 0.028431967786194313
+        }
+      },
+      {
+        "step": 6500,
+        "epoch": 1300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005745734710120789,
+          "episode_macro_force_endpoint_mae_n": 0.4989442317648002,
+          "episode_macro_force_mae_n": 0.5071197744548959,
+          "episode_macro_moment_endpoint_mae_nm": 0.026587603423243688,
+          "episode_macro_moment_mae_nm": 0.027503398256037103
+        }
+      },
+      {
+        "step": 6750,
+        "epoch": 1350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003990195880559268,
+          "episode_macro_force_endpoint_mae_n": 0.4820751665687661,
+          "episode_macro_force_mae_n": 0.512606254513714,
+          "episode_macro_moment_endpoint_mae_nm": 0.025680600117873438,
+          "episode_macro_moment_mae_nm": 0.02588974559737565
+        }
+      },
+      {
+        "step": 7000,
+        "epoch": 1400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005996252092064004,
+          "episode_macro_force_endpoint_mae_n": 0.5402773893917354,
+          "episode_macro_force_mae_n": 0.5105395255927682,
+          "episode_macro_moment_endpoint_mae_nm": 0.02732498400602999,
+          "episode_macro_moment_mae_nm": 0.027478204956295806
+        }
+      },
+      {
+        "step": 7250,
+        "epoch": 1450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0058208606541001375,
+          "episode_macro_force_endpoint_mae_n": 0.4837546414885582,
+          "episode_macro_force_mae_n": 0.5256940135512748,
+          "episode_macro_moment_endpoint_mae_nm": 0.02496771799137546,
+          "episode_macro_moment_mae_nm": 0.024796428644571218
+        }
+      },
+      {
+        "step": 7500,
+        "epoch": 1500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005105322243406274,
+          "episode_macro_force_endpoint_mae_n": 0.49119610380607276,
+          "episode_macro_force_mae_n": 0.5187528185647701,
+          "episode_macro_moment_endpoint_mae_nm": 0.025154088332665893,
+          "episode_macro_moment_mae_nm": 0.02600524500662361
+        }
+      },
+      {
+        "step": 7750,
+        "epoch": 1550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004408416221144211,
+          "episode_macro_force_endpoint_mae_n": 0.4912399417807622,
+          "episode_macro_force_mae_n": 0.5275850987850628,
+          "episode_macro_moment_endpoint_mae_nm": 0.026103938948656237,
+          "episode_macro_moment_mae_nm": 0.02567027305119924
+        }
+      },
+      {
+        "step": 8000,
+        "epoch": 1600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005299596306762128,
+          "episode_macro_force_endpoint_mae_n": 0.44221923028525545,
+          "episode_macro_force_mae_n": 0.4686989650674363,
+          "episode_macro_moment_endpoint_mae_nm": 0.024122681150575323,
+          "episode_macro_moment_mae_nm": 0.024292411889141892
+        }
+      },
+      {
+        "step": 8250,
+        "epoch": 1650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.008261382537406554,
+          "episode_macro_force_endpoint_mae_n": 0.45449738485957203,
+          "episode_macro_force_mae_n": 0.4819323381916182,
+          "episode_macro_moment_endpoint_mae_nm": 0.02508952758132142,
+          "episode_macro_moment_mae_nm": 0.024940094283933862
+        }
+      },
+      {
+        "step": 8500,
+        "epoch": 1700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006449406750666234,
+          "episode_macro_force_endpoint_mae_n": 0.5033072143377832,
+          "episode_macro_force_mae_n": 0.5230240345057215,
+          "episode_macro_moment_endpoint_mae_nm": 0.026209229267254025,
+          "episode_macro_moment_mae_nm": 0.026584111201143436
+        }
+      },
+      {
+        "step": 8750,
+        "epoch": 1750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004630583314526088,
+          "episode_macro_force_endpoint_mae_n": 0.5470705760116072,
+          "episode_macro_force_mae_n": 0.5372688597093924,
+          "episode_macro_moment_endpoint_mae_nm": 0.02810377626689311,
+          "episode_macro_moment_mae_nm": 0.028257944949246598
+        }
+      },
+      {
+        "step": 9000,
+        "epoch": 1800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006044061550547345,
+          "episode_macro_force_endpoint_mae_n": 0.5168527111596434,
+          "episode_macro_force_mae_n": 0.515263220871216,
+          "episode_macro_moment_endpoint_mae_nm": 0.026023362230155632,
+          "episode_macro_moment_mae_nm": 0.026420934483577057
+        }
+      },
+      {
+        "step": 9250,
+        "epoch": 1850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004905191508077221,
+          "episode_macro_force_endpoint_mae_n": 0.4283169445952158,
+          "episode_macro_force_mae_n": 0.4483944296689599,
+          "episode_macro_moment_endpoint_mae_nm": 0.02426907605219258,
+          "episode_macro_moment_mae_nm": 0.024620203644167817
+        }
+      },
+      {
+        "step": 9500,
+        "epoch": 1900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006558275139124247,
+          "episode_macro_force_endpoint_mae_n": 0.5124736648650886,
+          "episode_macro_force_mae_n": 0.5396238826177207,
+          "episode_macro_moment_endpoint_mae_nm": 0.027972176261846227,
+          "episode_macro_moment_mae_nm": 0.02907195631734664
+        }
+      },
+      {
+        "step": 9750,
+        "epoch": 1950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004923794232456242,
+          "episode_macro_force_endpoint_mae_n": 0.45975843850015574,
+          "episode_macro_force_mae_n": 0.5251449324279438,
+          "episode_macro_moment_endpoint_mae_nm": 0.025832498106746492,
+          "episode_macro_moment_mae_nm": 0.0246082549219483
+        }
+      },
+      {
+        "step": 10000,
+        "epoch": 2000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005046968061554925,
+          "episode_macro_force_endpoint_mae_n": 0.49620879952124375,
+          "episode_macro_force_mae_n": 0.5104660910045757,
+          "episode_macro_moment_endpoint_mae_nm": 0.023898606211713257,
+          "episode_macro_moment_mae_nm": 0.024633888883730103
+        }
+      },
+      {
+        "step": 10250,
+        "epoch": 2050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005767230302518892,
+          "episode_macro_force_endpoint_mae_n": 0.48412158482962625,
+          "episode_macro_force_mae_n": 0.510894833595837,
+          "episode_macro_moment_endpoint_mae_nm": 0.02621649917997143,
+          "episode_macro_moment_mae_nm": 0.026202734305424292
+        }
+      },
+      {
+        "step": 10500,
+        "epoch": 2100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004709854536465651,
+          "episode_macro_force_endpoint_mae_n": 0.46987157862736934,
+          "episode_macro_force_mae_n": 0.5041295494908715,
+          "episode_macro_moment_endpoint_mae_nm": 0.02486986718145834,
+          "episode_macro_moment_mae_nm": 0.025450387532658093
+        }
+      },
+      {
+        "step": 10750,
+        "epoch": 2150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004883774564352763,
+          "episode_macro_force_endpoint_mae_n": 0.4758364513921548,
+          "episode_macro_force_mae_n": 0.49064118654344585,
+          "episode_macro_moment_endpoint_mae_nm": 0.025097397961712,
+          "episode_macro_moment_mae_nm": 0.024848464460409524
+        }
+      },
+      {
+        "step": 11000,
+        "epoch": 2200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005877903865425466,
+          "episode_macro_force_endpoint_mae_n": 0.4532893091979123,
+          "episode_macro_force_mae_n": 0.5007286505476141,
+          "episode_macro_moment_endpoint_mae_nm": 0.026092584928583545,
+          "episode_macro_moment_mae_nm": 0.0249132488373191
+        }
+      },
+      {
+        "step": 11250,
+        "epoch": 2250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004593118733666576,
+          "episode_macro_force_endpoint_mae_n": 0.5337755126646442,
+          "episode_macro_force_mae_n": 0.5458465637367417,
+          "episode_macro_moment_endpoint_mae_nm": 0.026087717804122546,
+          "episode_macro_moment_mae_nm": 0.026598246266275615
+        }
+      },
+      {
+        "step": 11500,
+        "epoch": 2300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005545342093920795,
+          "episode_macro_force_endpoint_mae_n": 0.4939624068540517,
+          "episode_macro_force_mae_n": 0.5064342271623905,
+          "episode_macro_moment_endpoint_mae_nm": 0.02383581846872946,
+          "episode_macro_moment_mae_nm": 0.024254571447121037
+        }
+      },
+      {
+        "step": 11750,
+        "epoch": 2350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004898573301557343,
+          "episode_macro_force_endpoint_mae_n": 0.4317960137757004,
+          "episode_macro_force_mae_n": 0.4600857169882756,
+          "episode_macro_moment_endpoint_mae_nm": 0.02485484934841107,
+          "episode_macro_moment_mae_nm": 0.025172502554455096
+        }
+      },
+      {
+        "step": 12000,
+        "epoch": 2400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0049093498762962,
+          "episode_macro_force_endpoint_mae_n": 0.5405741315906112,
+          "episode_macro_force_mae_n": 0.5413480405133917,
+          "episode_macro_moment_endpoint_mae_nm": 0.02412362870211168,
+          "episode_macro_moment_mae_nm": 0.024748641657131608
+        }
+      },
+      {
+        "step": 12250,
+        "epoch": 2450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006836235360486579,
+          "episode_macro_force_endpoint_mae_n": 0.47974751457114273,
+          "episode_macro_force_mae_n": 0.4867972265441434,
+          "episode_macro_moment_endpoint_mae_nm": 0.02562957669456275,
+          "episode_macro_moment_mae_nm": 0.02539777869937791
+        }
+      },
+      {
+        "step": 12500,
+        "epoch": 2500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005039322520246416,
+          "episode_macro_force_endpoint_mae_n": 0.4464453532625803,
+          "episode_macro_force_mae_n": 0.4799674301584941,
+          "episode_macro_moment_endpoint_mae_nm": 0.02285917895336584,
+          "episode_macro_moment_mae_nm": 0.023459610066349158
+        }
+      },
+      {
+        "step": 12750,
+        "epoch": 2550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005831780093768312,
+          "episode_macro_force_endpoint_mae_n": 0.4438010506338199,
+          "episode_macro_force_mae_n": 0.4617784871305043,
+          "episode_macro_moment_endpoint_mae_nm": 0.025080509548332762,
+          "episode_macro_moment_mae_nm": 0.0249934245157871
+        }
+      },
+      {
+        "step": 13000,
+        "epoch": 2600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006434476159376036,
+          "episode_macro_force_endpoint_mae_n": 0.46471022124380995,
+          "episode_macro_force_mae_n": 0.48531621933968144,
+          "episode_macro_moment_endpoint_mae_nm": 0.02565777203345514,
+          "episode_macro_moment_mae_nm": 0.02497648911486388
+        }
+      },
+      {
+        "step": 13250,
+        "epoch": 2650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005050920841920824,
+          "episode_macro_force_endpoint_mae_n": 0.5190749321232747,
+          "episode_macro_force_mae_n": 0.5250180001532193,
+          "episode_macro_moment_endpoint_mae_nm": 0.02968202334421125,
+          "episode_macro_moment_mae_nm": 0.028869402829100867
+        }
+      },
+      {
+        "step": 13500,
+        "epoch": 2700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004773543932334602,
+          "episode_macro_force_endpoint_mae_n": 0.5417559824086322,
+          "episode_macro_force_mae_n": 0.5479079481754184,
+          "episode_macro_moment_endpoint_mae_nm": 0.027336005811323377,
+          "episode_macro_moment_mae_nm": 0.02705033251633404
+        }
+      },
+      {
+        "step": 13750,
+        "epoch": 2750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005223975181655438,
+          "episode_macro_force_endpoint_mae_n": 0.46419337838094615,
+          "episode_macro_force_mae_n": 0.48584230183496036,
+          "episode_macro_moment_endpoint_mae_nm": 0.024659312318629133,
+          "episode_macro_moment_mae_nm": 0.024456818229375083
+        }
+      },
+      {
+        "step": 14000,
+        "epoch": 2800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004975804498204918,
+          "episode_macro_force_endpoint_mae_n": 0.5024764076116466,
+          "episode_macro_force_mae_n": 0.5125484793850562,
+          "episode_macro_moment_endpoint_mae_nm": 0.026457615295708902,
+          "episode_macro_moment_mae_nm": 0.026895322591571187
+        }
+      },
+      {
+        "step": 14250,
+        "epoch": 2850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005299099796920051,
+          "episode_macro_force_endpoint_mae_n": 0.46536247401493896,
+          "episode_macro_force_mae_n": 0.47715166396624137,
+          "episode_macro_moment_endpoint_mae_nm": 0.025816258579190805,
+          "episode_macro_moment_mae_nm": 0.025435066568491094
+        }
+      },
+      {
+        "step": 14500,
+        "epoch": 2900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00599473216389527,
+          "episode_macro_force_endpoint_mae_n": 0.48820603679804303,
+          "episode_macro_force_mae_n": 0.5042959483293261,
+          "episode_macro_moment_endpoint_mae_nm": 0.024997214735769775,
+          "episode_macro_moment_mae_nm": 0.025046524969683903
+        }
+      },
+      {
+        "step": 14750,
+        "epoch": 2950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005214919775207856,
+          "episode_macro_force_endpoint_mae_n": 0.4243896590326483,
+          "episode_macro_force_mae_n": 0.447740527070946,
+          "episode_macro_moment_endpoint_mae_nm": 0.023635553138147886,
+          "episode_macro_moment_mae_nm": 0.02318792519394522
+        }
+      },
+      {
+        "step": 15000,
+        "epoch": 3000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004687639106234402,
+          "episode_macro_force_endpoint_mae_n": 0.5097639315764831,
+          "episode_macro_force_mae_n": 0.5243838419305706,
+          "episode_macro_moment_endpoint_mae_nm": 0.02544542147685693,
+          "episode_macro_moment_mae_nm": 0.025789685436755416
+        }
+      },
+      {
+        "step": 15250,
+        "epoch": 3050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003736261770160891,
+          "episode_macro_force_endpoint_mae_n": 0.46170405943323445,
+          "episode_macro_force_mae_n": 0.4906184883947723,
+          "episode_macro_moment_endpoint_mae_nm": 0.025665146067501938,
+          "episode_macro_moment_mae_nm": 0.025461815457793698
+        }
+      },
+      {
+        "step": 15500,
+        "epoch": 3100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004881624140890428,
+          "episode_macro_force_endpoint_mae_n": 0.46317051330264647,
+          "episode_macro_force_mae_n": 0.4644509199104509,
+          "episode_macro_moment_endpoint_mae_nm": 0.024960413913039263,
+          "episode_macro_moment_mae_nm": 0.02497888321906012
+        }
+      },
+      {
+        "step": 15750,
+        "epoch": 3150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00480688448896688,
+          "episode_macro_force_endpoint_mae_n": 0.5340234694157351,
+          "episode_macro_force_mae_n": 0.5624365232268154,
+          "episode_macro_moment_endpoint_mae_nm": 0.025491661806820852,
+          "episode_macro_moment_mae_nm": 0.025874553794753646
+        }
+      },
+      {
+        "step": 16000,
+        "epoch": 3200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006398118036905745,
+          "episode_macro_force_endpoint_mae_n": 0.4392686404001872,
+          "episode_macro_force_mae_n": 0.4591512096835374,
+          "episode_macro_moment_endpoint_mae_nm": 0.02519678773605618,
+          "episode_macro_moment_mae_nm": 0.025392529785667667
+        }
+      },
+      {
+        "step": 16250,
+        "epoch": 3250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0055946793048372145,
+          "episode_macro_force_endpoint_mae_n": 0.43190020755796754,
+          "episode_macro_force_mae_n": 0.46410352778864394,
+          "episode_macro_moment_endpoint_mae_nm": 0.023901877419570373,
+          "episode_macro_moment_mae_nm": 0.02391856617122636
+        }
+      },
+      {
+        "step": 16500,
+        "epoch": 3300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004568687041591554,
+          "episode_macro_force_endpoint_mae_n": 0.4643968700540011,
+          "episode_macro_force_mae_n": 0.4818368766652837,
+          "episode_macro_moment_endpoint_mae_nm": 0.024082112068437397,
+          "episode_macro_moment_mae_nm": 0.024109453904236335
+        }
+      },
+      {
+        "step": 16750,
+        "epoch": 3350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004382783520239726,
+          "episode_macro_force_endpoint_mae_n": 0.472843714905612,
+          "episode_macro_force_mae_n": 0.4836444229593301,
+          "episode_macro_moment_endpoint_mae_nm": 0.024168876131287553,
+          "episode_macro_moment_mae_nm": 0.024290954588585014
+        }
+      },
+      {
+        "step": 17000,
+        "epoch": 3400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004659463157803028,
+          "episode_macro_force_endpoint_mae_n": 0.4562362257313697,
+          "episode_macro_force_mae_n": 0.4542528067585686,
+          "episode_macro_moment_endpoint_mae_nm": 0.02385303227156388,
+          "episode_macro_moment_mae_nm": 0.023649409659990416
+        }
+      },
+      {
+        "step": 17250,
+        "epoch": 3450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006442274681729051,
+          "episode_macro_force_endpoint_mae_n": 0.45368665043496553,
+          "episode_macro_force_mae_n": 0.45806958254821384,
+          "episode_macro_moment_endpoint_mae_nm": 0.025937058756074625,
+          "episode_macro_moment_mae_nm": 0.02504128642473167
+        }
+      },
+      {
+        "step": 17500,
+        "epoch": 3500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006202914199519098,
+          "episode_macro_force_endpoint_mae_n": 0.4590490478886905,
+          "episode_macro_force_mae_n": 0.46392761522314496,
+          "episode_macro_moment_endpoint_mae_nm": 0.023836861574266913,
+          "episode_macro_moment_mae_nm": 0.02390921625127009
+        }
+      },
+      {
+        "step": 17750,
+        "epoch": 3550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005067539815027853,
+          "episode_macro_force_endpoint_mae_n": 0.41541511911340906,
+          "episode_macro_force_mae_n": 0.42566825857371954,
+          "episode_macro_moment_endpoint_mae_nm": 0.02378735541691532,
+          "episode_macro_moment_mae_nm": 0.023588192436706127
+        }
+      },
+      {
+        "step": 18000,
+        "epoch": 3600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0051388149862849385,
+          "episode_macro_force_endpoint_mae_n": 0.43396665000221546,
+          "episode_macro_force_mae_n": 0.459735634504317,
+          "episode_macro_moment_endpoint_mae_nm": 0.024082322545752148,
+          "episode_macro_moment_mae_nm": 0.024476956974696474
+        }
+      },
+      {
+        "step": 18250,
+        "epoch": 3650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004969699456125041,
+          "episode_macro_force_endpoint_mae_n": 0.42191883247933665,
+          "episode_macro_force_mae_n": 0.4421383262637203,
+          "episode_macro_moment_endpoint_mae_nm": 0.023071584136993114,
+          "episode_macro_moment_mae_nm": 0.023178041554382595
+        }
+      },
+      {
+        "step": 18500,
+        "epoch": 3700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005099826714607363,
+          "episode_macro_force_endpoint_mae_n": 0.4373962248583888,
+          "episode_macro_force_mae_n": 0.4610668786134542,
+          "episode_macro_moment_endpoint_mae_nm": 0.02473696428177102,
+          "episode_macro_moment_mae_nm": 0.025189357011506035
+        }
+      },
+      {
+        "step": 18750,
+        "epoch": 3750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0060668889894073,
+          "episode_macro_force_endpoint_mae_n": 0.4742259290540843,
+          "episode_macro_force_mae_n": 0.48128658072308,
+          "episode_macro_moment_endpoint_mae_nm": 0.02340343890789672,
+          "episode_macro_moment_mae_nm": 0.023668864171899263
+        }
+      },
+      {
+        "step": 19000,
+        "epoch": 3800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005183014702864946,
+          "episode_macro_force_endpoint_mae_n": 0.4169185669038976,
+          "episode_macro_force_mae_n": 0.4337316843100103,
+          "episode_macro_moment_endpoint_mae_nm": 0.023442895387457807,
+          "episode_macro_moment_mae_nm": 0.023776816816713713
+        }
+      },
+      {
+        "step": 19250,
+        "epoch": 3850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005682810133143959,
+          "episode_macro_force_endpoint_mae_n": 0.4664937185825241,
+          "episode_macro_force_mae_n": 0.4920378030048961,
+          "episode_macro_moment_endpoint_mae_nm": 0.025633716597928437,
+          "episode_macro_moment_mae_nm": 0.026171190494172568
+        }
+      },
+      {
+        "step": 19500,
+        "epoch": 3900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004956560400444543,
+          "episode_macro_force_endpoint_mae_n": 0.4339292251998989,
+          "episode_macro_force_mae_n": 0.4454014844007128,
+          "episode_macro_moment_endpoint_mae_nm": 0.025440293045919698,
+          "episode_macro_moment_mae_nm": 0.024302003419583294
+        }
+      },
+      {
+        "step": 19750,
+        "epoch": 3950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005957196141361337,
+          "episode_macro_force_endpoint_mae_n": 0.41858666628727353,
+          "episode_macro_force_mae_n": 0.43743841980827297,
+          "episode_macro_moment_endpoint_mae_nm": 0.022974218289193188,
+          "episode_macro_moment_mae_nm": 0.02318177185045581
+        }
+      },
+      {
+        "step": 20000,
+        "epoch": 4000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006176469233473801,
+          "episode_macro_force_endpoint_mae_n": 0.4280528993437248,
+          "episode_macro_force_mae_n": 0.44093110902359783,
+          "episode_macro_moment_endpoint_mae_nm": 0.023016194832862914,
+          "episode_macro_moment_mae_nm": 0.023111318224195942
+        }
+      },
+      {
+        "step": 20250,
+        "epoch": 4050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004166882672022793,
+          "episode_macro_force_endpoint_mae_n": 0.44090386986043634,
+          "episode_macro_force_mae_n": 0.45491148724288166,
+          "episode_macro_moment_endpoint_mae_nm": 0.024446237497723296,
+          "episode_macro_moment_mae_nm": 0.02442386181063691
+        }
+      }
+    ],
+    "motion": [
+      {
+        "step": 250,
+        "epoch": 50,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.01399399873983929,
+          "episode_macro_force_endpoint_mae_n": 0.944394747180828,
+          "episode_macro_force_mae_n": 1.0646157116929367,
+          "episode_macro_moment_endpoint_mae_nm": 0.04127775286085774,
+          "episode_macro_moment_mae_nm": 0.04856026837341641
+        }
+      },
+      {
+        "step": 500,
+        "epoch": 100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007781857250599813,
+          "episode_macro_force_endpoint_mae_n": 0.7548319941878775,
+          "episode_macro_force_mae_n": 0.8001057075427672,
+          "episode_macro_moment_endpoint_mae_nm": 0.03828992371412969,
+          "episode_macro_moment_mae_nm": 0.0388756494489736
+        }
+      },
+      {
+        "step": 750,
+        "epoch": 150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006058707076178893,
+          "episode_macro_force_endpoint_mae_n": 0.6882882201094807,
+          "episode_macro_force_mae_n": 0.692842791165847,
+          "episode_macro_moment_endpoint_mae_nm": 0.03304451177646727,
+          "episode_macro_moment_mae_nm": 0.033977533623943554
+        }
+      },
+      {
+        "step": 1000,
+        "epoch": 200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006882786504838282,
+          "episode_macro_force_endpoint_mae_n": 0.686904067909711,
+          "episode_macro_force_mae_n": 0.6885728606524621,
+          "episode_macro_moment_endpoint_mae_nm": 0.03220420455163263,
+          "episode_macro_moment_mae_nm": 0.033377694872505366
+        }
+      },
+      {
+        "step": 1250,
+        "epoch": 250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005772475907423881,
+          "episode_macro_force_endpoint_mae_n": 0.6570748707018239,
+          "episode_macro_force_mae_n": 0.6954616831809535,
+          "episode_macro_moment_endpoint_mae_nm": 0.03343787881757067,
+          "episode_macro_moment_mae_nm": 0.033026951785585554
+        }
+      },
+      {
+        "step": 1500,
+        "epoch": 300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005987133552374923,
+          "episode_macro_force_endpoint_mae_n": 0.5912579196692435,
+          "episode_macro_force_mae_n": 0.6458486649723229,
+          "episode_macro_moment_endpoint_mae_nm": 0.03175140367306263,
+          "episode_macro_moment_mae_nm": 0.03315796991063025
+        }
+      },
+      {
+        "step": 1750,
+        "epoch": 350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005334914166715518,
+          "episode_macro_force_endpoint_mae_n": 0.5720985601473251,
+          "episode_macro_force_mae_n": 0.5986519270129906,
+          "episode_macro_moment_endpoint_mae_nm": 0.030374669628882012,
+          "episode_macro_moment_mae_nm": 0.030708812137905123
+        }
+      },
+      {
+        "step": 2000,
+        "epoch": 400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0062761160903518545,
+          "episode_macro_force_endpoint_mae_n": 0.543183101117597,
+          "episode_macro_force_mae_n": 0.5801643188491047,
+          "episode_macro_moment_endpoint_mae_nm": 0.0301083613804079,
+          "episode_macro_moment_mae_nm": 0.02934569914671834
+        }
+      },
+      {
+        "step": 2250,
+        "epoch": 450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006131147859132618,
+          "episode_macro_force_endpoint_mae_n": 0.6470105263141387,
+          "episode_macro_force_mae_n": 0.6445276637826117,
+          "episode_macro_moment_endpoint_mae_nm": 0.030541676758441445,
+          "episode_macro_moment_mae_nm": 0.031122274288909645
+        }
+      },
+      {
+        "step": 2500,
+        "epoch": 500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00655605567729826,
+          "episode_macro_force_endpoint_mae_n": 0.5381000535354027,
+          "episode_macro_force_mae_n": 0.5595975753379321,
+          "episode_macro_moment_endpoint_mae_nm": 0.027540994827638794,
+          "episode_macro_moment_mae_nm": 0.028467224411158537
+        }
+      },
+      {
+        "step": 2750,
+        "epoch": 550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006574615705381428,
+          "episode_macro_force_endpoint_mae_n": 0.5817385061704357,
+          "episode_macro_force_mae_n": 0.6107134348184174,
+          "episode_macro_moment_endpoint_mae_nm": 0.030648989054547486,
+          "episode_macro_moment_mae_nm": 0.03178434508536731
+        }
+      },
+      {
+        "step": 3000,
+        "epoch": 600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005293900353227689,
+          "episode_macro_force_endpoint_mae_n": 0.5485532610225194,
+          "episode_macro_force_mae_n": 0.5603538043396031,
+          "episode_macro_moment_endpoint_mae_nm": 0.02590694017229577,
+          "episode_macro_moment_mae_nm": 0.026790399909325784
+        }
+      },
+      {
+        "step": 3250,
+        "epoch": 650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004348565811542258,
+          "episode_macro_force_endpoint_mae_n": 0.5856523172265325,
+          "episode_macro_force_mae_n": 0.5604526016983578,
+          "episode_macro_moment_endpoint_mae_nm": 0.029314757146013854,
+          "episode_macro_moment_mae_nm": 0.029726722753204825
+        }
+      },
+      {
+        "step": 3500,
+        "epoch": 700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006001589671540141,
+          "episode_macro_force_endpoint_mae_n": 0.5817745411784883,
+          "episode_macro_force_mae_n": 0.5574036437288374,
+          "episode_macro_moment_endpoint_mae_nm": 0.028908671026278355,
+          "episode_macro_moment_mae_nm": 0.02834703234501762
+        }
+      },
+      {
+        "step": 3750,
+        "epoch": 750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005759507115277928,
+          "episode_macro_force_endpoint_mae_n": 0.5960987511095528,
+          "episode_macro_force_mae_n": 0.6230634870630523,
+          "episode_macro_moment_endpoint_mae_nm": 0.025757775815294426,
+          "episode_macro_moment_mae_nm": 0.027325055351166888
+        }
+      },
+      {
+        "step": 4000,
+        "epoch": 800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006642289823444732,
+          "episode_macro_force_endpoint_mae_n": 0.5170308381642054,
+          "episode_macro_force_mae_n": 0.6085269825721633,
+          "episode_macro_moment_endpoint_mae_nm": 0.027182458738585085,
+          "episode_macro_moment_mae_nm": 0.028542854224016388
+        }
+      },
+      {
+        "step": 4250,
+        "epoch": 850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00781315661797207,
+          "episode_macro_force_endpoint_mae_n": 0.5117821654237882,
+          "episode_macro_force_mae_n": 0.5593094063415369,
+          "episode_macro_moment_endpoint_mae_nm": 0.02753970591151712,
+          "episode_macro_moment_mae_nm": 0.027145916365080756
+        }
+      },
+      {
+        "step": 4500,
+        "epoch": 900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007398097439158244,
+          "episode_macro_force_endpoint_mae_n": 0.5018737946448619,
+          "episode_macro_force_mae_n": 0.5095453397802133,
+          "episode_macro_moment_endpoint_mae_nm": 0.02674373251696922,
+          "episode_macro_moment_mae_nm": 0.027054976583952617
+        }
+      },
+      {
+        "step": 4750,
+        "epoch": 950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005702395346580335,
+          "episode_macro_force_endpoint_mae_n": 0.5151845670331654,
+          "episode_macro_force_mae_n": 0.5458858915502083,
+          "episode_macro_moment_endpoint_mae_nm": 0.025303655485310855,
+          "episode_macro_moment_mae_nm": 0.02635175037702544
+        }
+      },
+      {
+        "step": 5000,
+        "epoch": 1000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006762742357321029,
+          "episode_macro_force_endpoint_mae_n": 0.506650812115108,
+          "episode_macro_force_mae_n": 0.5233106786504425,
+          "episode_macro_moment_endpoint_mae_nm": 0.026144441104840637,
+          "episode_macro_moment_mae_nm": 0.02654069141941557
+        }
+      },
+      {
+        "step": 5250,
+        "epoch": 1050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006561513102201336,
+          "episode_macro_force_endpoint_mae_n": 0.4944444032306943,
+          "episode_macro_force_mae_n": 0.5453742826897426,
+          "episode_macro_moment_endpoint_mae_nm": 0.02643700834065461,
+          "episode_macro_moment_mae_nm": 0.02621758918943587
+        }
+      },
+      {
+        "step": 5500,
+        "epoch": 1100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006595998329365142,
+          "episode_macro_force_endpoint_mae_n": 0.4982817431768104,
+          "episode_macro_force_mae_n": 0.5241018391872306,
+          "episode_macro_moment_endpoint_mae_nm": 0.027122656547489223,
+          "episode_macro_moment_mae_nm": 0.02726137776694692
+        }
+      },
+      {
+        "step": 5750,
+        "epoch": 1150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005242203921772838,
+          "episode_macro_force_endpoint_mae_n": 0.5101104020827404,
+          "episode_macro_force_mae_n": 0.5555961772167249,
+          "episode_macro_moment_endpoint_mae_nm": 0.02919328462064789,
+          "episode_macro_moment_mae_nm": 0.02770648934542726
+        }
+      },
+      {
+        "step": 6000,
+        "epoch": 1200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003923320222675279,
+          "episode_macro_force_endpoint_mae_n": 0.6125790913802509,
+          "episode_macro_force_mae_n": 0.6117687061604536,
+          "episode_macro_moment_endpoint_mae_nm": 0.028641120106664995,
+          "episode_macro_moment_mae_nm": 0.029422091149813905
+        }
+      },
+      {
+        "step": 6250,
+        "epoch": 1250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006615929227691678,
+          "episode_macro_force_endpoint_mae_n": 0.4499612662696986,
+          "episode_macro_force_mae_n": 0.49434900756536654,
+          "episode_macro_moment_endpoint_mae_nm": 0.02566071265135723,
+          "episode_macro_moment_mae_nm": 0.025234610228188726
+        }
+      },
+      {
+        "step": 6500,
+        "epoch": 1300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005360925501451227,
+          "episode_macro_force_endpoint_mae_n": 0.5059238479571337,
+          "episode_macro_force_mae_n": 0.49284701527113245,
+          "episode_macro_moment_endpoint_mae_nm": 0.02649378067027941,
+          "episode_macro_moment_mae_nm": 0.02683054407592006
+        }
+      },
+      {
+        "step": 6750,
+        "epoch": 1350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00551422872227985,
+          "episode_macro_force_endpoint_mae_n": 0.5144497119496054,
+          "episode_macro_force_mae_n": 0.5110883620978444,
+          "episode_macro_moment_endpoint_mae_nm": 0.026920694669594965,
+          "episode_macro_moment_mae_nm": 0.02648024283574089
+        }
+      },
+      {
+        "step": 7000,
+        "epoch": 1400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00553326540029841,
+          "episode_macro_force_endpoint_mae_n": 0.5042410906716837,
+          "episode_macro_force_mae_n": 0.5106259548215246,
+          "episode_macro_moment_endpoint_mae_nm": 0.027211571118549695,
+          "episode_macro_moment_mae_nm": 0.027014321763599393
+        }
+      },
+      {
+        "step": 7250,
+        "epoch": 1450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005335895285027881,
+          "episode_macro_force_endpoint_mae_n": 0.5159990700075305,
+          "episode_macro_force_mae_n": 0.5233534257902756,
+          "episode_macro_moment_endpoint_mae_nm": 0.026683639768178485,
+          "episode_macro_moment_mae_nm": 0.027137611870430532
+        }
+      },
+      {
+        "step": 7500,
+        "epoch": 1500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007802965548857664,
+          "episode_macro_force_endpoint_mae_n": 0.48900179866664856,
+          "episode_macro_force_mae_n": 0.5253658634167808,
+          "episode_macro_moment_endpoint_mae_nm": 0.023905500382336006,
+          "episode_macro_moment_mae_nm": 0.02482770329083455
+        }
+      },
+      {
+        "step": 7750,
+        "epoch": 1550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004362187921286995,
+          "episode_macro_force_endpoint_mae_n": 0.45210214438724067,
+          "episode_macro_force_mae_n": 0.49858215794610194,
+          "episode_macro_moment_endpoint_mae_nm": 0.023994403083244558,
+          "episode_macro_moment_mae_nm": 0.024709093679903073
+        }
+      },
+      {
+        "step": 8000,
+        "epoch": 1600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007126882823770092,
+          "episode_macro_force_endpoint_mae_n": 0.4914095452995507,
+          "episode_macro_force_mae_n": 0.4888448812876491,
+          "episode_macro_moment_endpoint_mae_nm": 0.026116551574149105,
+          "episode_macro_moment_mae_nm": 0.026106332189441927
+        }
+      },
+      {
+        "step": 8250,
+        "epoch": 1650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.007225134845206945,
+          "episode_macro_force_endpoint_mae_n": 0.46818578965431856,
+          "episode_macro_force_mae_n": 0.4902635233339326,
+          "episode_macro_moment_endpoint_mae_nm": 0.02527243150453091,
+          "episode_macro_moment_mae_nm": 0.025252431527281134
+        }
+      },
+      {
+        "step": 8500,
+        "epoch": 1700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006684514196872606,
+          "episode_macro_force_endpoint_mae_n": 0.5005478610645263,
+          "episode_macro_force_mae_n": 0.5245983315037039,
+          "episode_macro_moment_endpoint_mae_nm": 0.025966117196245177,
+          "episode_macro_moment_mae_nm": 0.026287667077337457
+        }
+      },
+      {
+        "step": 8750,
+        "epoch": 1750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004036963194185924,
+          "episode_macro_force_endpoint_mae_n": 0.5127504317000858,
+          "episode_macro_force_mae_n": 0.5043293328836556,
+          "episode_macro_moment_endpoint_mae_nm": 0.026741890232625055,
+          "episode_macro_moment_mae_nm": 0.026494023260381205
+        }
+      },
+      {
+        "step": 9000,
+        "epoch": 1800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004723023085333157,
+          "episode_macro_force_endpoint_mae_n": 0.47307170488648664,
+          "episode_macro_force_mae_n": 0.47135264654021636,
+          "episode_macro_moment_endpoint_mae_nm": 0.024063091082793225,
+          "episode_macro_moment_mae_nm": 0.024347390444069354
+        }
+      },
+      {
+        "step": 9250,
+        "epoch": 1850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0048007363178787866,
+          "episode_macro_force_endpoint_mae_n": 0.432554565284293,
+          "episode_macro_force_mae_n": 0.4526192336416971,
+          "episode_macro_moment_endpoint_mae_nm": 0.02383433459139409,
+          "episode_macro_moment_mae_nm": 0.02396467652240571
+        }
+      },
+      {
+        "step": 9500,
+        "epoch": 1900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006336061860689757,
+          "episode_macro_force_endpoint_mae_n": 0.48295513795350964,
+          "episode_macro_force_mae_n": 0.5117790405010273,
+          "episode_macro_moment_endpoint_mae_nm": 0.028371189539679147,
+          "episode_macro_moment_mae_nm": 0.02829067753078292
+        }
+      },
+      {
+        "step": 9750,
+        "epoch": 1950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006020601806048339,
+          "episode_macro_force_endpoint_mae_n": 0.44431477980403294,
+          "episode_macro_force_mae_n": 0.4774880291088762,
+          "episode_macro_moment_endpoint_mae_nm": 0.024289570370447596,
+          "episode_macro_moment_mae_nm": 0.024326001378511906
+        }
+      },
+      {
+        "step": 10000,
+        "epoch": 2000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0050265575189947925,
+          "episode_macro_force_endpoint_mae_n": 0.533971372014801,
+          "episode_macro_force_mae_n": 0.5399895667820687,
+          "episode_macro_moment_endpoint_mae_nm": 0.024564270181783258,
+          "episode_macro_moment_mae_nm": 0.02499259818721788
+        }
+      },
+      {
+        "step": 10250,
+        "epoch": 2050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0064683914860087875,
+          "episode_macro_force_endpoint_mae_n": 0.4669346074949351,
+          "episode_macro_force_mae_n": 0.48765956714983616,
+          "episode_macro_moment_endpoint_mae_nm": 0.024407855899864273,
+          "episode_macro_moment_mae_nm": 0.024131491340672113
+        }
+      },
+      {
+        "step": 10500,
+        "epoch": 2100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004254462278731998,
+          "episode_macro_force_endpoint_mae_n": 0.4727279274383201,
+          "episode_macro_force_mae_n": 0.47654343726667686,
+          "episode_macro_moment_endpoint_mae_nm": 0.024851680185455808,
+          "episode_macro_moment_mae_nm": 0.02431035486146737
+        }
+      },
+      {
+        "step": 10750,
+        "epoch": 2150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005514091799660148,
+          "episode_macro_force_endpoint_mae_n": 0.43808711556168395,
+          "episode_macro_force_mae_n": 0.46382703371303896,
+          "episode_macro_moment_endpoint_mae_nm": 0.02414766485230375,
+          "episode_macro_moment_mae_nm": 0.02346641440616045
+        }
+      },
+      {
+        "step": 11000,
+        "epoch": 2200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005627514158569276,
+          "episode_macro_force_endpoint_mae_n": 0.42336610650308415,
+          "episode_macro_force_mae_n": 0.4564702503031245,
+          "episode_macro_moment_endpoint_mae_nm": 0.02383320369365126,
+          "episode_macro_moment_mae_nm": 0.02389941184562334
+        }
+      },
+      {
+        "step": 11250,
+        "epoch": 2250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00506159056176626,
+          "episode_macro_force_endpoint_mae_n": 0.503159199754676,
+          "episode_macro_force_mae_n": 0.5191885378206307,
+          "episode_macro_moment_endpoint_mae_nm": 0.026478198965608175,
+          "episode_macro_moment_mae_nm": 0.025962229204172182
+        }
+      },
+      {
+        "step": 11500,
+        "epoch": 2300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005449139519204023,
+          "episode_macro_force_endpoint_mae_n": 0.4674876618076821,
+          "episode_macro_force_mae_n": 0.4755893857577004,
+          "episode_macro_moment_endpoint_mae_nm": 0.024515895928148995,
+          "episode_macro_moment_mae_nm": 0.024151571656187133
+        }
+      },
+      {
+        "step": 11750,
+        "epoch": 2350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00559340781831616,
+          "episode_macro_force_endpoint_mae_n": 0.4149709438799955,
+          "episode_macro_force_mae_n": 0.43580746247867774,
+          "episode_macro_moment_endpoint_mae_nm": 0.023224199069271412,
+          "episode_macro_moment_mae_nm": 0.022938017500967266
+        }
+      },
+      {
+        "step": 12000,
+        "epoch": 2400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004901333160163532,
+          "episode_macro_force_endpoint_mae_n": 0.4735856545409539,
+          "episode_macro_force_mae_n": 0.5006721570226988,
+          "episode_macro_moment_endpoint_mae_nm": 0.024407764671449044,
+          "episode_macro_moment_mae_nm": 0.024167724280035836
+        }
+      },
+      {
+        "step": 12250,
+        "epoch": 2450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00530976958829671,
+          "episode_macro_force_endpoint_mae_n": 0.4503809770738777,
+          "episode_macro_force_mae_n": 0.4576085758907912,
+          "episode_macro_moment_endpoint_mae_nm": 0.02475670141149849,
+          "episode_macro_moment_mae_nm": 0.024641910675302147
+        }
+      },
+      {
+        "step": 12500,
+        "epoch": 2500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005189269512319461,
+          "episode_macro_force_endpoint_mae_n": 0.4294637324092937,
+          "episode_macro_force_mae_n": 0.46454016630202133,
+          "episode_macro_moment_endpoint_mae_nm": 0.02384817980896096,
+          "episode_macro_moment_mae_nm": 0.023897883343698235
+        }
+      },
+      {
+        "step": 12750,
+        "epoch": 2550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004042085880519904,
+          "episode_macro_force_endpoint_mae_n": 0.4339825605255072,
+          "episode_macro_force_mae_n": 0.44335926019423083,
+          "episode_macro_moment_endpoint_mae_nm": 0.02386655704777973,
+          "episode_macro_moment_mae_nm": 0.023614177062451815
+        }
+      },
+      {
+        "step": 13000,
+        "epoch": 2600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006486168046853409,
+          "episode_macro_force_endpoint_mae_n": 0.5271033950161667,
+          "episode_macro_force_mae_n": 0.548632551652325,
+          "episode_macro_moment_endpoint_mae_nm": 0.025851027550659444,
+          "episode_macro_moment_mae_nm": 0.025607823017747118
+        }
+      },
+      {
+        "step": 13250,
+        "epoch": 2650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006492236118723187,
+          "episode_macro_force_endpoint_mae_n": 0.5215140581506179,
+          "episode_macro_force_mae_n": 0.5317979867092197,
+          "episode_macro_moment_endpoint_mae_nm": 0.028026585589508813,
+          "episode_macro_moment_mae_nm": 0.027349249719533016
+        }
+      },
+      {
+        "step": 13500,
+        "epoch": 2700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004032421298547884,
+          "episode_macro_force_endpoint_mae_n": 0.43743581165243856,
+          "episode_macro_force_mae_n": 0.44065848183396616,
+          "episode_macro_moment_endpoint_mae_nm": 0.02406638755244974,
+          "episode_macro_moment_mae_nm": 0.02412070721168308
+        }
+      },
+      {
+        "step": 13750,
+        "epoch": 2750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005943697914741348,
+          "episode_macro_force_endpoint_mae_n": 0.4339996103882677,
+          "episode_macro_force_mae_n": 0.44687981682609523,
+          "episode_macro_moment_endpoint_mae_nm": 0.02300753068115525,
+          "episode_macro_moment_mae_nm": 0.02298252408944593
+        }
+      },
+      {
+        "step": 14000,
+        "epoch": 2800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0046044443159829725,
+          "episode_macro_force_endpoint_mae_n": 0.41134779800416316,
+          "episode_macro_force_mae_n": 0.42399346509530567,
+          "episode_macro_moment_endpoint_mae_nm": 0.022932225219187113,
+          "episode_macro_moment_mae_nm": 0.023183386941938982
+        }
+      },
+      {
+        "step": 14250,
+        "epoch": 2850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0055501423874689025,
+          "episode_macro_force_endpoint_mae_n": 0.4572130316464341,
+          "episode_macro_force_mae_n": 0.46032034533207267,
+          "episode_macro_moment_endpoint_mae_nm": 0.024657437694817274,
+          "episode_macro_moment_mae_nm": 0.024502697467425477
+        }
+      },
+      {
+        "step": 14500,
+        "epoch": 2900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005557048818829248,
+          "episode_macro_force_endpoint_mae_n": 0.44290019436103895,
+          "episode_macro_force_mae_n": 0.4573992281010362,
+          "episode_macro_moment_endpoint_mae_nm": 0.024212542136791092,
+          "episode_macro_moment_mae_nm": 0.023935857327514975
+        }
+      },
+      {
+        "step": 14750,
+        "epoch": 2950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005925096927628734,
+          "episode_macro_force_endpoint_mae_n": 0.4139696593224655,
+          "episode_macro_force_mae_n": 0.427440850007066,
+          "episode_macro_moment_endpoint_mae_nm": 0.022912997630538275,
+          "episode_macro_moment_mae_nm": 0.022907633435775912
+        }
+      },
+      {
+        "step": 15000,
+        "epoch": 3000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004040579858474207,
+          "episode_macro_force_endpoint_mae_n": 0.45726284815466756,
+          "episode_macro_force_mae_n": 0.49941588565744555,
+          "episode_macro_moment_endpoint_mae_nm": 0.024830022024497123,
+          "episode_macro_moment_mae_nm": 0.02474206616442643
+        }
+      },
+      {
+        "step": 15250,
+        "epoch": 3050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003986024161461878,
+          "episode_macro_force_endpoint_mae_n": 0.41127425105662274,
+          "episode_macro_force_mae_n": 0.44108682871369764,
+          "episode_macro_moment_endpoint_mae_nm": 0.023888043027488877,
+          "episode_macro_moment_mae_nm": 0.023717476431238605
+        }
+      },
+      {
+        "step": 15500,
+        "epoch": 3100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004086867032248133,
+          "episode_macro_force_endpoint_mae_n": 0.43396474950341946,
+          "episode_macro_force_mae_n": 0.42809559467105157,
+          "episode_macro_moment_endpoint_mae_nm": 0.023587048671408217,
+          "episode_macro_moment_mae_nm": 0.023280341537700793
+        }
+      },
+      {
+        "step": 15750,
+        "epoch": 3150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005105818778401777,
+          "episode_macro_force_endpoint_mae_n": 0.4885955823974647,
+          "episode_macro_force_mae_n": 0.47911651370944763,
+          "episode_macro_moment_endpoint_mae_nm": 0.025409158452267676,
+          "episode_macro_moment_mae_nm": 0.024892361678653663
+        }
+      },
+      {
+        "step": 16000,
+        "epoch": 3200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004776307829822031,
+          "episode_macro_force_endpoint_mae_n": 0.4584673573076068,
+          "episode_macro_force_mae_n": 0.46352317519764324,
+          "episode_macro_moment_endpoint_mae_nm": 0.025610609292349394,
+          "episode_macro_moment_mae_nm": 0.025736657328095092
+        }
+      },
+      {
+        "step": 16250,
+        "epoch": 3250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004653359249307643,
+          "episode_macro_force_endpoint_mae_n": 0.42593944484463975,
+          "episode_macro_force_mae_n": 0.43598810905020535,
+          "episode_macro_moment_endpoint_mae_nm": 0.02292959484503302,
+          "episode_macro_moment_mae_nm": 0.02282173952916078
+        }
+      },
+      {
+        "step": 16500,
+        "epoch": 3300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005256166813328741,
+          "episode_macro_force_endpoint_mae_n": 0.515386223329574,
+          "episode_macro_force_mae_n": 0.5233398834689433,
+          "episode_macro_moment_endpoint_mae_nm": 0.02651823320407486,
+          "episode_macro_moment_mae_nm": 0.025935321370316004
+        }
+      },
+      {
+        "step": 16750,
+        "epoch": 3350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0035734481020730895,
+          "episode_macro_force_endpoint_mae_n": 0.46003465153512624,
+          "episode_macro_force_mae_n": 0.4699263957548959,
+          "episode_macro_moment_endpoint_mae_nm": 0.0236656541081677,
+          "episode_macro_moment_mae_nm": 0.02358600241102938
+        }
+      },
+      {
+        "step": 17000,
+        "epoch": 3400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0050875685454169085,
+          "episode_macro_force_endpoint_mae_n": 0.4625312814498807,
+          "episode_macro_force_mae_n": 0.47646470574598476,
+          "episode_macro_moment_endpoint_mae_nm": 0.02412199395911007,
+          "episode_macro_moment_mae_nm": 0.023854067292633147
+        }
+      },
+      {
+        "step": 17250,
+        "epoch": 3450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0050966831039639384,
+          "episode_macro_force_endpoint_mae_n": 0.42307956150072445,
+          "episode_macro_force_mae_n": 0.4308045804670913,
+          "episode_macro_moment_endpoint_mae_nm": 0.024391270351303836,
+          "episode_macro_moment_mae_nm": 0.024243018996190684
+        }
+      },
+      {
+        "step": 17500,
+        "epoch": 3500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0045197564267318,
+          "episode_macro_force_endpoint_mae_n": 0.41864900796570603,
+          "episode_macro_force_mae_n": 0.42010836446957367,
+          "episode_macro_moment_endpoint_mae_nm": 0.023253409423893708,
+          "episode_macro_moment_mae_nm": 0.02334028601961501
+        }
+      },
+      {
+        "step": 17750,
+        "epoch": 3550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004118053486099778,
+          "episode_macro_force_endpoint_mae_n": 0.4182339595002137,
+          "episode_macro_force_mae_n": 0.4418810537706695,
+          "episode_macro_moment_endpoint_mae_nm": 0.02415216608282148,
+          "episode_macro_moment_mae_nm": 0.023764627109311452
+        }
+      },
+      {
+        "step": 18000,
+        "epoch": 3600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004982237571889866,
+          "episode_macro_force_endpoint_mae_n": 0.45120035189014224,
+          "episode_macro_force_mae_n": 0.4642499246869726,
+          "episode_macro_moment_endpoint_mae_nm": 0.025594895396895783,
+          "episode_macro_moment_mae_nm": 0.024709691654384282
+        }
+      },
+      {
+        "step": 18250,
+        "epoch": 3650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004721563923705175,
+          "episode_macro_force_endpoint_mae_n": 0.40764536169719506,
+          "episode_macro_force_mae_n": 0.4248798290665321,
+          "episode_macro_moment_endpoint_mae_nm": 0.022683028902126475,
+          "episode_macro_moment_mae_nm": 0.02263218095677439
+        }
+      },
+      {
+        "step": 18500,
+        "epoch": 3700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005027282789747312,
+          "episode_macro_force_endpoint_mae_n": 0.4174258938388336,
+          "episode_macro_force_mae_n": 0.43822934895540583,
+          "episode_macro_moment_endpoint_mae_nm": 0.023600402746158683,
+          "episode_macro_moment_mae_nm": 0.02358172342046307
+        }
+      },
+      {
+        "step": 18750,
+        "epoch": 3750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005018210400453986,
+          "episode_macro_force_endpoint_mae_n": 0.4456872067462362,
+          "episode_macro_force_mae_n": 0.46435900010636555,
+          "episode_macro_moment_endpoint_mae_nm": 0.023377541416096402,
+          "episode_macro_moment_mae_nm": 0.023420575716292476
+        }
+      },
+      {
+        "step": 19000,
+        "epoch": 3800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005311340905029542,
+          "episode_macro_force_endpoint_mae_n": 0.40750646594801304,
+          "episode_macro_force_mae_n": 0.41104835050015315,
+          "episode_macro_moment_endpoint_mae_nm": 0.023071116983773017,
+          "episode_macro_moment_mae_nm": 0.022926423304925066
+        }
+      },
+      {
+        "step": 19250,
+        "epoch": 3850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004470972453643089,
+          "episode_macro_force_endpoint_mae_n": 0.45202897141079124,
+          "episode_macro_force_mae_n": 0.45158553625860076,
+          "episode_macro_moment_endpoint_mae_nm": 0.024244535280441504,
+          "episode_macro_moment_mae_nm": 0.024489002791207703
+        }
+      },
+      {
+        "step": 19500,
+        "epoch": 3900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005434065044622141,
+          "episode_macro_force_endpoint_mae_n": 0.4043768262364903,
+          "episode_macro_force_mae_n": 0.4148040640141343,
+          "episode_macro_moment_endpoint_mae_nm": 0.023279667486752448,
+          "episode_macro_moment_mae_nm": 0.023227010924424956
+        }
+      },
+      {
+        "step": 19750,
+        "epoch": 3950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005151496308983758,
+          "episode_macro_force_endpoint_mae_n": 0.4324185121390517,
+          "episode_macro_force_mae_n": 0.4378103449647176,
+          "episode_macro_moment_endpoint_mae_nm": 0.024290262464547668,
+          "episode_macro_moment_mae_nm": 0.024321146017343358
+        }
+      },
+      {
+        "step": 20000,
+        "epoch": 4000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.006520867226922411,
+          "episode_macro_force_endpoint_mae_n": 0.4226876850574935,
+          "episode_macro_force_mae_n": 0.4031335923812801,
+          "episode_macro_moment_endpoint_mae_nm": 0.022486510023276486,
+          "episode_macro_moment_mae_nm": 0.0222507680881091
+        }
+      },
+      {
+        "step": 20250,
+        "epoch": 4050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0041216255772081,
+          "episode_macro_force_endpoint_mae_n": 0.4133471303755318,
+          "episode_macro_force_mae_n": 0.43072111249390355,
+          "episode_macro_moment_endpoint_mae_nm": 0.022599360878811238,
+          "episode_macro_moment_mae_nm": 0.022808498119240423
+        }
+      },
+      {
+        "step": 20500,
+        "epoch": 4100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0053427649353711675,
+          "episode_macro_force_endpoint_mae_n": 0.47541295273384954,
+          "episode_macro_force_mae_n": 0.4779439986728874,
+          "episode_macro_moment_endpoint_mae_nm": 0.024160123841178056,
+          "episode_macro_moment_mae_nm": 0.02400863477296313
+        }
+      },
+      {
+        "step": 20750,
+        "epoch": 4150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005572573925419625,
+          "episode_macro_force_endpoint_mae_n": 0.434088219824071,
+          "episode_macro_force_mae_n": 0.42058615119759607,
+          "episode_macro_moment_endpoint_mae_nm": 0.022655861359657657,
+          "episode_macro_moment_mae_nm": 0.022251833473187883
+        }
+      },
+      {
+        "step": 21000,
+        "epoch": 4200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004255970926112238,
+          "episode_macro_force_endpoint_mae_n": 0.4653633370010639,
+          "episode_macro_force_mae_n": 0.4849329489477273,
+          "episode_macro_moment_endpoint_mae_nm": 0.02513759409979031,
+          "episode_macro_moment_mae_nm": 0.02483557844970081
+        }
+      },
+      {
+        "step": 21250,
+        "epoch": 4250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003592338916706344,
+          "episode_macro_force_endpoint_mae_n": 0.415338011903623,
+          "episode_macro_force_mae_n": 0.41268603249038793,
+          "episode_macro_moment_endpoint_mae_nm": 0.02370042788487666,
+          "episode_macro_moment_mae_nm": 0.023392168287532895
+        }
+      },
+      {
+        "step": 21500,
+        "epoch": 4300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005102745793649432,
+          "episode_macro_force_endpoint_mae_n": 0.4231631268043,
+          "episode_macro_force_mae_n": 0.4350990891914604,
+          "episode_macro_moment_endpoint_mae_nm": 0.02340944071957318,
+          "episode_macro_moment_mae_nm": 0.023309226906336983
+        }
+      },
+      {
+        "step": 21750,
+        "epoch": 4350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0035309309626437406,
+          "episode_macro_force_endpoint_mae_n": 0.40769180325450405,
+          "episode_macro_force_mae_n": 0.4261930509111293,
+          "episode_macro_moment_endpoint_mae_nm": 0.023107523970450856,
+          "episode_macro_moment_mae_nm": 0.023218821748353168
+        }
+      },
+      {
+        "step": 22000,
+        "epoch": 4400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003583607333568724,
+          "episode_macro_force_endpoint_mae_n": 0.41713482363398696,
+          "episode_macro_force_mae_n": 0.41935336751505636,
+          "episode_macro_moment_endpoint_mae_nm": 0.02296507445156956,
+          "episode_macro_moment_mae_nm": 0.022730325249681552
+        }
+      },
+      {
+        "step": 22250,
+        "epoch": 4450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004915791814070295,
+          "episode_macro_force_endpoint_mae_n": 0.4106427093060533,
+          "episode_macro_force_mae_n": 0.4070800550793604,
+          "episode_macro_moment_endpoint_mae_nm": 0.022720519598517133,
+          "episode_macro_moment_mae_nm": 0.022416446846617383
+        }
+      },
+      {
+        "step": 22500,
+        "epoch": 4500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003283535376358119,
+          "episode_macro_force_endpoint_mae_n": 0.41508177491941806,
+          "episode_macro_force_mae_n": 0.4587576017478038,
+          "episode_macro_moment_endpoint_mae_nm": 0.022769657585904417,
+          "episode_macro_moment_mae_nm": 0.023216079173493602
+        }
+      },
+      {
+        "step": 22750,
+        "epoch": 4550,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003912780128411745,
+          "episode_macro_force_endpoint_mae_n": 0.43553127746758624,
+          "episode_macro_force_mae_n": 0.44226640765755487,
+          "episode_macro_moment_endpoint_mae_nm": 0.02347363881316509,
+          "episode_macro_moment_mae_nm": 0.023272226914121705
+        }
+      },
+      {
+        "step": 23000,
+        "epoch": 4600,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004003563264076607,
+          "episode_macro_force_endpoint_mae_n": 0.44225933279263635,
+          "episode_macro_force_mae_n": 0.4415444213624241,
+          "episode_macro_moment_endpoint_mae_nm": 0.02332449074745861,
+          "episode_macro_moment_mae_nm": 0.023065310735332613
+        }
+      },
+      {
+        "step": 23250,
+        "epoch": 4650,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005197869850546354,
+          "episode_macro_force_endpoint_mae_n": 0.4023746519228598,
+          "episode_macro_force_mae_n": 0.4010924628372009,
+          "episode_macro_moment_endpoint_mae_nm": 0.022755905781477275,
+          "episode_macro_moment_mae_nm": 0.022639025970999933
+        }
+      },
+      {
+        "step": 23500,
+        "epoch": 4700,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0048318037615769,
+          "episode_macro_force_endpoint_mae_n": 0.39895110622887403,
+          "episode_macro_force_mae_n": 0.4036276518726135,
+          "episode_macro_moment_endpoint_mae_nm": 0.02302347237434436,
+          "episode_macro_moment_mae_nm": 0.023000201059474132
+        }
+      },
+      {
+        "step": 23750,
+        "epoch": 4750,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004045811635058192,
+          "episode_macro_force_endpoint_mae_n": 0.4195147783178421,
+          "episode_macro_force_mae_n": 0.4247819420610061,
+          "episode_macro_moment_endpoint_mae_nm": 0.022922339207339177,
+          "episode_macro_moment_mae_nm": 0.022803097581725693
+        }
+      },
+      {
+        "step": 24000,
+        "epoch": 4800,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00565120928255545,
+          "episode_macro_force_endpoint_mae_n": 0.4526963906226264,
+          "episode_macro_force_mae_n": 0.457457602665155,
+          "episode_macro_moment_endpoint_mae_nm": 0.02429926986963362,
+          "episode_macro_moment_mae_nm": 0.024027754873771567
+        }
+      },
+      {
+        "step": 24250,
+        "epoch": 4850,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003642785555909881,
+          "episode_macro_force_endpoint_mae_n": 0.41775899132677774,
+          "episode_macro_force_mae_n": 0.43208437321229115,
+          "episode_macro_moment_endpoint_mae_nm": 0.02137424816559163,
+          "episode_macro_moment_mae_nm": 0.02138367415300497
+        }
+      },
+      {
+        "step": 24500,
+        "epoch": 4900,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005049110684541212,
+          "episode_macro_force_endpoint_mae_n": 0.4118473821883947,
+          "episode_macro_force_mae_n": 0.4199276435936433,
+          "episode_macro_moment_endpoint_mae_nm": 0.023057656505810924,
+          "episode_macro_moment_mae_nm": 0.022805126437280537
+        }
+      },
+      {
+        "step": 24750,
+        "epoch": 4950,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003318063949441054,
+          "episode_macro_force_endpoint_mae_n": 0.4258443638568223,
+          "episode_macro_force_mae_n": 0.4316186462439175,
+          "episode_macro_moment_endpoint_mae_nm": 0.022533367733873468,
+          "episode_macro_moment_mae_nm": 0.022508748871358265
+        }
+      },
+      {
+        "step": 25000,
+        "epoch": 5000,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004627874040669657,
+          "episode_macro_force_endpoint_mae_n": 0.4250826995920967,
+          "episode_macro_force_mae_n": 0.4314465302384568,
+          "episode_macro_moment_endpoint_mae_nm": 0.023805218837621066,
+          "episode_macro_moment_mae_nm": 0.02361702565855605
+        }
+      },
+      {
+        "step": 25250,
+        "epoch": 5050,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004227153403370061,
+          "episode_macro_force_endpoint_mae_n": 0.4223674487356502,
+          "episode_macro_force_mae_n": 0.42288208954393103,
+          "episode_macro_moment_endpoint_mae_nm": 0.02358153483520724,
+          "episode_macro_moment_mae_nm": 0.023567297320864038
+        }
+      },
+      {
+        "step": 25500,
+        "epoch": 5100,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0042525203260701475,
+          "episode_macro_force_endpoint_mae_n": 0.41728538407977156,
+          "episode_macro_force_mae_n": 0.4251537280558268,
+          "episode_macro_moment_endpoint_mae_nm": 0.02339263920217751,
+          "episode_macro_moment_mae_nm": 0.02352196106357445
+        }
+      },
+      {
+        "step": 25750,
+        "epoch": 5150,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005875817196648279,
+          "episode_macro_force_endpoint_mae_n": 0.3956950080076245,
+          "episode_macro_force_mae_n": 0.399321962003842,
+          "episode_macro_moment_endpoint_mae_nm": 0.02227080494461054,
+          "episode_macro_moment_mae_nm": 0.02208158602458162
+        }
+      },
+      {
+        "step": 26000,
+        "epoch": 5200,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004350680144189594,
+          "episode_macro_force_endpoint_mae_n": 0.45713545445711806,
+          "episode_macro_force_mae_n": 0.4765557072240455,
+          "episode_macro_moment_endpoint_mae_nm": 0.023757096901243658,
+          "episode_macro_moment_mae_nm": 0.023722488100169834
+        }
+      },
+      {
+        "step": 26250,
+        "epoch": 5250,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003468187197655357,
+          "episode_macro_force_endpoint_mae_n": 0.3983615883703958,
+          "episode_macro_force_mae_n": 0.39791200679504685,
+          "episode_macro_moment_endpoint_mae_nm": 0.022878422140494986,
+          "episode_macro_moment_mae_nm": 0.022920194596856944
+        }
+      },
+      {
+        "step": 26500,
+        "epoch": 5300,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.003843430988375971,
+          "episode_macro_force_endpoint_mae_n": 0.4182802522689365,
+          "episode_macro_force_mae_n": 0.4271580020006735,
+          "episode_macro_moment_endpoint_mae_nm": 0.024590017579883702,
+          "episode_macro_moment_mae_nm": 0.02437470903323648
+        }
+      },
+      {
+        "step": 26750,
+        "epoch": 5350,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.00378684684752833,
+          "episode_macro_force_endpoint_mae_n": 0.42366877201600095,
+          "episode_macro_force_mae_n": 0.4391769837205823,
+          "episode_macro_moment_endpoint_mae_nm": 0.024009289466930244,
+          "episode_macro_moment_mae_nm": 0.023521466059633546
+        }
+      },
+      {
+        "step": 27000,
+        "epoch": 5400,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.0041476113053223376,
+          "episode_macro_force_endpoint_mae_n": 0.41704669624750607,
+          "episode_macro_force_mae_n": 0.41461606036785115,
+          "episode_macro_moment_endpoint_mae_nm": 0.02351499812715515,
+          "episode_macro_moment_mae_nm": 0.02361335301854173
+        }
+      },
+      {
+        "step": 27250,
+        "epoch": 5450,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.004683693679965373,
+          "episode_macro_force_endpoint_mae_n": 0.4173631859163902,
+          "episode_macro_force_mae_n": 0.4191879532894691,
+          "episode_macro_moment_endpoint_mae_nm": 0.0233810877098516,
+          "episode_macro_moment_mae_nm": 0.023206850709788267
+        }
+      },
+      {
+        "step": 27500,
+        "epoch": 5500,
+        "metrics": {
+          "episode_macro_action_mae_rad": 0.005083795652029986,
+          "episode_macro_force_endpoint_mae_n": 0.4169265526304434,
+          "episode_macro_force_mae_n": 0.41678393492890986,
+          "episode_macro_moment_endpoint_mae_nm": 0.02295749179159496,
+          "episode_macro_moment_mae_nm": 0.022909246192229202
+        }
+      }
+    ]
+  },
+  "source_series_sha256": {
+    "contact": "bdacf36786a004b17c6fb59a4f1d93532b431d31379ad31ea3268e8c32da3253",
+    "motion": "d7dbd0d5a9186c183578642bfffba6a12e13b674985b0b1b9ed896daa06e4d0f"
+  }
+}

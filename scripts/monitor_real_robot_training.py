@@ -281,6 +281,9 @@ def build_report(run_dir, reader, rate, *, now=None, processes=None, include_gpu
     validation = reader.last_validation
     stopping = validation.get("early_stopping", {})
     stopping_config = config.get("early_stopping_config", {})
+    objectives = config.get("validation_objectives", {})
+    checkpoint_names = [spec["checkpoint"] for spec in objectives.get("metrics", {}).values()] or ["best.pt"]
+    checkpoint_names.append("last.pt")
     interval = _number(argument(process["argv"], "--validation-interval")) if process else None
     next_validation = (int((step // interval + 1) * interval) if interval and interval > 0 else None)
     if next_validation is not None and finite(budget):
@@ -301,10 +304,13 @@ def build_report(run_dir, reader, rate, *, now=None, processes=None, include_gpu
             "validation": validation.get("held_out_validation", {}), "best_validation": reader.best,
             "next_validation_step": next_validation, "early_stopping_config": stopping_config,
             "early_stopping_state": stopping,
+            "validation_objectives": objectives,
+            "validation_objective_values": validation.get("validation_objective_values", {}),
+            "best_checkpoints": validation.get("best_checkpoints", {}),
             "force_source": manifest.get("data_contract", {}).get("force_source_topic"),
             "force_representation": manifest.get("data_config", {}).get("force_representation", "joint_torque7"),
             "force_coordinate_frame": manifest.get("data_contract", {}).get("force_coordinate_frame"),
-            "checkpoints": {n: checkpoint_info(run_dir / n, now) for n in ("best.pt", "last.pt")},
+            "checkpoints": {n: checkpoint_info(run_dir / n, now) for n in checkpoint_names},
             "gpus": gpu_snapshot(process["pid"] if process else None) if include_gpu else [],
             "warnings": warnings})
 
@@ -350,14 +356,32 @@ def render_report(report):
     lines.append(f"最优验证：{fmt(best.get('value'), 6)} rad @ step {best.get('step', '—')}   "
                  f"下次验证：{report['next_validation_step'] or '—'}")
     config, state = report["early_stopping_config"], report["early_stopping_state"]
-    if config:
+    objectives = report.get("validation_objectives", {})
+    if config and config.get("patience", 0):
         warmup = (report["completed_epochs"] or 0) <= config["minimum_epochs"]
-        lines.append(f"早停：{'预热阶段' if warmup else '已启用计数'}；预热{config['minimum_epochs']} epoch；"
-                     f"最近验证计数 {state.get('bad_checks', 0)}/{config['patience']}；"
-                     f"所需相对改善 {config['minimum_relative_improvement'] * 100:.2f}%")
+        if objectives:
+            lines.append(f"多指标早停：{'预热阶段' if warmup else '已启用计数'}；预热{config['minimum_epochs']} epoch；"
+                         f"全部指标连续 {config['patience']} 次验证未充分改善才停止；"
+                         f"所需相对改善 {config['minimum_relative_improvement'] * 100:.2f}%")
+        else:
+            lines.append(f"早停：{'预热阶段' if warmup else '已启用计数'}；预热{config['minimum_epochs']} epoch；"
+                         f"最近验证计数 {state.get('bad_checks', 0)}/{config['patience']}；"
+                         f"所需相对改善 {config['minimum_relative_improvement'] * 100:.2f}%")
         lines.append("  早停计数和参考值按最近一次验证更新。")
     else:
         lines.append("早停：未启用")
+    objective_labels = {"action": "动作", "force": "三维力", "moment": "三维力矩", "torque": "关节外力矩"}
+    for name, spec in objectives.get("metrics", {}).items():
+        current = report.get("validation_objective_values", {}).get(name)
+        saved = report.get("best_checkpoints", {}).get(name) or {}
+        control = state.get("metrics", {}).get(name, {}).get("controller", {})
+        label = objective_labels.get(name, name)
+        aggregation = "MAE" if name == "action" else "综合MAE（端点2/3＋区间1/3）"
+        lines.append(f"  {label}{aggregation}：当前 {fmt(current, 6)} {spec['unit']}；"
+                     f"最佳 {fmt(saved.get('value'), 6)} @ epoch {saved.get('epoch', '—')} → {spec['checkpoint']}")
+        if config.get("patience", 0):
+            lines.append(f"    未充分改善 {control.get('bad_checks', '—')}/{config['patience']}；"
+                         f"早停参考值 {fmt(control.get('reference_metric'), 6)} {spec['unit']}")
     lines.append("外力来源：" + str(report["force_source"] or "—"))
     if report.get("force_representation") == "flange_force3":
         lines.append("力表示：法兰坐标系 Fx/Fy/Fz；物理指标单位 N")

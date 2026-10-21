@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Usage: bash scripts/training/train_x14y08_wrench6.sh [act|contact|motion] [test|train] [extra CLI args...]
+# Multi-metric early stopping; the architecture, loss weights and training budget are unchanged.
 # Default is a bounded 10-update full-network check. Formal training requires explicit 'train'.
 set -euo pipefail
 model_kind="${1:-contact}"
@@ -11,9 +12,9 @@ case "$model_kind" in
   *) echo 'Model must be act, contact or motion' >&2; exit 2 ;;
 esac
 case "$run_mode" in
-  test) budget=(--steps 10); output="outputs/1mm_x14y08_55_wrench6_v1/checks/${model_kind}_fullnet" ;;
+  test) budget=(--steps 10); output="outputs/1mm_x14y08_55_wrench6_multimetric_v1/checks/${model_kind}_fullnet" ;;
   train) budget=(--max-sampling-epochs 20000 --minimum-sampling-epochs 3000 --early-stop-patience 20 --early-stop-min-relative-improvement 0.001)
-         output="outputs/1mm_x14y08_55_wrench6_v1/runs/${run_name}" ;;
+         output="outputs/1mm_x14y08_55_wrench6_multimetric_v1/runs/${run_name}" ;;
   *) echo 'Mode must be test or train' >&2; exit 2 ;;
 esac
 task_repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -31,4 +32,5 @@ exec python -u scripts/train_real_robot.py \
   --chunk-len 20 "${force_args[@]}" --seed 0 \
   "${budget[@]}" --validation-interval 250 --validation-anchor-stride 10 \
   --selection-metric episode_macro_action_mae_rad --checkpoint-interval 250 \
+  --early-stop-metrics multi \
   --record-timing --device cuda --threads 4 "${@:3}"

@@ -89,9 +89,12 @@ def restore_checkpoint(payload, *, model, optimizer, sampler, expected):
     for key in ("batch_size", "seed", "sampling", "mode"):
         if payload["run_config"][key] != expected["run_config"][key]:
             raise ValueError(f"checkpoint run_config.{key} differs from this run")
-    for key in ("evaluation_config", "early_stopping_config"):
+    for key in ("evaluation_config", "early_stopping_config", "validation_objectives"):
         if canonical(payload["run_config"].get(key)) != canonical(expected["run_config"].get(key)):
             raise ValueError(f"checkpoint run_config.{key} differs from this run")
+    if payload["run_config"].get("validation_objectives"):
+        from .multi_metric_control import restore_multi_metric_controller
+        restore_multi_metric_controller(payload)
     if hasattr(sampler, "validate_state"):
         sampler.validate_state(payload["sampler_state"])
     rng = payload["rng_state"]

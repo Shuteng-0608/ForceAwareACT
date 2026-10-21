@@ -31,6 +31,9 @@ from force_aware_act.real_robot.training_sampling import (
     resolve_training_sampling_mode,
 )
 from force_aware_act.real_robot.training_control import EarlyStoppingConfig, EarlyStoppingController
+from force_aware_act.real_robot.multi_metric_control import (
+    MultiMetricController, resolve_metric_mode, restore_multi_metric_controller, validation_objectives,
+)
 from force_aware_act.real_robot.evaluation import fixed_indices, index_manifest, evaluate_episodes
 from force_aware_act.real_robot.training import (
     MODEL_KINDS, RealRobotOptimizationConfig, build_criterion, build_model,
@@ -118,7 +121,7 @@ def validate_output_identity(output_dir, metadata, resume_step):
     for key in ("mode", "batch_size", "seed", "sampling"):
         if previous["run_config"][key] != metadata["run_config"][key]:
             raise ValueError(f"existing output directory differs in {key}")
-    for key in ("evaluation_config", "early_stopping_config"):
+    for key in ("evaluation_config", "early_stopping_config", "validation_objectives"):
         if canonical(previous["run_config"].get(key)) != canonical(metadata["run_config"].get(key)):
             raise ValueError(f"existing output directory differs in {key}")
     metrics_path = output_dir / "metrics.jsonl"
@@ -150,6 +153,9 @@ def parser():
     result.add_argument("--minimum-sampling-epochs", type=int, default=500)
     result.add_argument("--early-stop-patience", type=int, default=0, help="validation checks; 0 disables early stopping")
     result.add_argument("--early-stop-min-relative-improvement", type=float, default=0.005)
+    result.add_argument("--early-stop-metrics", choices=("action", "multi"),
+                        help="multi: stop only when every validation objective stalls and save each best; "
+                             "default: action for new runs, saved mode for resume")
     result.add_argument("--validation-anchor-stride", type=int, default=1)
     result.add_argument("--selection-metric", choices=("action_mae_rad", "episode_macro_action_mae_rad"), default="action_mae_rad")
     result.add_argument("--record-timing", action="store_true")
@@ -223,6 +229,11 @@ def main(argv=None):
         return inspection
 
     payload = read_checkpoint(args.resume) if args.resume else None
+    metric_mode = resolve_metric_mode(args.early_stop_metrics, payload["run_config"] if payload else None)
+    objectives = (validation_objectives(args.model, data_config.force_representation, args.selection_metric)
+                  if metric_mode == "multi" else None)
+    if objectives and args.mode == "smoke":
+        raise ValueError("multi-metric selection requires held-out validation; use test or train mode")
     if payload and args.force_prediction_steps is None:
         args.force_prediction_steps = payload["model_config"].get("force_prediction_steps")
     if payload and args.strict_force_horizon is None:
@@ -270,8 +281,10 @@ def main(argv=None):
     if extended_evaluation:
         run_config["evaluation_config"] = {"stride": args.validation_anchor_stride, "selection_metric": args.selection_metric,
                                           "indices_sha256": frozen_validation["indices_sha256"]}
-    if stopping_config.patience:
+    if stopping_config.patience or objectives:
         run_config["early_stopping_config"] = asdict(stopping_config)
+    if objectives:
+        run_config["validation_objectives"] = objectives
     if args.max_sampling_epochs is not None:
         run_config["max_sampling_epochs"] = args.max_sampling_epochs
     if sampling_mode == EPISODIC_UNIFORM_SAMPLING:
@@ -302,11 +315,13 @@ def main(argv=None):
     criterion = build_criterion(args.model, settings)
     optimizer = build_optimizer(model, settings)
     start = restore_checkpoint(payload, model=model, optimizer=optimizer, sampler=sampler, expected=metadata) if payload else 0
-    stopping = EarlyStoppingController(stopping_config)
-    if stopping_config.patience and payload:
+    stopping = (restore_multi_metric_controller(payload) if payload and objectives else
+                MultiMetricController(stopping_config, objectives) if objectives else
+                EarlyStoppingController(stopping_config))
+    if stopping_config.patience and payload and not objectives:
         stopping.load_state_dict(payload["early_stopping_state"])
-        if stopping.stopped:
-            raise ValueError("checkpoint already satisfied early stopping")
+    if stopping.stopped:
+        raise ValueError("checkpoint already satisfied early stopping")
     if start >= steps:
         raise ValueError("--steps must exceed the checkpoint's completed steps")
     write_json(args.output_dir / "data_quality.json", inspection)
@@ -327,6 +342,8 @@ def main(argv=None):
         result = {**metadata, "best_metric": best_metric}
         if stopping_config.patience:
             result["early_stopping_state"] = stopping.state_dict()
+        if objectives:
+            result["multi_metric_state"] = stopping.state_dict()
         return result
 
     for step in range(start + 1, steps + 1):
@@ -361,13 +378,26 @@ def main(argv=None):
             # A same-recording smoke check is explicitly not a held-out estimate.
             row["held_out_validation" if validation_data is not None else "same_recording_smoke_check"] = evaluated
             selected = evaluated[args.selection_metric]
-            if stopping_config.patience:
-                stopping.update(selected, completed_epochs=sampler.completed_epochs, step=step)
-                row["early_stopping"] = stopping.state_dict()
-            if validation_data is not None and (best_metric is None or selected < best_metric):
-                best_metric = selected
-                save_checkpoint(args.output_dir / "best.pt", model=model, optimizer=optimizer,
-                                sampler=sampler, global_step=step, metadata=checkpoint_metadata())
+            if objectives:
+                stopping.update(evaluated, completed_epochs=sampler.completed_epochs, step=step)
+                best_metric = stopping.best["action"]["value"]
+                row["validation_objective_values"] = dict(stopping.values)
+                row["best_checkpoints"] = {name: dict(best) for name, best in stopping.best.items()}
+                if stopping_config.patience:
+                    row["early_stopping"] = stopping.state_dict()
+                for name in stopping.improved_metrics:
+                    selection = {"objective": name, **stopping.best[name]}
+                    save_checkpoint(args.output_dir / selection["checkpoint"], model=model, optimizer=optimizer,
+                                    sampler=sampler, global_step=step,
+                                    metadata={**checkpoint_metadata(), "checkpoint_selection": selection})
+            else:
+                if stopping_config.patience:
+                    stopping.update(selected, completed_epochs=sampler.completed_epochs, step=step)
+                    row["early_stopping"] = stopping.state_dict()
+                if validation_data is not None and (best_metric is None or selected < best_metric):
+                    best_metric = selected
+                    save_checkpoint(args.output_dir / "best.pt", model=model, optimizer=optimizer,
+                                    sampler=sampler, global_step=step, metadata=checkpoint_metadata())
         with metrics_file.open("a") as stream:
             stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
         print(json.dumps(row, ensure_ascii=False, allow_nan=False), flush=True)
@@ -391,6 +421,9 @@ def main(argv=None):
                "train_anchors": len(train_data), "validation_anchors": len(validation_data) if validation_data else 0,
                "checkpoint_round_trip": "passed", "final_metrics": last_metrics,
                "checkpoint": str(args.output_dir / "last.pt")}
+    if objectives:
+        summary["best_checkpoints"] = stopping.best
+        summary["multi_metric_state"] = stopping.state_dict()
     if sampling_mode == EPISODIC_UNIFORM_SAMPLING:
         summary.update(sampling_epoch=sampler.epoch, completed_sampling_epochs=sampler.completed_epochs)
     if args.record_timing:
