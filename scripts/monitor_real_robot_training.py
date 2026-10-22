@@ -300,6 +300,8 @@ def build_report(run_dir, reader, rate, *, now=None, processes=None, include_gpu
             "mean_read_train_seconds": sum(timings) / len(timings) if timings else None,
             "wall_steps_per_second": speed, "estimated_remaining_to_budget_s": remaining,
             "validation_step": validation.get("step"), "validation_metric": metric,
+            "contact_latent_mode": config.get("contact_latent_config", {}).get("evaluation", "zero"),
+            "zero_latent_reference": validation.get("zero_latent_reference", {}),
             "validation_value": validation.get("held_out_validation", {}).get(metric),
             "validation": validation.get("held_out_validation", {}), "best_validation": reader.best,
             "next_validation_step": next_validation, "early_stopping_config": stopping_config,
@@ -352,6 +354,17 @@ def render_report(report):
     lines.append(f"平均取样+训练：{fmt(report['mean_read_train_seconds'], 3)}秒/更新（不含验证和保存）")
     lines.append(f"验证：step {report['validation_step'] or '—'}   {report['validation_metric']} = "
                  f"{fmt(report['validation_value'], 6)} rad")
+    if report.get("model") == "contact":
+        lines.append(f"Contact：训练 posterior 采样；验证/早停/最佳 checkpoint 使用 {report.get('contact_latent_mode', 'zero')}")
+        reference = report.get("zero_latent_reference", {})
+        if reference:
+            lines.append(f"  zero 对照动作误差：{fmt(reference.get(report['validation_metric']), 6)} rad（仅记录，不参与早停）")
+            for key, label, unit in (("force", "力", "N"), ("moment", "力矩", "N·m"), ("torque", "关节力矩", "N·m")):
+                suffix = "nm" if key != "force" else "n"
+                endpoint = reference.get(f"episode_macro_{key}_endpoint_mae_{suffix}")
+                interval = reference.get(f"episode_macro_{key}_mae_{suffix}")
+                if endpoint is not None or interval is not None:
+                    lines.append(f"  zero 对照{label}：端点 {fmt(endpoint, 6)}；区间 {fmt(interval, 6)} {unit}")
     best = report["best_validation"] or {}
     lines.append(f"最优验证：{fmt(best.get('value'), 6)} rad @ step {best.get('step', '—')}   "
                  f"下次验证：{report['next_validation_step'] or '—'}")

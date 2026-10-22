@@ -18,7 +18,7 @@ case "$run_mode" in
   *) echo 'Mode must be test or train' >&2; exit 2 ;;
 esac
 task_repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "${HOME}/miniconda3/etc/profile.d/conda.sh"
+source "${FORCEACT_CONDA_SH:-${HOME}/miniconda3/etc/profile.d/conda.sh}"
 conda activate forceact
 cd "$task_repo_root"
 exec python -u scripts/train_real_robot.py \

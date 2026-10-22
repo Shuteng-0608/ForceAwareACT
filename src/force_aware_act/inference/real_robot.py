@@ -241,7 +241,7 @@ class RealRobotPolicyAdapter:
 
     def __init__(self, model: torch.nn.Module, *, model_kind: str,
                  normalization: Mapping[str, Any], data_config: Any,
-                 data_contract: Mapping[str, Any]) -> None:
+                 data_contract: Mapping[str, Any], contact_latent_mode: str = "zero") -> None:
         if model_kind not in {"contact", "motion", "dual-zero", "act"}:
             raise ValueError("unsupported real-robot model kind")
         validate_data_contract(data_contract, data_config)
@@ -249,6 +249,7 @@ class RealRobotPolicyAdapter:
             raise ValueError("real-robot replay currently requires the confirmed log_ns clock")
         self.model = model
         self.model_kind = model_kind
+        self.default_contact_latent_mode = self._resolve_contact_mode(contact_latent_mode)
         self.normalization = dict(normalization)
         self.data_config = data_config
         self._validate_model_contract()
@@ -260,6 +261,7 @@ class RealRobotPolicyAdapter:
                         expected_data_config: Any | None = None) -> "RealRobotPolicyAdapter":
         from force_aware_act.real_robot.config import RealRobotDataConfig
         from force_aware_act.real_robot.training import build_model
+        from force_aware_act.real_robot.contact_latent_mode import resolve_contact_latent_mode
 
         if checkpoint.get("format_version") != "real_robot_training_v1":
             raise ValueError("unsupported real-robot checkpoint format")
@@ -271,9 +273,19 @@ class RealRobotPolicyAdapter:
                             initialize_pretrained=False)
         model.load_state_dict(checkpoint["model_state"], strict=True)
         model.to(device)
+        mode = resolve_contact_latent_mode(checkpoint["model_kind"], run_config=checkpoint.get("run_config"))
         return cls(model, model_kind=checkpoint["model_kind"],
                    normalization=checkpoint["normalization"], data_config=config,
-                   data_contract=checkpoint["data_contract"])
+                   data_contract=checkpoint["data_contract"], contact_latent_mode=mode)
+
+    def _resolve_contact_mode(self, mode: str | None) -> str:
+        if mode is None:
+            return self.default_contact_latent_mode
+        if mode not in {"zero", "prior", "prior_mean"}:
+            raise ValueError("deployment contact mode must be zero or prior (prior_mean is an alias)")
+        if self.model_kind != "contact" and mode != "zero":
+            raise ValueError("only the contact model supports prior inference")
+        return "prior" if mode == "prior_mean" else mode
 
     def _validate_model_contract(self) -> None:
         config = self.model.config
@@ -369,21 +381,15 @@ class RealRobotPolicyAdapter:
         return RealRobotPolicyInputs(**values)
 
     def predict(self, buffer: RealRobotObservationBuffer, anchor_ns: int, *,
-                contact_latent_mode: str = "zero") -> dict[str, np.ndarray]:
-        if contact_latent_mode not in {"zero", "prior"}:
-            raise ValueError("deployment contact mode must be zero or prior")
-        if self.model_kind != "contact" and contact_latent_mode != "zero":
-            raise ValueError("only the contact model supports prior inference")
+                contact_latent_mode: str | None = None) -> dict[str, np.ndarray]:
+        contact_latent_mode = self._resolve_contact_mode(contact_latent_mode)
         inputs = self.prepare_observation(buffer, anchor_ns)
         return self.predict_prepared(inputs, contact_latent_mode=contact_latent_mode)
 
     def predict_prepared(self, inputs: RealRobotPolicyInputs, *,
-                         contact_latent_mode: str = "zero") -> dict[str, np.ndarray]:
+                         contact_latent_mode: str | None = None) -> dict[str, np.ndarray]:
         """Predict after a locked snapshot; acquisition can continue during GPU work."""
-        if contact_latent_mode not in {"zero", "prior"}:
-            raise ValueError("deployment contact mode must be zero or prior")
-        if self.model_kind != "contact" and contact_latent_mode != "zero":
-            raise ValueError("only the contact model supports prior inference")
+        contact_latent_mode = self._resolve_contact_mode(contact_latent_mode)
         anchor_ns = inputs.source.anchor_ns
         with torch.inference_mode():
             if self.model_kind == "act":

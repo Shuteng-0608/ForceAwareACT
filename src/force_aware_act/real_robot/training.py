@@ -22,6 +22,7 @@ from force_aware_act.models.act_aligned import (
     ACTAlignedHighRateDualZeroPolicy, ACTAlignedHighRateMotionCVAEPolicy,
 )
 from force_aware_act.models.official_act import OfficialACTConfig, OfficialACTPolicy
+from .contact_latent_mode import validate_contact_latent_mode
 
 
 MODEL_KINDS = ("contact", "motion", "dual-zero", "act")
@@ -206,18 +207,22 @@ def train_step(kind, model, criterion, optimizer, batch, settings):
 
 
 @torch.no_grad()
-def deployment_predictions(kind, model, batch):
+def deployment_predictions(kind, model, batch, *, contact_latent_mode="zero"):
+    validate_contact_latent_mode(kind, contact_latent_mode)
     if kind == "act":
         return model(batch.images, batch.qpos)
     if kind == "contact":
-        return model(*online_inputs(batch), contact_latent_mode="zero")
+        return model(*online_inputs(batch),
+                     contact_latent_mode="prior" if contact_latent_mode == "prior_mean" else "zero",
+                     deterministic_prior=True)
     return model(*online_inputs(batch))
 
 
 @torch.no_grad()
 def evaluate(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None,
-             force_representation=None):
+             force_representation=None, contact_latent_mode="zero"):
     """Global valid-scalar deployment errors, never posterior-assisted validation."""
+    validate_contact_latent_mode(kind, contact_latent_mode)
     if force_evaluation_steps is not None:
         if kind == "act" or type(force_evaluation_steps) is not int or not 1 <= force_evaluation_steps <= model.config.force_prediction_len:
             raise ValueError("force_evaluation_steps must fit the model force prediction horizon")
@@ -228,7 +233,8 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False, for
         from .wrench_metrics import evaluate_sensor_force
         return evaluate_sensor_force(kind, model, batches, normalization, device,
                                      force_representation=force_representation,
-                                     detailed=detailed, force_evaluation_steps=force_evaluation_steps)
+                                     detailed=detailed, force_evaluation_steps=force_evaluation_steps,
+                                     contact_latent_mode=contact_latent_mode)
     previous = model.training
     model.eval()
     force3 = len(normalization.force_std) == 3
@@ -243,7 +249,7 @@ def evaluate(kind, model, batches, normalization, device, *, detailed=False, for
     try:
         for batch in batches:
             batch = batch.to(device)
-            outputs = deployment_predictions(kind, model, batch)
+            outputs = deployment_predictions(kind, model, batch, contact_latent_mode=contact_latent_mode)
             windows += batch.batch_size
             if detailed:
                 error = ((outputs["pred_action"] - batch.action_chunk) * batch.action_chunk.new_tensor(normalization.action_std)).abs()

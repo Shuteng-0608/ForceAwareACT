@@ -76,11 +76,13 @@ def aggregate_episode_metrics(per_episode):
     return result
 
 
-def evaluate_episodes(kind, model, dataset, indices, normalization, device, batch_size, *, detailed=False, force_evaluation_steps=None):
+def evaluate_episodes(kind, model, dataset, indices, normalization, device, batch_size, *, detailed=False,
+                      force_evaluation_steps=None, contact_latent_mode="zero"):
     per_episode = {
         episode: evaluate(kind, model, batches_for_indices(dataset, locations, batch_size), normalization, device, detailed=detailed,
                           force_evaluation_steps=force_evaluation_steps,
-                          force_representation=dataset.data_config.force_representation)
+                          force_representation=dataset.data_config.force_representation,
+                          contact_latent_mode=contact_latent_mode)
         for episode, locations in indices.items()
     }
     return aggregate_episode_metrics(per_episode)

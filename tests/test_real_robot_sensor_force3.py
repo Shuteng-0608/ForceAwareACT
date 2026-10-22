@@ -178,7 +178,8 @@ def test_sensor_force_metrics_and_episode_aggregation_keep_source_and_newtons(tm
     from force_aware_act.real_robot import training
     helper().episode(tmp_path)
     ds, stats, mc = dataset(tmp_path)
-    def predict(kind, model, batch):
+    def predict(kind, model, batch, *, contact_latent_mode="zero"):
+        assert contact_latent_mode == "zero"
         offset = batch.qpos.new_tensor([1., 2., 3.]) / batch.qpos.new_tensor(stats.force_std)
         return {'pred_action': batch.action_chunk,
                 'pred_force': batch.future_force_target + offset,

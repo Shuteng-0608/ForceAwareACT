@@ -145,7 +145,7 @@ def test_physical_metrics_keep_newtons_and_moments_separate(tmp_path,monkeypatch
              'pred_force_highrate':batch.future_force_intervals+shift}
     # Masked NaN labels never enter metrics.
     outputs['pred_force_highrate'][batch.future_force_sample_padding_mask]=float('nan')
-    monkeypatch.setattr(training,'deployment_predictions',lambda *args:outputs)
+    monkeypatch.setattr(training,'deployment_predictions',lambda *args, **kwargs:outputs)
     model=torch.nn.Identity();model.config=mc
     row=training.evaluate('contact',model,[batch],stats,'cpu')
     assert row['force_mae_n']==pytest.approx(2.,abs=1e-6)

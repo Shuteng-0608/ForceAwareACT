@@ -43,7 +43,7 @@ def _summarize(sums):
 
 @torch.no_grad()
 def evaluate_sensor_force(kind, model, batches, normalization, device, *, force_representation,
-                          detailed=False, force_evaluation_steps=None):
+                          detailed=False, force_evaluation_steps=None, contact_latent_mode="zero"):
     from .training import deployment_predictions
     dimension = {"end_effector_wrench6": 6, "end_effector_force3": 3}[force_representation]
     if len(normalization.force_std) != dimension:
@@ -67,7 +67,7 @@ def evaluate_sensor_force(kind, model, batches, normalization, device, *, force_
     try:
         for batch in batches:
             batch = batch.to(device)
-            outputs = deployment_predictions(kind, model, batch)
+            outputs = deployment_predictions(kind, model, batch, contact_latent_mode=contact_latent_mode)
             windows += batch.batch_size
             add("action_mae_rad", outputs["pred_action"], batch.action_chunk,
                 batch.action_padding_mask, normalization.action_std)
@@ -110,11 +110,12 @@ def evaluate_sensor_force(kind, model, batches, normalization, device, *, force_
     return result
 
 
-def evaluate_wrench6(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None):
+def evaluate_wrench6(kind, model, batches, normalization, device, *, detailed=False, force_evaluation_steps=None,
+                    contact_latent_mode="zero"):
     """Compatibility entry point for existing six-axis evaluations."""
     return evaluate_sensor_force(kind, model, batches, normalization, device,
                                  force_representation="end_effector_wrench6", detailed=detailed,
-                                 force_evaluation_steps=force_evaluation_steps)
+                                 force_evaluation_steps=force_evaluation_steps, contact_latent_mode=contact_latent_mode)
 
 
 def aggregate_sensor_force_metrics(per_episode):

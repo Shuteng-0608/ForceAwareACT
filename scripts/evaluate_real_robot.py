@@ -19,6 +19,7 @@ from force_aware_act.real_robot.data import RealRobotHighRateDataset
 from force_aware_act.real_robot.evaluation import evaluate_episodes, fixed_indices, index_manifest
 from force_aware_act.real_robot.reader import discover_real_robot_episodes
 from force_aware_act.real_robot.training import build_model, make_model_config
+from force_aware_act.real_robot.contact_latent_mode import CONTACT_LATENT_MODES, resolve_contact_latent_mode
 
 
 def main(argv=None):
@@ -31,6 +32,8 @@ def main(argv=None):
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--contact-latent-mode", choices=CONTACT_LATENT_MODES,
+                        help="default: checkpoint selection mode; explicit override permits same-weight comparisons")
     args = parser.parse_args(argv)
     if args.output.exists():
         raise ValueError("evaluation output already exists")
@@ -38,6 +41,7 @@ def main(argv=None):
         raise ValueError("batch size and threads must be positive")
     torch.set_num_threads(args.threads)
     payload = read_checkpoint(args.checkpoint)
+    contact_mode = resolve_contact_latent_mode(payload["model_kind"], args.contact_latent_mode, payload["run_config"])
     config = RealRobotDataConfig.from_dict(payload["data_config"])
     by_id = {r.episode_id: r for r in discover_real_robot_episodes(args.data_root, config)}
     ids = payload["split_manifest"].get(f"{args.split_role}_episode_ids", [])
@@ -56,13 +60,15 @@ def main(argv=None):
     dataset = RealRobotHighRateDataset(args.data_root, records, normalization, model_config, config)
     indices = fixed_indices(dataset, args.stride)
     start = time.monotonic()
-    metrics = evaluate_episodes(kind, model, dataset, indices, normalization, args.device, args.batch_size, detailed=True)
+    metrics = evaluate_episodes(kind, model, dataset, indices, normalization, args.device, args.batch_size,
+                               detailed=True, contact_latent_mode=contact_mode)
     groups = payload["split_manifest"].get("condition_groups", {})
     report = {"version": "real_robot_frozen_evaluation_v1", "checkpoint": str(args.checkpoint.resolve()),
               "checkpoint_fingerprint": source_fingerprint(args.checkpoint), "checkpoint_step": payload["global_step"],
               "model_kind": kind, "role": args.split_role, "stride": args.stride, "metrics": metrics,
               "indices": index_manifest(dataset, indices, args.stride), "condition_groups": {key: groups.get(key) for key in ids},
-              "normalization_source": "checkpoint_training_episodes_only", "latent_mode": "zero",
+              "normalization_source": "checkpoint_training_episodes_only", "latent_mode": contact_mode,
+              "latent_mode_override": args.contact_latent_mode is not None,
               "evaluation_seconds": time.monotonic() - start}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n")

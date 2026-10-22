@@ -35,6 +35,10 @@ from force_aware_act.real_robot.multi_metric_control import (
     MultiMetricController, resolve_metric_mode, restore_multi_metric_controller, validation_objectives,
 )
 from force_aware_act.real_robot.evaluation import fixed_indices, index_manifest, evaluate_episodes
+from force_aware_act.real_robot.contact_latent_mode import (
+    CONTACT_LATENT_MODES, contact_latent_contract, resolve_contact_latent_mode,
+    validate_contact_latent_identity,
+)
 from force_aware_act.real_robot.training import (
     MODEL_KINDS, RealRobotOptimizationConfig, build_criterion, build_model,
     build_optimizer, evaluate, make_model_config, train_step,
@@ -111,6 +115,7 @@ def validate_output_identity(output_dir, metadata, resume_step):
     if not path.exists():
         return
     previous = json.loads(path.read_text())
+    validate_contact_latent_identity(previous["run_config"], metadata["run_config"])
     for key in ("model_kind", "model_config", "data_config", "data_contract", "normalization",
                 "split_manifest", "source_fingerprints", "training_config"):
         left, right = previous[key], metadata[key]
@@ -148,6 +153,9 @@ def parser():
     result.add_argument("--optimization-config", type=Path)
     result.add_argument("--split", type=Path, help="JSON with train_episode_ids and validation_episode_ids")
     result.add_argument("--resume", type=Path)
+    result.add_argument("--contact-latent-mode", choices=CONTACT_LATENT_MODES,
+                        help="validation/selection only; training always samples the posterior. "
+                             "prior_mean also logs a zero-latent reference; default: saved mode or zero")
     result.add_argument("--steps", type=int, help="total optimizer steps, including previously saved steps")
     result.add_argument("--max-sampling-epochs", type=int, help="episodic epoch budget; alternative to --steps")
     result.add_argument("--minimum-sampling-epochs", type=int, default=500)
@@ -181,6 +189,7 @@ def parser():
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    resolve_contact_latent_mode(args.model, args.contact_latent_mode)
     for name in ("batch_size", "chunk_len", "validation_interval", "checkpoint_interval", "threads", "validation_anchor_stride"):
         if getattr(args, name) <= 0:
             raise ValueError(f"{name} must be positive")
@@ -229,6 +238,9 @@ def main(argv=None):
         return inspection
 
     payload = read_checkpoint(args.resume) if args.resume else None
+    contact_mode = resolve_contact_latent_mode(
+        args.model, args.contact_latent_mode, payload["run_config"] if payload else None,
+        resume=payload is not None)
     metric_mode = resolve_metric_mode(args.early_stop_metrics, payload["run_config"] if payload else None)
     objectives = (validation_objectives(args.model, data_config.force_representation, args.selection_metric)
                   if metric_mode == "multi" else None)
@@ -278,6 +290,8 @@ def main(argv=None):
                   "selection_metric": f"held_out_validation.{args.selection_metric}", "action_loss_reduction": "valid_scalars",
                   "normalization_source": "training_recordings_native_streams_once",
                   "uses_qvel": False, "synthetic_terminal_hold": False}
+    if args.model == "contact":
+        run_config["contact_latent_config"] = contact_latent_contract(contact_mode)
     if extended_evaluation:
         run_config["evaluation_config"] = {"stride": args.validation_anchor_stride, "selection_metric": args.selection_metric,
                                           "indices_sha256": frozen_validation["indices_sha256"]}
@@ -351,6 +365,16 @@ def main(argv=None):
             result["multi_metric_state"] = stopping.state_dict()
         return result
 
+    def validation_for_mode(mode):
+        evaluation_data = validation_data if validation_data is not None else train_data
+        if extended_evaluation:
+            return evaluate_episodes(args.model, model, validation_data, validation_plan,
+                                     normalization, device, args.batch_size, contact_latent_mode=mode)
+        return evaluate(args.model, model, validation_batches(
+            evaluation_data, args.batch_size, max_windows=2 if args.mode == "smoke" else None),
+            normalization, device, force_representation=data_config.force_representation,
+            contact_latent_mode=mode)
+
     for step in range(start + 1, steps + 1):
         tick = time.perf_counter()
         indices = sampler.sample_batch(args.batch_size)
@@ -371,14 +395,13 @@ def main(argv=None):
             row.update(data_seconds=read_time, train_seconds=train_time)
         if step % args.validation_interval == 0 or step == steps:
             tick = time.perf_counter()
-            evaluation_data = validation_data if validation_data is not None else train_data
-            if extended_evaluation:
-                evaluated = evaluate_episodes(args.model, model, validation_data, validation_plan,
-                                              normalization, device, args.batch_size)
-            else:
-                evaluated = evaluate(args.model, model, validation_batches(
-                    evaluation_data, args.batch_size, max_windows=2 if args.mode == "smoke" else None), normalization, device,
-                    force_representation=data_config.force_representation)
+            evaluated = validation_for_mode(contact_mode)
+            if args.model == "contact":
+                row["validation_contact_latent_mode"] = contact_mode
+            if contact_mode == "prior_mean":
+                # Separate namespace: reference metrics never enter selection/stopping.
+                row["zero_latent_reference"] = validation_for_mode("zero")
+                row["zero_latent_reference_role"] = "validation" if validation_data is not None else "same_recording_smoke"
             validation_seconds += time.perf_counter() - tick
             # A same-recording smoke check is explicitly not a held-out estimate.
             row["held_out_validation" if validation_data is not None else "same_recording_smoke_check"] = evaluated
@@ -392,6 +415,8 @@ def main(argv=None):
                     row["early_stopping"] = stopping.state_dict()
                 for name in stopping.improved_metrics:
                     selection = {"objective": name, **stopping.best[name]}
+                    if args.model == "contact":
+                        selection["contact_latent_mode"] = contact_mode
                     save_checkpoint(args.output_dir / selection["checkpoint"], model=model, optimizer=optimizer,
                                     sampler=sampler, global_step=step,
                                     metadata={**checkpoint_metadata(), "checkpoint_selection": selection})
