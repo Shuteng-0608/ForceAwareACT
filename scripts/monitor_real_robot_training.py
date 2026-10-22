@@ -43,7 +43,9 @@ def read_json(path):
 
 
 def argument(argv, flag, default=None):
-    for index, item in enumerate(argv):
+    # Launch wrappers append overrides; argparse uses the last occurrence.
+    for index in range(len(argv) - 1, -1, -1):
+        item = argv[index]
         if item == flag and index + 1 < len(argv):
             return argv[index + 1]
         if item.startswith(flag + "="):

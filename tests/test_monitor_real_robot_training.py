@@ -165,6 +165,15 @@ def test_process_matching_resolves_paths_and_excludes_children(tmp_path):
     assert m.matching_processes(run, [parent, child]) == [parent]
 
 
+@pytest.mark.parametrize("override", [["--output-dir", "prior_run"], ["--output-dir=prior_run"]])
+def test_process_matching_honors_last_launcher_override(tmp_path, override):
+    m = _module()
+    argv = ["python", "scripts/train_real_robot.py", "--output-dir", "old_default",
+            "--validation-interval", "1000", *override, "--validation-interval=250"]
+    assert m.process_output_dir(argv, tmp_path) == tmp_path / "prior_run"
+    assert m.argument(argv, "--validation-interval") == "250"
+
+
 def test_duplicate_processes_stale_metrics_and_error_are_visible(tmp_path):
     m = _module()
     run, reader = _fixture(tmp_path, m)
