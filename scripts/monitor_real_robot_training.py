@@ -303,6 +303,7 @@ def build_report(run_dir, reader, rate, *, now=None, processes=None, include_gpu
             "wall_steps_per_second": speed, "estimated_remaining_to_budget_s": remaining,
             "validation_step": validation.get("step"), "validation_metric": metric,
             "contact_latent_mode": config.get("contact_latent_config", {}).get("evaluation", "zero"),
+            "posterior_kl_schedule": config.get("posterior_kl_schedule"),
             "zero_latent_reference": validation.get("zero_latent_reference", {}),
             "validation_value": validation.get("held_out_validation", {}).get(metric),
             "validation": validation.get("held_out_validation", {}), "best_validation": reader.best,
@@ -353,6 +354,15 @@ def render_report(report):
                       loss_force_highrate_xyz="三维力区间L1", loss_moment_highrate_xyz="三维力矩区间L1")
     for key, label in labels.items():
         lines.append(f"  {label:<10} {fmt(report['mean_losses'].get(key))} / {fmt(report['latest_losses'].get(key))}")
+    schedule = report.get("posterior_kl_schedule")
+    if schedule:
+        losses = report["latest_losses"]
+        lines.append(f"KL：{schedule['kind']}；最近更新 β={fmt(losses.get('posterior_kl_beta'), 6)}；目标 β={schedule['target_weight']:g}")
+        if schedule['kind'] == 'linear_warmup':
+            lines.append(f"  前 {schedule['warmup_epochs']} epoch（{schedule['warmup_epochs'] * schedule['steps_per_epoch']} 更新）线性 0→{schedule['target_weight']:g}；按已完成更新数续接")
+        lines.append(f"  β×KL={fmt(losses.get('loss_posterior_kl_weighted'), 6)}；重建合计={fmt(losses.get('loss_reconstruction'), 6)}（不同 β 的总损失不宜直接比较）")
+        for label, title in (("posterior", "后验"), ("prior", "先验")):
+            lines.append(f"  训练态{title} μ RMS={fmt(losses.get(f'train_{label}_mu_rms'), 6)}；批内中心化 RMS={fmt(losses.get(f'train_{label}_mu_centered_rms'), 6)}；σ均值={fmt(losses.get(f'train_{label}_sigma_mean'), 6)}")
     lines.append(f"平均取样+训练：{fmt(report['mean_read_train_seconds'], 3)}秒/更新（不含验证和保存）")
     lines.append(f"验证：step {report['validation_step'] or '—'}   {report['validation_metric']} = "
                  f"{fmt(report['validation_value'], 6)} rad")

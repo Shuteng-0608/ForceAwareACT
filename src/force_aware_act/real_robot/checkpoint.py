@@ -13,6 +13,7 @@ import torch
 
 from force_aware_act.models.act_aligned.config import canonical_model_config
 from .contact_latent_mode import validate_contact_latent_identity
+from .kl_schedule import validate_kl_schedule_identity
 
 
 FORMAT_VERSION = "real_robot_training_v1"
@@ -81,6 +82,7 @@ def save_checkpoint(path, *, model, optimizer, sampler, global_step, metadata):
 def restore_checkpoint(payload, *, model, optimizer, sampler, expected):
     # Check everything before mutating model/optimizer or the random streams.
     validate_contact_latent_identity(payload["run_config"], expected["run_config"])
+    validate_kl_schedule_identity(payload, expected)
     for key in ("model_kind", "model_config", "data_config", "data_contract", "normalization",
                 "split_manifest", "source_fingerprints", "training_config"):
         left, right = payload[key], expected[key]

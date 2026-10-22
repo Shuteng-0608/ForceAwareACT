@@ -159,7 +159,9 @@ def online_inputs(batch):
             batch.online_force_interval_padding_mask)
 
 
-def forward_training(kind, model, criterion, batch, *, sample_posterior=True):
+def forward_training(kind, model, criterion, batch, *, sample_posterior=True, posterior_kl_weight=None):
+    if posterior_kl_weight is not None and kind != "contact":
+        raise ValueError("runtime posterior KL weight is only supported for contact")
     if kind == "act":
         # Intentionally pass no torque tensor to the ACT baseline.
         outputs = model.forward_train(batch.images, batch.qpos, batch.action_chunk,
@@ -182,17 +184,18 @@ def forward_training(kind, model, criterion, batch, *, sample_posterior=True):
         outputs, batch.action_chunk, batch.future_force_target, batch.future_force_intervals,
         batch.action_padding_mask, batch.future_force_interval_padding_mask,
         batch.future_force_sample_padding_mask,
-        force_target_padding_mask=batch.force_target_padding_mask)
+        force_target_padding_mask=batch.force_target_padding_mask,
+        **({"posterior_kl_weight": posterior_kl_weight} if kind == "contact" else {}))
     if model.config.force_dim == 6:
         from .wrench_metrics import training_components
         losses.update(training_components(outputs, batch))
     return outputs, losses
 
 
-def train_step(kind, model, criterion, optimizer, batch, settings):
+def train_step(kind, model, criterion, optimizer, batch, settings, *, posterior_kl_weight=None):
     model.train()
     optimizer.zero_grad(set_to_none=True)
-    _, losses = forward_training(kind, model, criterion, batch)
+    outputs, losses = forward_training(kind, model, criterion, batch, posterior_kl_weight=posterior_kl_weight)
     if not torch.isfinite(losses["loss_total"]):
         raise FloatingPointError("non-finite training loss")
     losses["loss_total"].backward()
@@ -202,8 +205,24 @@ def train_step(kind, model, criterion, optimizer, batch, settings):
     gradient_norm = torch.nn.utils.clip_grad_norm_(parameters, settings.gradient_clip_norm,
                                                   error_if_nonfinite=True)
     optimizer.step()
-    return {**{name: float(value.detach()) for name, value in losses.items()},
-            "gradient_norm": float(gradient_norm)}
+    metrics = {**{name: float(value.detach()) for name, value in losses.items()},
+               "gradient_norm": float(gradient_norm)}
+    if kind == "contact":
+        beta = settings.posterior_kl_weight if posterior_kl_weight is None else posterior_kl_weight
+        metrics.update(posterior_kl_beta=float(beta),
+                       loss_posterior_kl_weighted=beta * metrics["loss_posterior_kl"],
+                       loss_reconstruction=(settings.action_loss_weight * metrics["loss_action"]
+                                            + settings.force_loss_weight * metrics["loss_force"]
+                                            + settings.high_rate_force_loss_weight * metrics["loss_force_highrate"]))
+        # Reuse this training forward (dropout active); no additional sampling/RNG use.
+        with torch.no_grad():
+            for label, suffix in (("posterior", ""), ("prior", "_prior")):
+                mu = outputs["mu_contact" + suffix].detach()
+                sigma = (0.5 * outputs["logvar_contact" + suffix].detach()).exp()
+                metrics[f"train_{label}_mu_rms"] = float(mu.square().mean().sqrt())
+                metrics[f"train_{label}_mu_centered_rms"] = float((mu - mu.mean(dim=0)).square().mean().sqrt())
+                metrics[f"train_{label}_sigma_mean"] = float(sigma.mean())
+    return metrics
 
 
 @torch.no_grad()

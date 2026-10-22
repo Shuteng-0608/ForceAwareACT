@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Dict, Mapping, Optional
 
 import torch
@@ -110,7 +111,12 @@ class ACTAlignedHighRateCriterion(nn.Module):
         force_interval_padding_mask: torch.Tensor,
         force_sample_padding_mask: torch.Tensor,
         force_target_padding_mask: Optional[torch.Tensor] = None,
+        *,
+        posterior_kl_weight: Optional[float] = None,
     ) -> Dict[str, torch.Tensor]:
+        beta = self.config.posterior_kl_weight if posterior_kl_weight is None else posterior_kl_weight
+        if isinstance(beta, bool) or not isinstance(beta, (int, float)) or not math.isfinite(beta) or beta < 0:
+            raise ValueError("posterior KL weight must be finite and nonnegative")
         for name in self.required_output_names:
             if name not in outputs:
                 raise KeyError(f"training outputs are missing {name!r}")
@@ -140,7 +146,7 @@ class ACTAlignedHighRateCriterion(nn.Module):
             self.config.action_loss_weight * action_loss
             + self.config.force_loss_weight * force_loss
             + self.config.high_rate_force_loss_weight * high_rate_force_loss
-            + self.config.posterior_kl_weight * posterior_kl
+            + beta * posterior_kl
             + self.config.prior_match_weight * prior_match
         )
         return {

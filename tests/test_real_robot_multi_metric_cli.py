@@ -42,7 +42,7 @@ def setup(tmp_path, monkeypatch, model_kind, dimension):
         with torch.no_grad(): result.weight.zero_()
         return result
 
-    def advance_marker(kind, model, *args):
+    def advance_marker(kind, model, *args, **kwargs):
         with torch.no_grad(): model.weight.add_(1)
         return {"loss_total": .1, "loss_action": .1}
 

@@ -1,0 +1,11 @@
+{
+  "learning_rate": 1e-5,
+  "backbone_learning_rate": 1e-5,
+  "weight_decay": 0.0001,
+  "action_loss_weight": 1.0,
+  "force_loss_weight": 1.0,
+  "high_rate_force_loss_weight": 0.5,
+  "posterior_kl_weight": 1.0,
+  "prior_match_weight": 1.0,
+  "gradient_clip_norm": 1.0
+}

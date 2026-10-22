@@ -31,6 +31,7 @@ from force_aware_act.real_robot.training_sampling import (
     resolve_training_sampling_mode,
 )
 from force_aware_act.real_robot.training_control import EarlyStoppingConfig, EarlyStoppingController
+from force_aware_act.real_robot.kl_schedule import resolve_kl_schedule, validate_kl_schedule_identity
 from force_aware_act.real_robot.multi_metric_control import (
     MultiMetricController, resolve_metric_mode, restore_multi_metric_controller, validation_objectives,
 )
@@ -116,6 +117,7 @@ def validate_output_identity(output_dir, metadata, resume_step):
         return
     previous = json.loads(path.read_text())
     validate_contact_latent_identity(previous["run_config"], metadata["run_config"])
+    validate_kl_schedule_identity(previous, metadata)
     for key in ("model_kind", "model_config", "data_config", "data_contract", "normalization",
                 "split_manifest", "source_fingerprints", "training_config"):
         left, right = previous[key], metadata[key]
@@ -151,6 +153,10 @@ def parser():
     result.add_argument("--force-representation", choices=("joint_torque7", "flange_force3", "end_effector_wrench6", "end_effector_force3"),
                         help="Select joint torque, derived flange force3, or raw_v3 sensor wrench6/force3")
     result.add_argument("--optimization-config", type=Path)
+    result.add_argument("--posterior-kl-schedule", choices=("constant", "linear_warmup"),
+                        help="Contact only: defaults to saved schedule or constant optimization-config weight")
+    result.add_argument("--posterior-kl-warmup-epochs", type=int,
+                        help="linear 0->posterior_kl_weight over this many complete sampling epochs")
     result.add_argument("--split", type=Path, help="JSON with train_episode_ids and validation_episode_ids")
     result.add_argument("--resume", type=Path)
     result.add_argument("--contact-latent-mode", choices=CONTACT_LATENT_MODES,
@@ -190,6 +196,8 @@ def parser():
 def main(argv=None):
     args = parser().parse_args(argv)
     resolve_contact_latent_mode(args.model, args.contact_latent_mode)
+    if args.model != "contact" and (args.posterior_kl_schedule is not None or args.posterior_kl_warmup_epochs is not None):
+        raise ValueError("posterior KL schedule flags are only supported for contact")
     for name in ("batch_size", "chunk_len", "validation_interval", "checkpoint_interval", "threads", "validation_anchor_stride"):
         if getattr(args, name) <= 0:
             raise ValueError(f"{name} must be positive")
@@ -260,7 +268,13 @@ def main(argv=None):
     train_records, val_records, split = choose_split(
         records, source_groups(args.data_root, records), mode=args.mode, seed=args.seed,
         fraction=args.validation_fraction, supplied=supplied_split)
-    settings = RealRobotOptimizationConfig(**json.loads(args.optimization_config.read_text())) if args.optimization_config else RealRobotOptimizationConfig()
+    settings = RealRobotOptimizationConfig(**(json.loads(args.optimization_config.read_text()) if args.optimization_config
+                                              else payload["training_config"] if payload else {}))
+    steps_per_epoch = (len(train_records) + args.batch_size - 1) // args.batch_size
+    kl_schedule = (resolve_kl_schedule(args.posterior_kl_schedule, args.posterior_kl_warmup_epochs,
+                   target_weight=settings.posterior_kl_weight, steps_per_epoch=steps_per_epoch,
+                   episodic_uniform=sampling_mode == EPISODIC_UNIFORM_SAMPLING, saved_metadata=payload)
+                   if args.model == "contact" else None)
     compact = args.compact or args.mode == "smoke"
     config = make_model_config(args.model, data_config, compact=compact, chunk_len=args.chunk_len,
                                pretrained=not args.no_pretrained, force_prediction_steps=args.force_prediction_steps,
@@ -292,6 +306,7 @@ def main(argv=None):
                   "uses_qvel": False, "synthetic_terminal_hold": False}
     if args.model == "contact":
         run_config["contact_latent_config"] = contact_latent_contract(contact_mode)
+        run_config["posterior_kl_schedule"] = kl_schedule.to_dict()
     if extended_evaluation:
         run_config["evaluation_config"] = {"stride": args.validation_anchor_stride, "selection_metric": args.selection_metric,
                                           "indices_sha256": frozen_validation["indices_sha256"]}
@@ -359,6 +374,8 @@ def main(argv=None):
 
     def checkpoint_metadata():
         result = {**metadata, "best_metric": best_metric}
+        if kl_schedule is not None:
+            result["posterior_kl_schedule_state"] = kl_schedule.state(step)
         if stopping_config.patience:
             result["early_stopping_state"] = stopping.state_dict()
         if objectives:
@@ -381,7 +398,8 @@ def main(argv=None):
         batch = collate_high_rate_samples([train_data[index] for index in indices]).to(device)
         read_time = time.perf_counter() - tick
         tick = time.perf_counter()
-        metrics = train_step(args.model, model, criterion, optimizer, batch, settings)
+        metrics = train_step(args.model, model, criterion, optimizer, batch, settings,
+                             **({"posterior_kl_weight": kl_schedule.weight(step - 1)} if kl_schedule else {}))
         train_time = time.perf_counter() - tick
         train_seconds += train_time
         read_seconds += read_time

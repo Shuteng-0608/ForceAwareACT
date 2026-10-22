@@ -1,0 +1,154 @@
+Contact-prior posterior KL ablation, v1 (2026-10-22)
+==================================================
+
+Scope and provenance
+--------------------
+Branch: codex/contact-prior-kl-ablation
+Base: 3b2100be7ca18b4a54463e398e583b56daa1d8b3 (contact-prior-mean)
+Work in an independent worktree. Do not change the local running h50ms job.
+The requested delivery is implementation and bounded tests, followed by review.
+Formal training is NOT authorized by the current step.
+
+Experiments (fresh initialization, seed 0)
+-----------------------------------------
+Existing completed 4090 contact-prior h10ms beta=10 run is the reference.
+1. beta1: constant posterior KL coefficient 1.
+2. warmup1000: linear 0 -> 10 during the first 1000 sampling epochs,
+   then constant 10. 40 training episodes / batch 8 = 5 updates per epoch.
+   For s completed optimizer updates, the NEXT update uses
+       beta(s) = 10 * min(s / 5000, 1).
+   Update 1: 0; update 2501: 5; update 5000: 9.998; update 5001+: 10.
+   This schedules KL only, not learning rate. No extra schedule state advances
+   on validation, saving, or resume. Resume uses checkpoint global_step.
+
+Loss
+----
+L = L_action + L_endpoint + 0.5 L_interval + beta(s) KL(q || N(0,I))
+    + KL(stopgrad(q) || p).
+Only the coefficient of the posterior-to-standard-normal KL changes.
+Prior matching keeps weight 1 and the original detach direction.
+Training decoder uses posterior samples. Validation, stopping and all best
+checkpoint selection use deterministic prior_mean. Zero-latent validation is
+reference-only on the same model and frozen windows.
+
+Unchanged experiment settings
+-----------------------------
+Raw v3 sensor observations/ee_wrench Fx/Fy/Fz/Tx/Ty/Tz (N, N*m).
+History 20 x 10 ms; future force 20 x 10 ms; action 20 x 10 ms.
+Pooling mean/max/last; latent dimension 32; architecture and prior ReLU unchanged.
+Fixed 40/10/5 recording split; train-only normalization; fixed validation stride
+10 (2505 windows on this dataset); episodic_uniform; batch 8; seed 0.
+Main/backbone learning rate 1e-5; weight decay 1e-4; gradient clipping norm 1.
+20000 sampling epoch ceiling; validation/checkpoint each 250 updates (50 epochs).
+Multi-metric stopping: minimum 3000 epochs, patience 20, relative improvement .001.
+Do not reset early stopping references or best records when KL warmup ends.
+Best action, force and moment checkpoints can legitimately be selected during
+warmup; beta at selection is recorded. Also inspect post-warmup trajectories.
+best.pt, best_force.pt, best_moment.pt and last.pt remain separate.
+
+Interfaces and compatibility
+-----------------------------
+real_robot/kl_schedule.py: immutable PosteriorKLSchedule, pure weight(s), resume
+identity and legacy fallback. Missing schedule = saved constant posterior weight.
+--posterior-kl-schedule constant|linear_warmup (Contact only)
+--posterior-kl-warmup-epochs INTEGER (positive for linear, 0 for constant)
+The optimization JSON posterior_kl_weight is the fixed value / warmup target.
+Omitted schedule flags on resume inherit the checkpoint contract. Changed
+schedule, target, warmup or steps-per-epoch are rejected before restoring state.
+Omitting --optimization-config on resume also inherits the saved optimization
+settings (including beta=1); an explicitly supplied different config is rejected.
+The manifest and every checkpoint store the schedule; checkpoint additionally
+stores completed updates and last/next coefficient. Old constant-10 behavior
+and legacy checkpoints remain supported. Inference interfaces are unchanged.
+
+Observability
+-------------
+Each Contact update records raw loss_posterior_kl, posterior_kl_beta,
+loss_posterior_kl_weighted, loss_reconstruction, and posterior/prior mu RMS,
+batch-centered mu RMS, sigma mean. These diagnostics reuse the training forward
+(dropout active); they are NOT evaluation statistics and add no RNG draws.
+Monitoring displays schedule, actual last beta, weighted KL, reconstruction and
+latent diagnostics alongside prior_mean / zero validation and early-stop counts.
+Do not rank models by total loss across different beta settings. Compare action,
+force and moment physical validation errors, prior_mean-minus-zero predictions,
+and latent variation. Nonzero mu alone does not establish decoder use of z.
+
+Commands (review before formal runs)
+------------------------------------
+In this branch's repository with the forceact Conda environment:
+  export FORCEACT_DATA_ROOT=/home/shutiao/Downloads/1mm-x14y08_hdf5_raw_v3
+  export FORCEACT_OUTPUT_ROOT=/path/to/a/NEW/experiment/root
+  bash scripts/training/train_x14y08_contact_prior_kl.sh beta1 test
+  bash scripts/training/train_x14y08_contact_prior_kl.sh warmup1000 test
+
+Default test budget is 10 updates with the full network and held-out validation.
+Use train instead of test only after approval; train selects the unchanged
+20000-epoch budget and multi-metric stopping. Each profile writes its own
+subdirectory under FORCEACT_OUTPUT_ROOT; existing outputs are never overwritten.
+To extend a bounded test, reuse its output and pass --steps TOTAL --resume last.pt.
+Formal experiments must start fresh rather than resume test checkpoints.
+
+Tests
+-----
+  CUDA_VISIBLE_DEVICES='' OMP_NUM_THREADS=1 PYTHONPATH=src python -m pytest -q \
+    tests/test_real_robot_kl_schedule.py tests/test_real_robot_contact_prior.py \
+    tests/test_real_robot_contact_prior_cli.py tests/test_real_robot_multi_metric_cli.py \
+    tests/test_real_robot_training.py tests/test_real_robot_cli.py \
+    tests/test_monitor_real_robot_training.py tests/test_act_aligned_high_rate_training.py \
+    tests/test_real_robot_model_contract.py
+
+Unit coverage includes boundary values, invalid schedules, legacy identity,
+bitwise loss/gradient equivalence for constant beta=10, exact zero KL gradient at
+beta=0, untouched prior matching, resume crossing the warmup boundary with exact
+optimizer/RNG/sampler continuity, rejection before mutation, selection state,
+monitor output and separate launcher paths. The crossing test uses an explicitly
+synthetic four-epoch schedule; production warmup remains 1000 epochs.
+
+Runtime tensor shapes (B=8, full network)
+----------------------------------------
+Images [8,2,3,480,640]; qpos [8,7]; history [8,20,8,6];
+future interval force [8,20,8,6] (8 is padded capacity, nominal 3 native samples
+per interval); endpoint force [8,20,6]; action [8,20,7]; latent [8,32].
+All shapes, masks, normalization and inference causality remain unchanged.
+
+Test evidence
+-------------
+Bounded execution logs, manifests, metrics, checkpoint/resume checks and code
+snapshot are stored under outputs/contact_prior_kl_checks_* on 4090; local
+outputs/kl_ablation_checks_* stores the launch record and downloaded summaries.
+Completed evidence, 2026-10-22
+------------------------------
+95 distinct automated tests passed: original focused suite 76, shared criterion
+and model-mask regression suite 18, plus one new end-to-end launcher expansion
+test (all 16 KL-module tests were rerun after adding it). Final launcher expansion
+uses a Python stub, so it verifies formal parameters without launching training.
+The first collection attempt needed PYTHONPATH=src to use the isolated snapshot
+instead of the environment's installed checkout. A floating-point boundary test
+was corrected to compare with a numerical tolerance; no schedule behavior changed.
+
+Remote evidence root:
+  /home/shutiao/ForceAwareACT_workspace/ForceAwareACT/outputs/contact_prior_kl_checks_20261022_154420
+Local evidence root (relative to this worktree):
+  outputs/kl_ablation_checks_20261022_154420
+
+Both profiles used the actual 55-recording dataset, full 512-wide network, batch 8,
+seed 0 and 20x10ms history. Each trained 10 updates, then resumed last.pt to update
+12. Complete validation ran at steps 10 and 12: each mode (prior_mean and zero)
+used the same 2505 frozen windows. All losses and gradient norms were finite;
+checkpoint save/load round trips passed; all four checkpoint files were produced.
+
+beta1: beta=1 throughout, including both resumed updates.
+warmup1000: first beta=0, update 10 beta=.018, resumed updates .020 and .022;
+next beta=.024. Production warmup remained 1000 epochs, not shortened for testing.
+The end-of-warmup transition was tested separately with the synthetic schedule.
+The short tests disable early stopping and use a 12-update ceiling; the formal
+launcher was verified to retain 20000 / 3000 / 20 / .001 and validation every 250.
+
+verification.json confirms equality with the old beta10 baseline for model and
+data configuration/contracts, 40/10/5 split, source SHA256 fingerprints, train-only
+normalization, prediction horizons and validation indices. All optimization
+settings except posterior KL coefficient match. Tests use independent directories;
+the original 4090 checkout/results and local h50ms training were untouched.
+
+These tests establish implementation correctness, not convergence or improvement.
+No formal KL-ablation run has been launched. Review before starting fresh runs.
