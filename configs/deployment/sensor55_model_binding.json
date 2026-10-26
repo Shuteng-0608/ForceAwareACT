@@ -1,0 +1,23 @@
+{
+  "schema_version": "sensor55_deployment_binding_v1",
+  "model_manifest": "configs/deployment/models/contact_sensor55_ah20_seed0.json",
+  "checkpoint": "/home/shutiao/ForceAwareACT_workspace/ForceAwareACT/outputs/1mm_x14y08_55_wrench6_v1/runs/contact_wrench6_ah20_fh20_seed0_b8_es3000_p20_r001/best.pt",
+  "checkpoint_sha256": "5ae5f9d2f9abc6d82e04e8a4e7a3ea3e1aeec6f2599ccfdf6d0f2574fd699875",
+  "global_step": 15250,
+  "controller_profile": "configs/deployment/profiles/contact_sensor55_x14y08_v1",
+  "session_config": "configs/deployment/command_session_sensor55_candidate.json",
+  "dataset": "1mm_x14y08_55_wrench6_v1",
+  "source_recordings": 55,
+  "split_counts": {
+    "train": 40,
+    "validation": 10,
+    "test": 5
+  },
+  "identity_checks": {
+    "all55_hdf5_fingerprints_match_training_preparation": true,
+    "episode_split_matches": true,
+    "normalization_matches": true
+  },
+  "sdk": "/home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++/libMarvinSDK.so",
+  "transport": "build/right_arm_sensor_control.so"
+}

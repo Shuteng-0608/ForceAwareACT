@@ -1,0 +1,19 @@
+{
+  "schema_version": "readonly_profile_manifest_v1",
+  "profile_id": "contact_sensor55_x14y08_v1",
+  "date": "2026-10-26",
+  "allow_motion": false,
+  "parameter_status": "sensor_threshold_candidate_pending_review",
+  "base_config": "base.json",
+  "goal_configs": [
+    "goals/x14y08.json"
+  ],
+  "controller_baseline": "controller_baseline.json",
+  "files_sha256": {
+    "base.json": "827cd27aac5d6c6ceddc7f2d2e15ec40ac33be123151f23b9a6ae10693c69374",
+    "goals/x14y08.json": "7e72fbf609081cbc2941394bad6fe9b4c08e2c5ba471ac365159a80c7b8f0421",
+    "controller_baseline.json": "bb2aee57454a19de9c5fff12c23a89097022defc1e385c5b712e64ec985560e8"
+  },
+  "source_dataset": "1mm_x14y08_55_wrench6_v1",
+  "physical_stop_verified": false
+}

@@ -1,0 +1,101 @@
+2026-10-26：55条新六维力数据的实机配置准备（未执行运动）
+
+范围与模型身份
+用户明确选择2026-10-20的55条数据，不使用10月23日新增34条，也不使用10月初的旧七维力模型。
+数据根：/home/stw/Downloads/1mm-x14y08_hdf5_raw_v3
+划分：configs/datasets/1mm_x14y08_55_wrench6_v1/split.json，40训练/10验证/5测试。
+只读分析原始数值及时间戳，不改写数据、重做去皮、滤波或裁剪。
+新PC权重：
+/home/shutiao/ForceAwareACT_workspace/ForceAwareACT/outputs/1mm_x14y08_55_wrench6_v1/runs/contact_wrench6_ah20_fh20_seed0_b8_es3000_p20_r001/best.pt
+best checkpoint global_step=15250；该训练在20250步早停，不能把last与best混用。
+SHA256=5ae5f9d2f9abc6d82e04e8a4e7a3ea3e1aeec6f2599ccfdf6d0f2574fd699875
+核对checkpoint中的55份HDF5指纹与训练准备记录全部一致，训练/验证/测试成员全部一致，归一化全部一致。
+这次没有重新散列58GB原始HDF5；模型身份检查对照的是已保存的训练/转换指纹。
+checkpoint省略split_unit/allocation_by_session等说明字段，但未改变任何划分成员。
+模型为contact、end_effector_wrench6、right_ft_measurement，动作20步、7关节；力20步、6通道。
+专用入口固定此权重与模型描述文件；不接受--checkpoint，底层在连接机器人前重新校验权重SHA。
+manifest：configs/deployment/models/contact_sensor55_ah20_seed0.json
+绑定：configs/deployment/sensor55_model_binding.json
+身份核验：docs/deployment/sensor55_checkpoint_identity_20261026.json
+
+目标点
+复用现有批量FK和经过校验的M6 CCS40模型，无机器人/SDK调用。
+每条训练示教取最后0.5秒的实际法兰位置中位数，再对40条取等权坐标中位数。
+中心 [x,y,z] mm：[508.4240171297213,-314.8913705400862,226.7064691240277]。
+保持既有粗略球形判据：半径3mm，连续500ms，样本间隔不超过20ms。
+没有新增速度或姿态条件；参考点是法兰，不是针尖。
+冻结训练集中心后检查：40/40训练、10/10验证、5/5测试均曾连续满足该球形判据。
+所有55条的最后5秒均有进入3mm球的样本；12条在末尾5秒之前就曾满足500ms停留。
+因此此判据只能表示粗略位置到达，不能从它反推首次物理插入成功的精确时刻。
+训练/验证/测试各组的末段中位数距中心最大分别5.676/4.641/1.893mm，说明录制结束位置并非完全一致。
+全部55条等权末段中心为[508.3497514,-314.8454925,226.8544508]mm，仅作对照，不反向调整训练集中心。
+旧x14y08中心为[543.6013593,-315.4181777,226.7544569]mm，中心差35.1813mm。
+新profile只列出x14y08，其他旧孔位名会被拒绝，防止复用旧目标坐标。
+
+六维力参考（传感器坐标系；取绝对值；N,N,N,Nm,Nm,Nm）
+轴序                    Fx         Fy         Fz         Tx         Ty         Tz
+训练P99                 10.713     4.623      43.581     0.6304     1.3572     0.08505
+训练P99.9               21.402     7.844      68.445     0.9517     2.1091     0.19316
+训练峰值                24.922     10.608     85.669     1.1643     2.6402     0.29651
+验证峰值                19.337     7.761      62.381     1.0337     2.0504     0.19766
+测试峰值                39.297     19.571    133.426     3.5485     5.8092     0.56652
+
+三组候选由训练集产生，再独立检查其余记录；按1N/0.05Nm/末轴0.01Nm向上取整。
+A：P99取整                  [11,5,44,0.65,1.4,0.09]
+B：P99.9乘1.2并取整          [26,10,83,1.15,2.55,0.24]
+C：训练峰值乘1.1并取整       [28,12,95,1.3,2.95,0.33]
+全记录任一轴触发数（训练/验证/测试）：A=37/9/5，B=6/0/1，C=0/0/1。
+首次球形到达前触发数：A=22/3/4，B=4/0/1，C=0/0/1。
+这些是记录数，不是每帧误报率，也不是对在线闭环成功率的估计。
+P99单样本硬保护会截断大量示教；未选择它作为默认候选。
+本次将B写入发送关闭的候选会话：ft_force_hard_n=[26,10,83]，ft_torque_hard_nm=[1.15,2.55,0.24]。
+当前实现为任一新鲜、有效、补偿并去皮后的轴绝对值>=阈值立即停止；没有持续时间、滤波或回滞。
+特别注意83N不是从机械安全载荷得到的数值。三组均为统计参考，实际承载边界需要单独约束。
+没有为了让全部成功示教通过而抬高到133N以上；也没有把高力示教的触发都视作误报。
+
+B候选逐记录触发，时间从首条state log_ns起算：
+175612（train）：8.019s，Tx先触发，最长超限32.5ms。
+191045（train）：8.882s，Ty先触发，最长超限6.7ms。
+191834（train）：11.446s，Fz先触发，最长超限210.2ms。
+192528（train）：18.936s，Fy先触发，最长超限199.7ms。
+193012（train）：20.801s，Tz先触发，最长超限396.7ms；在首次球形到达之后。
+193244（train）：20.851s，Tz先触发，最长超限121.1ms；在首次球形到达之后。
+174427（test）：6.996s，Tz先触发，多轴超限，其中Ty连续约3.507s；Fz峰值133.426N。
+完整逐轴计数、持续时间和逐记录目标结果见sensor55_reference_statistics_20261026.json。
+
+专用配置
+profile：configs/deployment/profiles/contact_sensor55_x14y08_v1/
+session：configs/deployment/command_session_sensor55_candidate.json
+入口：scripts/deployment/run_sensor55_x14y08.py
+默认allow_hardware=false；自动下使能在静止确认后开启；任务去皮>=5秒。
+50Hz预测、100Hz发送网格、recency聚合80ms；启动短测入口限制<=3秒。
+速度/加速度10%/10%；刚度[2.5,2.5,2.5,2,1.5,1.2,1]，沿用之前用户选择的低刚度短测设置。
+不声称该刚度等于本批采集参数。完整插入对比前还需核对本批采集时的控制器设置。
+首动作误差0.1rad、后续反馈误差0.1rad、单步0.03rad，七关节一致。
+已有七关节保护、位置边界和数据超时保持既有用户配置，不将它们伪称为本次重新拟合结果。
+本次55条实际关节位置均处于所沿用的位置边界内。
+力阈值和模型输入采用传感器测量坐标系；HUD的基座旋转仅用于显示。
+本轮没有连接机器人、下发模式/参数/伺服或位置目标；SSH只读取模型文件并同步配置。
+
+验证与使用
+PYTHONPATH=src:. python -m pytest -q tests/test_sensor_deployment_reference.py
+该测试验证连续停留/间隔中断、绝对值硬门槛、新模型绑定、默认无连接、单孔位及位置保护参数。
+本轮统计复现：
+PYTHONPATH=src:. python scripts/analyze_sensor_deployment_reference.py \
+ --data-root /home/stw/Downloads/1mm-x14y08_hdf5_raw_v3 \
+ --split configs/datasets/1mm_x14y08_55_wrench6_v1/split.json \
+ --output outputs/UNIQUE_NEW_REFERENCE_DIRECTORY
+
+新PC默认预览（无硬件连接）：
+cd /home/shutiao/tianji_deployment/ForceAwareACT
+conda activate tianji
+export PYTHONPATH=src:.
+python scripts/deployment/run_sensor55_x14y08.py
+
+实际运动的剩余事项
+1. 用户审核六维力候选，结合工具/工装承载限制确定实际启用值。
+2. 核对SDK100343014与控制器100343024的运动兼容性；只读成功不替代此项。
+3. 现场确认当前孔位x14y08、安装与55条数据一致、初始姿态合适、无接触可去皮。
+4. 再创建当次allow_hardware=true会话，使用新目录依次做prepare-only和3秒短测，由用户现场执行。
+prepare-only会发送参数和模式指令，属于实机操作；本轮未执行。
+此文与配置不自动授权运动，不以统计覆盖率作为运动安全认证。

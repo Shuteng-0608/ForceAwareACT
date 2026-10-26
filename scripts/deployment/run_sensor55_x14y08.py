@@ -1,0 +1,48 @@
+"""Pinned sensor55 Contact entry. Default previews only; no checkpoint override.
+
+Actual hardware execution requires an explicitly enabled per-run session,
+--enable-control and current --operator-confirmed-no-contact. The delegated
+controller verifies the full checkpoint digest before opening the robot.
+"""
+import argparse
+import json
+from pathlib import Path
+
+ROOT=Path(__file__).resolve().parents[2]
+BINDING=ROOT/'configs/deployment/sensor55_model_binding.json'
+EXPECTED_MODEL_SHA='5ae5f9d2f9abc6d82e04e8a4e7a3ea3e1aeec6f2599ccfdf6d0f2574fd699875'
+
+
+def controller_arguments(argv=None):
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--session-config',type=Path)
+    p.add_argument('--output',type=Path)
+    p.add_argument('--seconds',type=float,default=3.)
+    p.add_argument('--prepare-only',action='store_true')
+    p.add_argument('--enable-control',action='store_true')
+    p.add_argument('--operator-confirmed-no-contact',action='store_true')
+    a=p.parse_args(argv)
+    if not 0<a.seconds<=3:p.error('this initial acceptance entry is limited to 3 seconds')
+    b=json.loads(BINDING.read_text());manifest=ROOT/b['model_manifest']
+    m=json.loads(manifest.read_text())
+    if (m['checkpoint_sha256']!=EXPECTED_MODEL_SHA or b['checkpoint_sha256']!=EXPECTED_MODEL_SHA
+            or m['model_kind']!='contact' or m['force_dim']!=6 or m['action_chunk_len']!=20
+            or m['force_frame']!='right_ft_measurement'):
+        raise ValueError('pinned new sensor55 model contract changed')
+    args=['--goal-id','x14y08','--model-manifest',str(manifest),
+          '--checkpoint',b['checkpoint'],'--controller-profile',str(ROOT/b['controller_profile']),
+          '--session-config',str(a.session_config or ROOT/b['session_config']),
+          '--transport',str(ROOT/b['transport']),'--sdk',b['sdk'],'--robot-ip','192.168.1.190',
+          '--seconds',str(a.seconds),'--hud']
+    if a.output is not None:args+=['--output',str(a.output)]
+    for flag in ('prepare_only','enable_control','operator_confirmed_no_contact'):
+        if getattr(a,flag):args+=['--'+flag.replace('_','-')]
+    return args
+
+
+def main(argv=None):
+    from scripts.deployment.run_contact_controller import main as controller_main
+    return controller_main(controller_arguments(argv))
+
+
+if __name__=='__main__':raise SystemExit(main())

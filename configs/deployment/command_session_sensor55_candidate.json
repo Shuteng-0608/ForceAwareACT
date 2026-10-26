@@ -1,0 +1,31 @@
+{
+  "schema_version": "right_command_session_v1",
+  "allow_hardware": false,
+  "stop_policy": "cease_targets",
+  "servo_off_after_standstill": true,
+  "startup_timeout_s": 15.0,
+  "packet_settle_ms": 250.0,
+  "transition_timeout_s": 2.0,
+  "calibration_window_s": 2.0,
+  "stationary_dwell_ms": 500.0,
+  "stationary_velocity_rad_s": 0.01,
+  "stationary_range_rad": 0.005,
+  "calibration_std_nm": 0.15,
+  "stop_observe_timeout_s": 2.0,
+  "sdk_busy_timeout_ms": 100.0,
+  "expected_sdk_version": 100343014,
+  "expected_sdk_sha256": "dd6b7afdbda8de3bafb6797c6f94547302ae60bf285ee8daa9762de45be636d6",
+  "ft_calibration_file": "/home/shutiao/tianji_ws/src/tianji_io_teleop_bridge/config/right_ft_calibration_current.yaml",
+  "ft_compensation_library": "/home/shutiao/tianji_deployment/ForceAwareACT/build/ft_compensation.so",
+  "ft_tare_window_s": 5.0,
+  "ft_force_hard_n": [
+    26.0,
+    10.0,
+    83.0
+  ],
+  "ft_torque_hard_nm": [
+    1.15,
+    2.55,
+    0.24
+  ]
+}

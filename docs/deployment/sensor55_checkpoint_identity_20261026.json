@@ -1,0 +1,123 @@
+{
+  "path": "/home/shutiao/ForceAwareACT_workspace/ForceAwareACT/outputs/1mm_x14y08_55_wrench6_v1/runs/contact_wrench6_ah20_fh20_seed0_b8_es3000_p20_r001/best.pt",
+  "global_step": 15250,
+  "manifest": {
+    "schema_version": "sensor_deployment_model_v1",
+    "checkpoint_sha256": "5ae5f9d2f9abc6d82e04e8a4e7a3ea3e1aeec6f2599ccfdf6d0f2574fd699875",
+    "model_kind": "contact",
+    "force_representation": "end_effector_wrench6",
+    "force_dim": 6,
+    "force_frame": "right_ft_measurement",
+    "action_chunk_len": 20,
+    "data_contract": {
+      "sampling_version": "right_arm_available_clock_100hz_torque300hz_phase_v2",
+      "raw_schema_version": "real_robot_right_arm_raw_v3",
+      "contact_representation": "end_effector_wrench6",
+      "force_source_topic": "/io_teleop/right/ft_sensor",
+      "force_source_field": "effort",
+      "force_timestamp_stream": "ft_sensor",
+      "gravity_compensation": "applied_upstream",
+      "internal_torque_input": false,
+      "qvel_input": false,
+      "qpos_unit": "rad",
+      "action_unit": "rad",
+      "torque_unit": "N*m",
+      "joint_names": [
+        "Joint1_R",
+        "Joint2_R",
+        "Joint3_R",
+        "Joint4_R",
+        "Joint5_R",
+        "Joint6_R",
+        "Joint7_R"
+      ],
+      "camera_names": [
+        "d455",
+        "d405"
+      ],
+      "image_preprocessing": "RGB uint8 / 255; bilinear antialias resize to model dimensions; optional ImageNet normalization from model config",
+      "synthetic_terminal_hold": false,
+      "input_clock_semantics": "recorder availability proxy; headers are diagnostics only",
+      "config": {
+        "timestamp_key": "log_ns",
+        "action_rate_hz": 100,
+        "action_grid_phase_mode": "circular_mean_initial_window",
+        "action_grid_phase_window_s": 2.0,
+        "torque_rate_hz": 300,
+        "history_duration_s": 0.2,
+        "camera_names": [
+          "d455",
+          "d405"
+        ],
+        "joint_names": [
+          "Joint1_R",
+          "Joint2_R",
+          "Joint3_R",
+          "Joint4_R",
+          "Joint5_R",
+          "Joint6_R",
+          "Joint7_R"
+        ],
+        "image_height": 480,
+        "image_width": 640,
+        "state_max_age_ms": 20.0,
+        "camera_max_age_ms": 100.0,
+        "action_match_tolerance_ms": 5.0,
+        "torque_match_tolerance_ms": 1.666666,
+        "max_samples_per_interval": 8,
+        "force_representation": "end_effector_wrench6",
+        "wrench_component_units": [
+          "N",
+          "N",
+          "N",
+          "N*m",
+          "N*m",
+          "N*m"
+        ],
+        "wrench_frame": "right_ft_measurement",
+        "force_std_floor": [
+          0.01,
+          0.01,
+          0.01,
+          0.001,
+          0.001,
+          0.001
+        ]
+      },
+      "force_dim": 6,
+      "primary_force_dataset": "observations/ee_wrench",
+      "force_axes": [
+        "Fx",
+        "Fy",
+        "Fz",
+        "Tx",
+        "Ty",
+        "Tz"
+      ],
+      "force_component_units": [
+        "N",
+        "N",
+        "N",
+        "N*m",
+        "N*m",
+        "N*m"
+      ],
+      "force_coordinate_frame": "right_ft_measurement",
+      "force_reference_point": "sensor measurement reference; no spatial transform applied",
+      "force_units_provenance": "explicit training configuration; raw source_native metadata retained",
+      "normalization_policy": "training native samples once; per-axis z-score with configured floors; no clipping",
+      "additional_gravity_compensation": false
+    }
+  },
+  "split_counts": {
+    "train": 40,
+    "validation": 10,
+    "test": 5
+  },
+  "all55_fingerprints_equal_preparation": true,
+  "episode_split_ids_equal_preparation": true,
+  "normalization_equal_preparation": true,
+  "note": "Checkpoint split serializes episode IDs but omits descriptive split_unit/allocation_by_session fields; episode membership matches exactly.",
+  "training_completed_steps": 20250,
+  "termination": "early_stopping"
+}
