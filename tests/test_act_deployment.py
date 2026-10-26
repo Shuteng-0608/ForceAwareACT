@@ -18,6 +18,7 @@ def test_act_preview_is_disabled_and_retains_external_safety(capsys):
     assert preview["external_torque_safety_enabled"]
     assert not preview["hardware_connected"] and not preview["commands_sent"]
     assert preview["checkpoint_sha256"] == shared.VALIDATED_CHECKPOINTS["act"]
+    assert preview['goal_selection']['config']['action_chunk_len'] == 100
 
 
 def test_contact_entry_remains_pinned_to_contact(capsys):

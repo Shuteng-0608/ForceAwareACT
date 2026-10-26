@@ -51,6 +51,8 @@ conda activate tianji
 export PYTHONPATH=src:.
 python scripts/deployment/run_sensor55_act_x14y08.py
 应显示model_kind=act、model_manifest.model_library_id=1、action_chunk_len=20，且hardware_connected/commands_sent均为false。
+补充：预览和执行共用with_model_horizon()，按manifest/checkpoint的20步生成实际配置；原通用profile仍保留100步默认值。
+profile原始文件及校验值保持不变；goal_selection.config展示应用模型步长后的执行配置。
 
 后续测试顺序
 先以只读入口核验真实RGB、关节角、传感器保护/HUD和ACT输出；需要任务软件去皮时由操作人员重新确认当前静止、无接触、无外力。

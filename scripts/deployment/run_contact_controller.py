@@ -101,7 +101,16 @@ def parse_arguments(argv=None, *, policy_kind="contact"):
     return args, selected, options
 
 
+def with_model_horizon(selected, chunk_len):
+    """Use the checkpoint horizon consistently in previews and live execution."""
+    return replace(selected, config=replace(selected.config,
+        action_chunk_len=chunk_len,
+        max_prediction_age_ms=min(selected.config.max_prediction_age_ms, chunk_len*10.)))
+
+
 def describe(selected, options, *, prepare_only=False, policy_kind="contact", manifest=None):
+    if manifest is not None:
+        selected = with_model_horizon(selected, manifest['action_chunk_len'])
     return {"mode": "disabled_preview", "hardware_connected": False, "commands_sent": False,
             "model_kind": policy_kind, "checkpoint_sha256": manifest["checkpoint_sha256"] if manifest else VALIDATED_CHECKPOINTS[policy_kind],
             "model_manifest": manifest,
@@ -113,7 +122,7 @@ def describe(selected, options, *, prepare_only=False, policy_kind="contact", ma
             "sequence": ["fresh stationary feedback", "right parameters packet", "parameter echo +250ms",
                          "pure right impedance mode packet", "mode and parameter echo +250ms",
                          ("5s or longer no-contact sensor tare in final mode" if options.ft_calibration_file else "2s no-contact software calibration in final mode"),
-                         f"fresh observations and [{manifest['action_chunk_len'] if manifest else 100},7] prediction",
+                         f"fresh observations and [{selected.config.action_chunk_len},7] prediction",
                          "50Hz inference / 100Hz aggregation and guarded target submission",
                          "revoke targets / observe standstill / optional servo off"],
             "stop_limit": "ceasing targets can retain the last target; communication loss cannot confirm standstill"}
@@ -173,9 +182,7 @@ def _run_live_owned(args, selected, options, *, policy_kind="contact"):
             raise ValueError("sensor checkpoint requires current calibration parameters")
     elif manifest:
         raise ValueError("sensor manifest cannot be used with joint-estimate checkpoint")
-    selected = replace(selected, config=replace(selected.config,
-        action_chunk_len=adapter.model.config.chunk_len,
-        max_prediction_age_ms=min(selected.config.max_prediction_age_ms, adapter.model.config.chunk_len*10.)))
+    selected = with_model_horizon(selected, adapter.model.config.chunk_len)
     # CUDA initialization completes before any robot connection or mode packet.
     warm = RealRobotObservationBuffer(adapter.data_config)
     anchor = 1_000_000_000

@@ -26,6 +26,9 @@ def test_act1_preview_selects_new_library_checkpoint_and_keeps_hardware_disabled
     assert preview['session']['ft_force_hard_n'] == [20, 20, 60]
     assert preview['session']['servo_off_after_standstill'] is True
     assert preview['goal_selection']['goal_id'] == 'x14y08'
+    assert preview['goal_selection']['config']['action_chunk_len'] == 20
+    assert preview['goal_selection']['config']['max_prediction_age_ms'] == 200
+    assert 'fresh observations and [20,7] prediction' in preview['sequence']
     assert not preview['hardware_connected'] and not preview['commands_sent']
     args = entry.controller_arguments([])
     checkpoint = args[args.index('--checkpoint')+1]
