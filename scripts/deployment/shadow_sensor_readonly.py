@@ -62,6 +62,20 @@ def stats(values):
                 p99=float(np.percentile(values,99)), max=float(max(values))) if len(values) else dict(count=0)
 
 
+def prediction_record(inputs, output, ns, latency):
+    """Record observation ages and distinguish ACT's absent force input."""
+    source = inputs.source
+    mask = inputs.online_force_sample_padding_mask
+    return dict(anchor_ns=ns, model_ms=latency, motor_commands_sent=False,
+                qpos_rad=source.qpos.tolist(),
+                state_age_ms=(source.anchor_ns-source.state_timestamp_ns)/1e6,
+                image_age_ms=[(source.anchor_ns-t)/1e6 for t in source.image_timestamps_ns],
+                valid_force_samples=int((~mask).sum()) if mask is not None else 0,
+                force_history_used=inputs.online_force_intervals is not None,
+                prediction_shapes={k:list(v.shape) for k,v in output.items() if hasattr(v,'shape')},
+                pred_action_rad=output['pred_action'].tolist())
+
+
 def main(argv=None):
     args = parse_arguments(argv)
     if not args.connect:
@@ -197,13 +211,7 @@ def main(argv=None):
                     torch.cuda.synchronize(); latency=(time.perf_counter()-model_begin)*1000
                     model_ms.append(latency); prediction_times.append(ns); counts['predictions']+=1
                     if first_prediction is None:first_prediction=ns
-                    source=inputs.source
-                    row=dict(anchor_ns=ns,model_ms=latency,motor_commands_sent=False,
-                        qpos_rad=source.qpos.tolist(),state_age_ms=(source.anchor_ns-source.state_timestamp_ns)/1e6,
-                        image_age_ms=[(source.anchor_ns-t)/1e6 for t in source.image_timestamps_ns],
-                        valid_force_samples=int((~inputs.online_force_sample_padding_mask).sum()),
-                        prediction_shapes={k:list(v.shape) for k,v in output.items() if hasattr(v,'shape')},
-                        pred_action_rad=output['pred_action'].tolist())
+                    row=prediction_record(inputs, output, ns, latency)
                 except ObservationUnavailableError as exc:
                     counts['skipped']+=1;row=dict(anchor_ns=ns,skip=str(exc))
                 log.write(json.dumps(row)+'\n')

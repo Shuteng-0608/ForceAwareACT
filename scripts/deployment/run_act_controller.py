@@ -1,4 +1,4 @@
-"""Deploy the pinned gap50 ACT baseline with the shared guarded controller."""
+"""ACT controller with the legacy pin or an explicitly validated model manifest."""
 from scripts.deployment.run_contact_controller import main as _shared_main
 
 

@@ -1,0 +1,61 @@
+2026-10-26：55条新数据 ACT-baseline 部署准备
+
+模型与环境
+模型库1号，ACT-baseline，checkpoint选择action/best.pt，global_step=15000。
+模型库根目录：/home/shutiao/ForceAwareACT_workspace/model_library/1mm_x14y08_55_v3_20261026。
+权重相对路径：01_action_early_stop/01_act_none_no_history_zero/best.pt。
+SHA256：be3f8756534df3b7622db5d6dc0e86143a0d6fa036c27bfe299762b58e2c9b08。
+环境：新PC的conda activate tianji。
+实际使用当前部署仓库的RealRobotPolicyAdapter，不要求切换模型库源码路径。
+
+新增与调整
+run_sensor55_act_x14y08.py：新ACT专用入口，默认仅预览；与Contact入口共用参数拼装和执行器。
+sensor55_act_model_binding.json：固定模型库1号和上述权重路径、SHA256；不允许通过入口参数替换checkpoint。
+models/act_sensor55_ah20_seed0.json：通过现有prepare_sensor_model.py严格加载真实权重后生成；额外记录模型编号、架构和force_input=none。
+run_sensor55_x14y08.py：参数拼装支持指定binding/模型类型/预期SHA，原Contact默认绑定保持原值。
+run_contact_controller.py：预览和最终报告保留model_manifest，最终报告同时记录实际checkpoint路径。
+run_act_controller.py：更新入口说明，原有默认模型校验及共享执行流程保留。
+shadow_sensor_readonly.py：新增prediction_record()，ACT没有力历史及padding mask时记录0个输入样本；Contact仍记录实际有效输入样本。
+
+张量与数据流
+模型输入images=[1,2,3,480,640]，qpos=[1,7]，force_history=None。
+模型输出pred_action=[20,7]，单位rad，100Hz，预测200ms。
+ACT推理不读取力输入，也不输出未来力。标定、实时重力补偿及任务去皮仍用于六维力保护与HUD。
+manifest的force_dim=6表示采集数据和保护使用的传感器通道，force_input=none说明ACT策略不使用这些通道。
+预处理、归一化和网络参数直接读取该checkpoint。
+
+执行参考配置
+孔位x14y08；新55条数据目标法兰中心[508.424017,-314.891371,226.706469]mm。
+球半径3mm，连续停留500ms。
+控制器速度/加速度10%/10%，低刚度[2.5,2.5,2.5,2.0,1.5,1.2,1.0]Nm/degree。
+首动作与反馈误差每关节0.1rad，单步跳变每关节0.03rad。
+六维传感器力阈值[20,20,60]N，力矩阈值[1.15,2.55,0.24]Nm。
+50Hz查询，100Hz执行；recency temporal aggregation，decay_ms=80。
+默认会话allow_hardware=false。启用实际控制仍需独立的每次会话配置及明确CLI开关。
+已有每次会话文件command_session_sensor55_501256cd9b1a.json保留。
+
+本轮验证
+本机23项测试通过：
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src:. python -m pytest -q tests/test_sensor55_act_deployment.py tests/test_act_deployment.py tests/test_sensor_deployment_reference.py tests/test_shadow_sensor_readonly.py
+覆盖新ACT权重绑定/无设备预览、错误模型合同拒绝、原ACT及Contact入口兼容、传感器力变化不进入ACT策略、ACT只读日志与Contact样本计数。
+新PC tianji：对实际归档权重校验SHA256、使用当前部署仓库严格加载并CUDA前向，均通过。
+同一模拟RGB和关节角，将模拟六维力从0改成100，各动作输出最大差为0rad；此为纯数学输入测试，不是实机施力。
+20个热启动模拟观测+推理样本：p50=6.5857ms、p99=6.6821ms、max=6.6917ms。
+未连接相机/机器人，不能视为实时完整链路频率或动作效果验证。
+详细GPU结果：新PC reports/model_library_deployment_review_20261026/act1_tianji_deployment_gpu_report.json。
+本机对应outputs/model_library_deployment_review_20261026/act1_tianji_deployment_gpu_report.json。
+
+分步操作的第一步：无硬件配置预览
+cd /home/shutiao/tianji_deployment/ForceAwareACT
+conda activate tianji
+export PYTHONPATH=src:.
+python scripts/deployment/run_sensor55_act_x14y08.py
+应显示model_kind=act、model_manifest.model_library_id=1、action_chunk_len=20，且hardware_connected/commands_sent均为false。
+
+后续测试顺序
+先以只读入口核验真实RGB、关节角、传感器保护/HUD和ACT输出；需要任务软件去皮时由操作人员重新确认当前静止、无接触、无外力。
+prepare-only在启用控制后会发送参数和模式指令，不属于只读测试。
+首次动作测试计划为3秒，由操作人员亲自执行，之后审阅反馈误差、力、目标距离和停止日志再决定是否延长。
+真实运动前仍需落实上次碰撞暴露的停止卸载问题：cease_targets可能保留旧阻抗目标，停止后力峰曾达73.485N。
+8a9b23d已修复停止后力监测与日志，未改变物理停止行为。本次ACT准备也没有解决该行为，不能将新入口预览或GPU检查当作运动验收。
+本轮没有更改阈值、标定参数、原始归档权重或物理停止策略，也没有下发机器人控制指令。

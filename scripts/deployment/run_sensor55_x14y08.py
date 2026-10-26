@@ -13,7 +13,8 @@ BINDING=ROOT/'configs/deployment/sensor55_model_binding.json'
 EXPECTED_MODEL_SHA='5ae5f9d2f9abc6d82e04e8a4e7a3ea3e1aeec6f2599ccfdf6d0f2574fd699875'
 
 
-def controller_arguments(argv=None):
+def controller_arguments(argv=None, *, binding_path=None,
+                         expected_model_sha=EXPECTED_MODEL_SHA, model_kind='contact'):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--session-config',type=Path)
     p.add_argument('--output',type=Path)
@@ -24,12 +25,12 @@ def controller_arguments(argv=None):
     a=p.parse_args(argv)
     limit=3 if a.prepare_only else 10
     if not 0<a.seconds<=limit:p.error(f'this acceptance mode is limited to {limit} seconds')
-    b=json.loads(BINDING.read_text());manifest=ROOT/b['model_manifest']
+    b=json.loads((binding_path or BINDING).read_text());manifest=ROOT/b['model_manifest']
     m=json.loads(manifest.read_text())
-    if (m['checkpoint_sha256']!=EXPECTED_MODEL_SHA or b['checkpoint_sha256']!=EXPECTED_MODEL_SHA
-            or m['model_kind']!='contact' or m['force_dim']!=6 or m['action_chunk_len']!=20
+    if (m['checkpoint_sha256']!=expected_model_sha or b['checkpoint_sha256']!=expected_model_sha
+            or m['model_kind']!=model_kind or m['force_dim']!=6 or m['action_chunk_len']!=20
             or m['force_frame']!='right_ft_measurement'):
-        raise ValueError('pinned new sensor55 model contract changed')
+        raise ValueError(f'pinned sensor55 {model_kind} model contract changed')
     args=['--goal-id','x14y08','--model-manifest',str(manifest),
           '--checkpoint',b['checkpoint'],'--controller-profile',str(ROOT/b['controller_profile']),
           '--session-config',str(a.session_config or ROOT/b['session_config']),

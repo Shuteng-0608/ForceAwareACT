@@ -104,6 +104,7 @@ def parse_arguments(argv=None, *, policy_kind="contact"):
 def describe(selected, options, *, prepare_only=False, policy_kind="contact", manifest=None):
     return {"mode": "disabled_preview", "hardware_connected": False, "commands_sent": False,
             "model_kind": policy_kind, "checkpoint_sha256": manifest["checkpoint_sha256"] if manifest else VALIDATED_CHECKPOINTS[policy_kind],
+            "model_manifest": manifest,
             "policy_inputs": ["RGB d455", "RGB d405", "qpos_rad"] +
                              ([] if policy_kind == "act" else ["sensor_wrench_history" if manifest else "external_torque_history"]),
             "external_torque_safety_enabled": True,
@@ -362,6 +363,7 @@ def _run_live_owned(args, selected, options, *, policy_kind="contact"):
         report_path = args.output/"controller/report.json"
         control_report = json.loads(report_path.read_text()) if report_path.exists() else None
         report = {"model_kind": policy_kind, "checkpoint_sha256": checkpoint_sha256,
+                  "checkpoint": str(args.checkpoint.resolve()), "model_manifest": manifest,
                   "predictions": predictions, "prepare_only": args.prepare_only,
                   "skipped_observations": skips, "errors": errors,
                   "model_ms_p99": float(np.percentile(latencies, 99)) if latencies else None,
