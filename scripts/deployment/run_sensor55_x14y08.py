@@ -17,12 +17,13 @@ def controller_arguments(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--session-config',type=Path)
     p.add_argument('--output',type=Path)
-    p.add_argument('--seconds',type=float,default=3.)
+    p.add_argument('--seconds',type=float,default=3.,help='policy test up to 10s; preparation up to 3s')
     p.add_argument('--prepare-only',action='store_true')
     p.add_argument('--enable-control',action='store_true')
     p.add_argument('--operator-confirmed-no-contact',action='store_true')
     a=p.parse_args(argv)
-    if not 0<a.seconds<=3:p.error('this initial acceptance entry is limited to 3 seconds')
+    limit=3 if a.prepare_only else 10
+    if not 0<a.seconds<=limit:p.error(f'this acceptance mode is limited to {limit} seconds')
     b=json.loads(BINDING.read_text());manifest=ROOT/b['model_manifest']
     m=json.loads(manifest.read_text())
     if (m['checkpoint_sha256']!=EXPECTED_MODEL_SHA or b['checkpoint_sha256']!=EXPECTED_MODEL_SHA

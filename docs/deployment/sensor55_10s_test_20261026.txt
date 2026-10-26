@@ -1,0 +1,18 @@
+2026-10-26：用户请求10秒动作测试
+
+上一轮：reports/sensor55_x14y08_rollout_3s_0e5c28837aee
+新六维力Contact模型预测151次，目标提交301次，无首个保护故障，最终SERVO_OFF_CONFIRMED。
+实际运行约3.003秒，法兰距完成点由187.21mm降至85.77mm。
+用户反馈迅速朝孔口运动，已接近孔口。
+
+专用入口scripts/deployment/run_sensor55_x14y08.py动作时长上限调整为10秒，默认仍3秒。
+prepare-only继续限制最多3秒；硬件授权、当次无接触声明、模型SHA及会话检查继续执行。
+使用原55条六维力Contact模型、x14y08目标和已确认会话配置。
+每次重新进行任务去皮，至少5秒；--seconds 10从模型开始预测后计时。
+力保护20/20/60N，力矩保护1.15/2.55/0.24Nm，速度/加速度10%/10%。
+本次修改只更新入口时长验证；不自动启动机器人或执行器。
+
+核验命令：
+PYTHONPATH=src:. python -m pytest -q tests/test_sensor_deployment_reference.py
+新PC文件同步后，仅执行无硬件连接的--seconds 10预览核验。
+实际10秒动作测试由用户现场执行，使用新的日志目录。

@@ -31,6 +31,15 @@ def test_new_model_pinned_and_preview_never_connects(capsys):
     with pytest.raises(SystemExit):controller_arguments(['--seconds','60'])
 
 
+def test_ten_second_policy_test_preserves_preview_and_prepare_limit(capsys):
+    args=controller_arguments(['--seconds','10'])
+    assert args[args.index('--seconds')+1]=='10.0' and '--enable-control' not in args
+    assert main(['--seconds','10'])==0
+    assert json.loads(capsys.readouterr().out)['hardware_connected'] is False
+    with pytest.raises(SystemExit):controller_arguments(['--seconds','11'])
+    with pytest.raises(SystemExit):controller_arguments(['--prepare-only','--seconds','10'])
+
+
 def test_new_profile_only_selects_new_x14y08_and_guards_are_explicit():
     root=Path('configs/deployment/profiles/contact_sensor55_x14y08_v1')
     s=select_goal('x14y08',root)
