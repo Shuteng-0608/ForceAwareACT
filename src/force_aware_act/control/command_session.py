@@ -437,6 +437,7 @@ the two-second window, including any transition transient still in that window.
     def _observe_stop(self, row, now_ns):
         if self.terminal or row["received_monotonic_ns"] <= self.stop_request["requested_ns"]:
             return
+        self._observe_sensor_after_stop(row, now_ns)
         if row["error_code"] != 0:
             self.stop_request["controller_error_after_stop"] = row["error_code"]
             self.stop_rows.clear(); return
@@ -473,11 +474,68 @@ the two-second window, including any transition transient still in that window.
                     self.stop_request["physical_status"] = "servo_off_submission_failed"
                     self._transition("STOP_UNCONFIRMED", now_ns)
 
+    def _observe_sensor_after_stop(self, row, now_ns):
+        """Keep the fixed run tare visible after revocation; never resume targets.
+
+        This monitors and records escalation only. It does not implement contact
+        unloading or change the separately configured standstill/servo-off path.
+        """
+        if self.sensor_ft is None:
+            return
+        monitor = self.stop_request.setdefault("sensor_monitor_after_stop", {
+            "samples": 0, "valid_samples": 0, "invalid_samples": 0,
+            "error_samples": 0, "peak_abs_N_Nm": None, "last_wrench_N_Nm": None})
+        monitor["samples"] += 1
+        try:
+            if self.tool_context is not None and (
+                    tuple(row["tool_kine"]), tuple(row["tool_dyn"])) != self.tool_context:
+                raise ValueError("tool context changed after stop; fixed tare is no longer usable")
+            sensor = self.sensor_ft.process(row)
+            self.last["sensor_ft"] = sensor
+            if not sensor["valid"]:
+                monitor["invalid_samples"] += 1
+                if self.sensor_ft.tare is not None:
+                    raise ValueError("previously tared sensor became invalid after stop")
+                return  # A preparation failure may have stopped before task tare.
+            if (sensor["source_ns"] != row["received_monotonic_ns"]
+                    or sensor["frame_serial"] != row["frame_serial"]):
+                raise ValueError("sensor/actual-joint frame mismatch after stop")
+            wrench = np.asarray(vector(sensor["wrench_si"], "sensor wrench after stop", 6))
+            absolute = np.abs(wrench)
+            monitor["valid_samples"] += 1
+            previous = monitor["peak_abs_N_Nm"]
+            monitor["peak_abs_N_Nm"] = np.maximum(previous if previous is not None else absolute, absolute).tolist()
+            monitor["last_wrench_N_Nm"] = wrench.tolist()
+            monitor["last_received_ns"] = row["received_monotonic_ns"]
+            violations = []
+            for offset, bounds, reason, units, names in (
+                    (0, self.options.ft_force_hard_n, "sensor_force_hard_after_stop", "N", ("Fx", "Fy", "Fz")),
+                    (3, self.options.ft_torque_hard_nm, "sensor_torque_hard_after_stop", "N*m", ("Tx", "Ty", "Tz"))):
+                if bounds is None:
+                    continue
+                for axis in np.flatnonzero(absolute[offset:offset+3] >= bounds):
+                    violations.append({"reason": reason, "axis": names[axis],
+                        "value": float(wrench[offset+axis]), "limit": float(bounds[axis]), "units": units})
+            if violations:
+                event = {"detected_ns": now_ns, "received_ns": row["received_monotonic_ns"],
+                         "frame_serial": row["frame_serial"], "violations": violations}
+                self.stop_request.setdefault("sensor_hard_after_stop", event)
+                self.core.safety.trip(violations[0]["reason"], now_ns, violations=violations)
+        except (ValueError, RuntimeError, KeyError, TypeError) as exc:
+            monitor["error_samples"] += 1
+            row.pop("sensor_ft", None)
+            self.last.pop("sensor_ft", None)
+            event = {"detected_ns": now_ns, "received_ns": row["received_monotonic_ns"], "detail": str(exc)}
+            self.stop_request.setdefault("sensor_ft_error_after_stop", event)
+            self.core.safety.trip("sensor_ft_error_after_stop", now_ns, detail=str(exc))
+
     def report(self):
         reason = self.stop_request["reason"] if self.stop_request else None
         outcome = ("completed" if reason == "coarse_goal_reached" else
                    "ended" if reason in ("operator_stop", "operator_or_parent_stop") else "aborted")
-        if self.stop_request and any(k in self.stop_request for k in ("controller_error_after_stop", "hard_torque_after_stop")):
+        if self.stop_request and any(k in self.stop_request for k in (
+                "controller_error_after_stop", "hard_torque_after_stop",
+                "sensor_hard_after_stop", "sensor_ft_error_after_stop")):
             outcome = "aborted"
         return {"schema_version": "right_command_session_report_v1", "run_id": self.run_id,
                 "state": self.state, "outcome": outcome, "hardware_backend": self.transport.hardware,

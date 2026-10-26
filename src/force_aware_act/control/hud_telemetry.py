@@ -41,12 +41,21 @@ class HudTelemetry:
 def session_snapshot(session, record, now_ns):
     """One packet's measured q/raw torque plus THIS session's calibration."""
     calibration = session.calibration
-    bias_valid = bool(calibration and record and record['state']==calibration['mode']
+    joint_bias_valid = bool(calibration and record and record['state']==calibration['mode']
                       and record['impedance_type']==calibration['impedance_type']
                       and (tuple(record['tool_kine']),tuple(record['tool_dyn']))==session.tool_context)
+    bias_valid = joint_bias_valid
+    if session.sensor_ft is not None:
+        sensor = (record or {}).get('sensor_ft') or {}
+        # Gravity compensation uses actual q in each frame. Switching to IDLE
+        # does not by itself invalidate the sensor tare or prove contact release.
+        bias_valid = bool(sensor.get('valid') and session.sensor_ft.tare is not None
+                          and sensor.get('source_ns')==record['received_monotonic_ns']
+                          and sensor.get('frame_serial')==record['frame_serial']
+                          and (tuple(record['tool_kine']),tuple(record['tool_dyn']))==session.tool_context)
     return {'schema_version': 1, 'published_ns': now_ns,
             'record': record, 'state': session.state,
-            'bias_nm': calibration['bias_nm'] if calibration else None,
+            'bias_nm': calibration['bias_nm'] if joint_bias_valid else None,
             'bias_valid': bias_valid,
             'calibration_status': session.calibration_status['status'],
             'stop_reason': (session.stop_request or {}).get('reason'),

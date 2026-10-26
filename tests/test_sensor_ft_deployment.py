@@ -177,6 +177,91 @@ def test_nominal_controller_waits_for_sensor_tare_and_hud_uses_sensor_origin(lib
         sensor.close()
 
 
+@pytest.fixture
+def stopped_sensor_session(library, calibration, tmp_path):
+    spec = importlib.util.spec_from_file_location('stop_helpers', Path(__file__).with_name('test_command_session.py'))
+    helper = importlib.util.module_from_spec(spec); spec.loader.exec_module(helper)
+    path, data = calibration
+    selected = select_goal('x14y08', ROOT/'configs/deployment/profiles/contact_sensor55_x14y08_v1')
+    q = (np.array(selected.config.limits.joint_min_rad)+selected.config.limits.joint_max_rad)/2
+    transport = helper.JournalTransport(q)
+    sensor = SensorFT(path, library)
+    offset = np.array([.1,.2,.3,.001,.002,.003])
+    options = SessionOptions(ft_calibration_file=str(path), ft_compensation_library=str(library),
+                             ft_force_hard_n=(20.,20.,60.), ft_torque_hard_nm=(1.15,2.55,.24))
+    session = CommandSession(selected, options, transport, run_id='stop_sensor', origin_ns=0,
+        enable_control=True, operator_confirmed_no_contact=True, sensor_ft=sensor, output=tmp_path)
+
+    def row(ns, wrench):
+        value = transport.row(ns)
+        source = make_row(data, q, ns, offset+np.asarray(wrench))
+        value.update({k:source[k] for k in ['ft_channel','ft_raw_counts','low_speed_flag']})
+        return value
+
+    try:
+        for ns in range(0, 8_000_000_000, 10_000_000):
+            session.feedback(row(ns, np.zeros(6)), ns); session.poll(ns)
+            if session.state == 'READY': break
+        assert session.state == 'READY', session.report()
+        yield session, transport, ns, row
+    finally:
+        sensor.close()
+
+
+@pytest.mark.parametrize('servo_off', [False, True])
+def test_tared_sensor_remains_observable_after_revocation_and_latches_hard_force(stopped_sensor_session, servo_off):
+    session, transport, start, row = stopped_sensor_session
+    session.options = replace(session.options, servo_off_after_standstill=servo_off)
+    stop = start+10_000_000
+    session.stop('operator_stop', stop)
+    for ns in range(stop+10_000_000, stop+1_000_000_000, 10_000_000):
+        frame = row(ns, [0.,0.,-70.,0.,0.,0.])
+        session.feedback(frame, ns)
+        assert frame['sensor_ft']['valid'] and session.tick(ns, ns) is None
+        if session.terminal: break
+    report = session.report()
+    assert report['outcome'] == 'aborted' and report['stop']['reason'] == 'operator_stop'
+    violation = report['stop']['sensor_hard_after_stop']['violations'][0]
+    assert violation['axis'] == 'Fz' and violation['limit'] == 60
+    assert violation['value'] == pytest.approx(-70)
+    assert report['stop']['sensor_monitor_after_stop']['peak_abs_N_Nm'][2] == pytest.approx(70)
+    assert session.packet_counts['target'] == 0 and transport.revoked and session.bias is None
+    assert [x[0] for x in transport.calls] == ['parameters','mode']+(['servo_off'] if servo_off else [])
+    assert session.state == ('SERVO_OFF_CONFIRMED' if servo_off else 'STOPPED_HOLDING_LAST_TARGET')
+    from force_aware_act.control.hud_telemetry import session_snapshot
+    packet = session_snapshot(session, frame, ns)
+    assert packet['bias_valid']  # Sensor contact must remain visible after IDLE.
+    if servo_off: assert packet['bias_nm'] is None
+    hud = DeploymentHud(read_config(ROOT/'configs/deployment/force_hud_sensor.json'),session.selection.to_dict())
+    hud.update(packet,ns)
+    assert hud.status(ns)['valid']
+    np.testing.assert_allclose(hud.estimate['wrench_sensor'],[0,0,-70,0,0,0],atol=1e-12)
+
+
+def test_post_stop_force_read_failure_is_not_hidden_by_later_recovery(stopped_sensor_session):
+    session, transport, start, row = stopped_sensor_session
+    session.stop('operator_stop', start+10_000_000)
+    ns = start+20_000_000
+    frame = row(ns, np.zeros(6)); frame['ft_channel'] = 0
+    session.feedback(frame, ns)
+    assert 'sensor_ft' not in frame and session.stop_request['sensor_ft_error_after_stop']
+    session.feedback(row(ns+10_000_000, np.zeros(6)), ns+10_000_000)
+    status = session.stop_request['sensor_monitor_after_stop']
+    assert status['error_samples'] == 1 and status['valid_samples'] == 1
+    assert session.report()['outcome'] == 'aborted' and session.packet_counts['target'] == 0
+
+
+def test_post_stop_monitor_records_force_when_additional_thresholds_are_unset(stopped_sensor_session):
+    session, transport, start, row = stopped_sensor_session
+    session.options = replace(session.options, ft_force_hard_n=None, ft_torque_hard_nm=None)
+    session.stop('operator_stop', start+10_000_000)
+    ns = start+20_000_000
+    session.feedback(row(ns, [0,0,-70,0,0,0]), ns)
+    assert session.stop_request['sensor_monitor_after_stop']['valid_samples'] == 1
+    assert 'sensor_hard_after_stop' not in session.stop_request
+    assert session.report()['outcome'] == 'ended' and session.packet_counts['target'] == 0
+
+
 def test_twenty_point_chunk_uses_timestamp_indices_and_expires():
     config = replace(select_goal('x13y07').config, action_chunk_len=20)
     executor = TemporalExecutor(0,'unit',config)
