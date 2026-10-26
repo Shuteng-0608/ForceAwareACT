@@ -1,5 +1,3 @@
-# Vendored unchanged from tianji_io_teleop_bridge/scripts/force_hud_core.py
-# Source SHA256: c442a51dad0e5d9a75135de607e336aa8dca1b2a1b591343420a38a845c4a8ab
 """Pure, hardware-independent dual-arm HUD model and OpenCV renderer.
 
 Uses the simulation HUD's operator-only panel concept, but deliberately does not
@@ -9,12 +7,65 @@ copy its task directions, contact thresholds or SAFE/JAM labels onto real data.
 import math
 from collections import deque
 from dataclasses import dataclass
+from types import SimpleNamespace as Obj
 
 import cv2
 import numpy as np
 
 
 AXES = ("Fx", "Fy", "Fz", "Mx", "My", "Mz")
+FT_AXES = ("Fx", "Fy", "Fz", "Tx", "Ty", "Tz")
+
+
+def ft_sensor_report(message, expected_frame="right_ft_measurement", *,
+                     display_rotation=None, display_frame=None, joint_stamp_ns=0, error=None):
+    """Adapt the bridge's already compensated/tared JointState, without scaling or zeroing.
+
+    Mx/My/Mz are internal legacy HUD labels for Tx/Ty/Tz, not a unit conversion.
+    Left has no sensor and is explicitly unavailable, never a fabricated zero.
+    """
+    fields = {"schema_version": "1", "source_kind": "right_ft_sensor",
+              "reference_point": "sensor", "wrench_frame": message.header.frame_id,
+              "convention_confirmed": "true"}
+    level, reason = 0, "FT SENSOR / gravity compensated + software tared"
+    try:
+        if (len(message.name) != 6 or len(message.effort) != 6
+                or set(message.name) != set(FT_AXES)):
+            raise ValueError("expected six unique Fx,Fy,Fz,Tx,Ty,Tz names and efforts")
+        if not expected_frame or message.header.frame_id != expected_frame:
+            raise ValueError("unexpected FT measurement frame")
+        values = dict(zip(message.name, message.effort))
+        ordered = [float(values[key]) for key in FT_AXES]
+        if not all(math.isfinite(x) for x in ordered):
+            raise ValueError("non-finite FT measurement")
+        fields["measurement_frame"] = message.header.frame_id
+        fields.update({"sensor_" + key: str(x) for key, x in zip(FT_AXES, ordered)})
+        if error:
+            raise ValueError(error)
+        if display_rotation is not None:
+            r = np.asarray(display_rotation, dtype=float)
+            if (r.shape != (3, 3) or not np.isfinite(r).all()
+                    or not np.allclose(r.T @ r, np.eye(3), atol=1e-6, rtol=0)
+                    or not np.isclose(np.linalg.det(r), 1., atol=1e-6, rtol=0)
+                    or not display_frame):
+                raise ValueError("invalid display rotation/frame")
+            # Rotate axes only; torque remains about the sensor origin (no translation).
+            ordered = np.concatenate((r @ ordered[:3], r @ ordered[3:]))
+            fields["wrench_frame"] = display_frame
+            fields["sensor_to_display_rotation"] = ",".join(str(x) for x in r.flat)
+            fields["joint_source_stamp_ns"] = str(joint_stamp_ns)
+        elif display_frame and display_frame != expected_frame:
+            raise ValueError("changing display frame requires a rotation")
+        fields.update({"raw_" + key: str(x) for key, x in zip(AXES, ordered)})
+    except (ValueError, TypeError, OverflowError) as error:
+        level, reason = 2, "INVALID FT: " + str(error)
+    left = {**fields, "wrench_frame": "", "convention_confirmed": "false"}
+    statuses = []
+    for side, status_level, text, data in (
+            ("left", 2, "NO LEFT FT SENSOR", left), ("right", level, reason, fields)):
+        statuses.append(Obj(name=side, level=status_level, message=text,
+                            values=[Obj(key=k, value=v) for k, v in data.items()]))
+    return Obj(header=message.header, status=statuses)
 
 
 @dataclass
@@ -30,6 +81,12 @@ class ArmView:
     trend_delta: object = None
     force_bias: object = None  # Display-only baseline in the source wrench frame.
     zero_stamp_ns: int = 0
+    source_kind: str = "joint_estimate"
+    reference_point: str = "flange"
+    measurement_frame: str = ""
+    measurement_raw: object = None
+    sensor_to_display_rotation: object = None
+    joint_stamp_ns: int = 0
 
 
 @dataclass(frozen=True)
@@ -167,7 +224,10 @@ def capture_force_baselines(baselines, views, stamp_ns, sides):
 
 class HudModel:
     def __init__(self, timeout=0.2, smoothing_sec=0.08, future_tolerance=0.05,
-                 trend_window_sec=0.8):
+                 trend_window_sec=0.8, source_kind="joint_estimate"):
+        if source_kind not in ("joint_estimate", "right_ft_sensor"):
+            raise ValueError("unsupported HUD source")
+        self.source_kind = source_kind
         if (not all(math.isfinite(x) for x in
                     (timeout, smoothing_sec, future_tolerance, trend_window_sec))
                 or timeout <= 0 or smoothing_sec < 0 or future_tolerance < 0
@@ -176,15 +236,19 @@ class HudModel:
         self.timeout = timeout
         self.smoothing_sec = smoothing_sec
         self.future_tolerance = future_tolerance
-        self.arms = {side: ArmView() for side in ("left", "right")}
+        self.arms = {}
         self.stamp_ns = 0
         self.received_at = None
         self.sample_seen_at = None
         self.trend_window_sec = trend_window_sec
-        self.history = {side: deque() for side in self.arms}
+        self.history = {side: deque() for side in ("left", "right")}
+        self.invalidate("WAITING for FT data / bridge software tare" if source_kind == "right_ft_sensor"
+                        else "WAITING for estimate")
 
     def invalidate(self, message):
-        self.arms = {side: ArmView(message=message) for side in self.arms}
+        self.arms = {side: ArmView(message=message, source_kind=self.source_kind,
+                                  reference_point="sensor" if self.source_kind == "right_ft_sensor" else "flange")
+                     for side in ("left", "right")}
         for history in self.history.values():
             history.clear()
 
@@ -221,6 +285,10 @@ class HudModel:
                     raise ValueError("unsupported estimate schema")
                 view.confirmed = values.get("convention_confirmed") == "true"
                 view.frame = values.get("wrench_frame", "")
+                view.source_kind = values.get("source_kind", "joint_estimate")
+                view.reference_point = values.get("reference_point", "flange")
+                if view.source_kind != self.source_kind:
+                    raise ValueError("unexpected HUD source kind")
                 # diagnostic_msgs uses ROS 'byte', represented as bytes in Humble Python.
                 level = (int.from_bytes(status.level, "little")
                          if isinstance(status.level, bytes) else int(status.level))
@@ -228,15 +296,25 @@ class HudModel:
                     self.history[side].clear()
                     continue
                 view.raw = np.array([float(values["raw_" + key]) for key in AXES])
-                view.condition = float(values["scaled_condition"])
-                view.residual = float(values["relative_residual"])
-                if not np.isfinite(view.raw).all() or not all(
-                        math.isfinite(v) for v in (view.condition, view.residual)):
+                if view.source_kind == "joint_estimate":
+                    view.condition = float(values["scaled_condition"])
+                    view.residual = float(values["relative_residual"])
+                    if not all(math.isfinite(v) for v in (view.condition, view.residual)):
+                        raise ValueError("non-finite estimator quality")
+                if not np.isfinite(view.raw).all():
                     raise ValueError("non-finite estimate")
+                if view.source_kind == "right_ft_sensor":
+                    view.measurement_frame = values["measurement_frame"]
+                    view.measurement_raw = np.array([float(values["sensor_" + key]) for key in FT_AXES])
+                    if "sensor_to_display_rotation" in values:
+                        view.sensor_to_display_rotation = np.array([
+                            float(x) for x in values["sensor_to_display_rotation"].split(",")]).reshape(3, 3)
+                        view.joint_stamp_ns = int(values["joint_source_stamp_ns"])
                 if view.confirmed and not view.frame:
                     raise ValueError("confirmed convention needs a frame")
                 view.valid = True
-                same_basis = old.confirmed == view.confirmed and old.frame == view.frame
+                same_basis = (old.confirmed == view.confirmed and old.frame == view.frame
+                              and old.source_kind == view.source_kind)
                 if old.valid and same_basis and 0 <= dt <= self.timeout:
                     view.filtered = (old.filtered + alpha * (view.raw - old.filtered)
                                      if changed else old.filtered.copy())
@@ -252,7 +330,8 @@ class HudModel:
                 if len(history) > 1 and history[-1][0] - history[0][0] >= self.trend_window_sec * 0.8:
                     view.trend_delta = history[-1][1] - history[0][1]
             except (KeyError, TypeError, ValueError, OverflowError) as error:
-                self.arms[side] = ArmView(message="INVALID: " + str(error))
+                self.arms[side] = ArmView(message="INVALID: " + str(error), source_kind=self.source_kind,
+                                          reference_point="sensor" if self.source_kind == "right_ft_sensor" else "flange")
                 self.history[side].clear()
         self.stamp_ns = stamp_ns
 
@@ -302,7 +381,8 @@ def render_rings(model, source_age, width, height, force_scale, mappings, show_t
     title = "DUAL ARM" if display_arms == "both" else display_arms.upper() + " ARM"
     text("PEG INSERTION / CONTACT SIDE" if insertion else title + " / FORCE RINGS",
          32, 43, 0.85, bright, 2)
-    text("ESTIMATED  |  Operator aid only - not a force sensor or safety system", 32, 76,
+    text("FT SENSOR  |  Gravity compensated + software tared" if model.source_kind == "right_ft_sensor" else
+         "ESTIMATED  |  Operator aid only - not a force sensor or safety system", 32, 76,
          0.56, amber)
     age = f"{source_age * 1000:.0f} ms" if math.isfinite(source_age) else "--"
     text("SOURCE AGE " + age, 965, 43, 0.55, muted)
@@ -314,9 +394,10 @@ def render_rings(model, source_age, width, height, force_scale, mappings, show_t
         color = (cyan if view.confirmed else amber) if view.valid else grid
         cv2.rectangle(canvas, (x, 104), (x + 608, 110), color, -1)
         text(side.upper() + " ARM", x + 20, 147, 0.8, bright, 2)
-        badge = ("ESTIMATED" if view.confirmed else "UNVERIFIED") if view.valid else "NO DATA"
+        badge = ("FT SENSOR" if view.source_kind == "right_ft_sensor" else
+                 ("ESTIMATED" if view.confirmed else "UNVERIFIED")) if view.valid else "NO DATA"
         text(badge, x + 388, 146, 0.57, color, 2)
-        text("Point: flange | Frame: " + (view.frame or "UNCONFIRMED")[:35],
+        text("Point: " + view.reference_point + " | Frame: " + (view.frame or "UNCONFIRMED")[:35],
              x + 20, 179, 0.48, muted)
         for r in (radius // 2, radius * 3 // 4, radius):
             cv2.circle(canvas, (cx, cy), r, grid, 1, cv2.LINE_AA)
@@ -387,7 +468,8 @@ def render_rings(model, source_age, width, height, force_scale, mappings, show_t
         if overflow:
             text("DISPLAY RANGE EXCEEDED", cx, 530, 0.42, amber, centered=True)
         if mapping.semantics == "contact_side":
-            text(("DISPLAY ZERO ACTIVE" if view.zero_stamp_ns else "DISPLAY ZERO NOT SET") +
+            text(("BRIDGE SOFTWARE TARE" if view.source_kind == "right_ft_sensor" else
+                  ("DISPLAY ZERO ACTIVE" if view.zero_stamp_ns else "DISPLAY ZERO NOT SET")) +
                  f" | XY deadzone {mapping.lateral_deadzone:g}", cx, 579,
                  0.48, muted, centered=True)
         else:
@@ -399,7 +481,11 @@ def render_rings(model, source_age, width, height, force_scale, mappings, show_t
                  ("Nm" if view.confirmed else "Nm*"), cx, 244, 0.42, muted, centered=True)
     text(f"Ring full scale: {force_scale:g} force units | display scale only, NOT a safe limit",
          32, 670, 0.54, muted)
-    text("* Verify units/frame/sign. Preview arrows are NOT calibrated physical directions.",
+    rotated_ft = any(model.arms[side].sensor_to_display_rotation is not None for side in sides)
+    text(("Fixed hole directions | FT rotated using same-frame joint feedback"
+          if rotated_ft else "Sensor axes move with the wrist. Camera/task directions require a matching mapping.")
+         if model.source_kind == "right_ft_sensor" else
+         "* Verify units/frame/sign. Preview arrows are NOT calibrated physical directions.",
          32, 701, 0.49, amber)
     return (canvas if (width, height) == (1280, 720)
             else cv2.resize(canvas, (width, height), interpolation=cv2.INTER_AREA))
@@ -422,7 +508,8 @@ def render_bars(model, source_age, width=1280, height=720, force_scale=20.0, tor
     sides = ("left", "right") if display_arms == "both" else (display_arms,)
     title = "DUAL ARM" if display_arms == "both" else display_arms.upper() + " ARM"
     text(title + " / FORCE FEEDBACK", 32, 43, 0.85, bright, 2)
-    text("ESTIMATED  |  Operator aid only - not a force sensor or safety system", 32, 76,
+    text("FT SENSOR  |  Gravity compensated + software tared" if model.source_kind == "right_ft_sensor" else
+         "ESTIMATED  |  Operator aid only - not a force sensor or safety system", 32, 76,
          0.56, amber)
     age_text = f"{source_age * 1000:.0f} ms" if math.isfinite(source_age) else "--"
     text("SOURCE AGE " + age_text, 965, 43, 0.55, muted)
@@ -433,8 +520,10 @@ def render_bars(model, source_age, width=1280, height=720, force_scale=20.0, tor
         cv2.rectangle(canvas, (x, 104), (x + 608, 636), (44, 37, 29), -1)
         cv2.rectangle(canvas, (x, 104), (x + 608, 110), color, -1)
         text(side.upper() + " ARM", x + 20, 147, 0.8, bright, 2)
-        text("ESTIMATED" if view.confirmed else "UNVERIFIED", x + 388, 146, 0.57, color, 2)
-        text("Point: flange | Frame: " + (view.frame or "UNCONFIRMED")[:35],
+        text(("FT SENSOR" if view.source_kind == "right_ft_sensor" else
+              ("ESTIMATED" if view.confirmed else "UNVERIFIED")) if view.valid else "NO DATA",
+             x + 388, 146, 0.57, color, 2)
+        text("Point: " + view.reference_point + " | Frame: " + (view.frame or "UNCONFIRMED")[:35],
              x + 20, 179, 0.48, muted)
         if not view.valid:
             text("NO VALID FORCE DATA", x + 40, 300, 0.78, amber, 2)
@@ -450,7 +539,7 @@ def render_bars(model, source_age, width=1280, height=720, force_scale=20.0, tor
         text(f"|M| {torque:.3f}", x + 310, 230, 0.9, cyan, 2)
         text("N / Nm" if view.confirmed else "N* / Nm*  (SDK unit convention unverified)",
              x + 20, 260, 0.48, muted)
-        for i, key in enumerate(AXES):
+        for i, key in enumerate(FT_AXES if view.source_kind == "right_ft_sensor" else AXES):
             y = 303 + i * 43
             limit = force_scale if i < 3 else torque_scale
             text(key, x + 22, y + 6, 0.62, bright)
@@ -461,12 +550,15 @@ def render_bars(model, source_age, width=1280, height=720, force_scale=20.0, tor
             text(f"{data[i]:+.3f}", x + 384, y + 6, 0.64, bright)
             if abs(data[i]) > limit:
                 text("RANGE", x + 527, y + 5, 0.38, amber)
-        text(f"cond {view.condition:.1f} | residual {view.residual:.3f}",
+        text("Bridge compensated + tared input" if view.source_kind == "right_ft_sensor" else
+             f"cond {view.condition:.1f} | residual {view.residual:.3f}",
              x + 20, 585, 0.49, muted)
         text("Filtered display | no direction guidance", x + 20, 616, 0.49, muted)
     text("Bars: +/- %.1f force, +/- %.1f torque | display scale only, NOT safe limits" %
          (force_scale, torque_scale), 32, 670, 0.54, muted)
-    text("* Verify units, frame, sign and tool load before interpreting contact forces.",
+    text("HUD smoothing is display-only. Recording uses the compensated and tared input."
+         if model.source_kind == "right_ft_sensor" else
+         "* Verify units, frame, sign and tool load before interpreting contact forces.",
          32, 701, 0.52, amber)
     return (canvas if (width, height) == (1280, 720)
             else cv2.resize(canvas, (width, height), interpolation=cv2.INTER_AREA))

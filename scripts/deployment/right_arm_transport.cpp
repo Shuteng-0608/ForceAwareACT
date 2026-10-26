@@ -11,15 +11,18 @@ bool connected = false, authorized = false, revoked = false, failed = false;
 const char* packet_detail = "not_attempted";
 using Clock = std::chrono::steady_clock;
 Clock::time_point next_api{};
+#ifndef FA_READ_ONLY
 long long monotonic_ns() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
 }
+#endif
 template<class F> auto api(F fn) -> decltype(fn()) {
   // Validated vendor header requires >=1 ms between API calls.
   std::this_thread::sleep_until(next_api);
   auto result=fn(); next_api=Clock::now()+std::chrono::milliseconds(1);
   return result;
 }
+#ifndef FA_READ_ONLY
 // ABI 2: 1=submitted, 0=busy, 2=expired (no send), -1=error/disabled.
 int begin_packet(bool stopping = false) {
   if (!connected) { packet_detail="not_connected"; return -1; }
@@ -60,21 +63,44 @@ bool finite7(const double* p) {
   for (int j=0; j<7; ++j) if (!std::isfinite(p[j])) return false;
   return true;
 }
+#endif
 }
 extern "C" {
-int fa_abi_version() { return 2; }
+int fa_abi_version() {
+#ifdef FA_SENSOR_FT
+  return 3;
+#else
+  return 2;
+#endif
+}
+#ifdef FA_SENSOR_FT
+int fa_select_ft_telemetry() {
+  if (!connected || !authorized) return -1;
+  return api([]{ return OnSetUserSpcfData_B(216); }) ? 1 : -1;
+}
+#endif
 const char* fa_last_packet_detail() { return packet_detail; }
 long fa_sdk_version() { return api(OnGetSDKVersion); }
 int fa_open(int a, int b, int c, int d, int explicit_authorization) {
   if (explicit_authorization != 1 || connected || a<0 || a>255 || b<0 || b>255 || c<0 || c>255 || d<0 || d>255) return -1;
   int order=-1;
   if (api([&]{ return CheckSDKTypeCompat(&order); })<0) return -1;
-  if (!api([&]{ return OnLinkTo(a,b,c,d); })) return -1;
+  if (!api([&]{ return OnLinkTo(a,b,c,d); })) {
+#ifdef FA_READ_ONLY
+    (void)api(OnRelease); // Release a partial feedback-only connection as well.
+#endif
+    return -1;
+  }
   connected=true; authorized=true; revoked=false; failed=false;
   return 1;
 }
 int fa_read(double* values, int length) {
-  if (!connected || !values || length != 72) return -1;
+  if (!connected || !values) return -1;
+#ifdef FA_SENSOR_FT
+  if (length != 72 && length != 79) return -1;
+#else
+  if (length != 72) return -1;
+#endif
   DCSS f{};
   if (!api([&]{ return OnGetBuf(&f); })) return -1;
   const auto &o=f.m_Out[1]; const auto &i=f.m_In[1]; const auto &s=f.m_State[1];
@@ -91,8 +117,16 @@ int fa_read(double* values, int length) {
   for (int j=0;j<6;++j) values[49+j]=i.m_ToolKine[j];
   for (int j=0;j<10;++j) values[55+j]=i.m_ToolDyn[j];
   for (int j=0;j<72;++j) if (!std::isfinite(values[j])) return -1;
+#ifdef FA_SENSOR_FT
+  if (length == 79) {
+    values[72]=o.m_EST_Joint_Firc[0];
+    for (int j=0;j<6;++j) values[73+j]=o.m_EST_Joint_Firc_Dot[j];
+    // Sensor validity is supervised separately so invalid FT cannot hide stop feedback.
+  }
+#endif
   return 1;
 }
+#ifndef FA_READ_ONLY
 int fa_configure(int velocity, int acceleration, double* k, double* d) {
   if (!finite7(k) || !finite7(d) || velocity<1 || velocity>100 || acceleration<1 || acceleration>100) return -1;
   for (int j=0;j<7;++j) if (k[j]<=0 || d[j]<=0) return -1;
@@ -120,6 +154,14 @@ int fa_servo_off() {
   if (!revoked) { packet_detail="servo_off_requires_revocation"; return -1; }
   int result=begin_packet(true); if (result!=1) return result;
   return finish_packet(api([]{ return OnSetTargetState_B(ARM_STATE_IDLE); }));
+}
+#endif
+int fa_read_only() {
+#ifdef FA_READ_ONLY
+  return 1;
+#else
+  return 0;
+#endif
 }
 int fa_close() {
   revoked=true; authorized=false;

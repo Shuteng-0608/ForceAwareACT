@@ -32,3 +32,6 @@ mujoco_data/*
 *.png
 *.egg-info/
 src/*.egg-info/
+
+# Locally compiled deployment adapters and their machine-specific manifests.
+/build/

@@ -13,6 +13,21 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def decode_feedback(values, ns):
+    result = dict(zip(("frame_serial", "state", "error_code", "impedance_type", "velocity_ratio_percent",
+                       "acceleration_ratio_percent", "low_speed_flag"), map(int, values[:7])))
+    for name, start, size in (("qpos_rad", 7, 7), ("qvel_rad_s", 14, 7),
+                              ("internal_torque_nm", 21, 7), ("external_raw_nm", 28, 7),
+                              ("joint_stiffness_nm_per_degree", 35, 7), ("joint_damping_ratio", 42, 7),
+                              ("tool_kine", 49, 6), ("tool_dyn", 55, 10), ("controller_target_rad", 65, 7)):
+        result[name] = list(values[start:start+size])
+    if len(values) == 79:
+        result["ft_channel"] = values[72]
+        result["ft_raw_counts"] = list(values[73:79])
+    result["received_monotonic_ns"] = ns
+    return result
+
+
 class RightArmTransport:
     hardware = True
 
@@ -21,16 +36,19 @@ class RightArmTransport:
             raise ValueError("hardware transport disabled; config and explicit flag are both required")
         shim, sdk = Path(shim).resolve(), Path(sdk).resolve()
         manifest = json.loads(shim.with_suffix(".json").read_text())
-        if (manifest["abi"] != 2 or manifest["shim_sha256"] != sha256(shim)
+        if (manifest.get("read_only", False) or manifest["abi"] not in (2, 3) or manifest["shim_sha256"] != sha256(shim)
                 or manifest["sdk_sha256"] != sha256(sdk)
                 or manifest["sdk_sha256"] != options.expected_sdk_sha256
                 or manifest["sdk_path"] != str(sdk)):
             raise ValueError("transport/SDK build provenance mismatch; rebuild against the validated SDK")
+        self.sensor_enabled = bool(options.ft_calibration_file)
+        if self.sensor_enabled and manifest["abi"] != 3:
+            raise ValueError("sensor FT requires a transport built with --sensor-ft")
         # Build uses an absolute dependency on this exact SDK, not LD_LIBRARY_PATH.
         self.lib = ctypes.CDLL(str(shim))
         self.lib.fa_abi_version.restype = ctypes.c_int
         self.lib.fa_sdk_version.restype = ctypes.c_long
-        if self.lib.fa_abi_version() != 2 or self.lib.fa_sdk_version() != options.expected_sdk_version:
+        if self.lib.fa_abi_version() != manifest["abi"] or self.lib.fa_sdk_version() != options.expected_sdk_version:
             raise ValueError("SDK/transport ABI version mismatch")
         self.lib.fa_last_packet_detail.argtypes = []
         self.lib.fa_last_packet_detail.restype = ctypes.c_char_p
@@ -44,6 +62,9 @@ class RightArmTransport:
                       "fa_close": ([], ctypes.c_int)}
         for name, (args, result) in signatures.items():
             fn = getattr(self.lib, name); fn.argtypes = args; fn.restype = result
+        if self.sensor_enabled:
+            self.lib.fa_select_ft_telemetry.argtypes = []
+            self.lib.fa_select_ft_telemetry.restype = ctypes.c_int
         self.connected = False
 
     def open(self, address):
@@ -51,21 +72,32 @@ class RightArmTransport:
         if self.lib.fa_open(*parts, 1) != 1:
             raise RuntimeError("SDK connection failed; no recovery attempted")
         self.connected = True
+        if self.sensor_enabled:
+            try:
+                if self.lib.fa_select_ft_telemetry() != 1:
+                    raise RuntimeError("cannot select FT telemetry channel 216")
+                deadline, previous, good = time.monotonic()+2., None, 0
+                while time.monotonic() < deadline:
+                    row = self.read()
+                    if row["frame_serial"] != previous:
+                        previous = row["frame_serial"]
+                        good = good+1 if row["ft_channel"] == 216 else 0
+                        if good >= 2:
+                            break
+                    time.sleep(.002)
+                else:
+                    raise RuntimeError("FT telemetry channel 216 was not confirmed")
+            except Exception:
+                self.close()
+                raise
 
     def read(self):
-        values = (ctypes.c_double*72)()
-        if self.lib.fa_read(values, 72) != 1:
+        length = 79 if self.sensor_enabled else 72
+        values = (ctypes.c_double*length)()
+        if self.lib.fa_read(values, length) != 1:
             raise RuntimeError("SDK feedback read failed")
         ns = time.monotonic_ns()
-        result = dict(zip(("frame_serial", "state", "error_code", "impedance_type", "velocity_ratio_percent",
-                           "acceleration_ratio_percent", "low_speed_flag"), map(int, values[:7])))
-        for name, start, size in (("qpos_rad", 7, 7), ("qvel_rad_s", 14, 7),
-                                  ("internal_torque_nm", 21, 7), ("external_raw_nm", 28, 7),
-                                  ("joint_stiffness_nm_per_degree", 35, 7), ("joint_damping_ratio", 42, 7),
-                                  ("tool_kine", 49, 6), ("tool_dyn", 55, 10), ("controller_target_rad", 65, 7)):
-            result[name] = list(values[start:start+size])
-        result["received_monotonic_ns"] = ns
-        return result
+        return decode_feedback(values, ns)
 
     @staticmethod
     def _result(code):

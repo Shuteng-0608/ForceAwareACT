@@ -183,6 +183,7 @@ class ShadowConfig:
     allow_motion: bool = False
     query_hz: int = 50
     execute_hz: int = 100
+    action_chunk_len: int = 100
     aggregation: str = "recency"
     decay_ms: float = 80.0
     official_decay: float = 0.01
@@ -202,6 +203,8 @@ class ShadowConfig:
             raise ValueError("robot motion is prohibited in this implementation")
         if self.query_hz != 50 or self.execute_hz != 100:
             raise ValueError("v1 contract is 50 Hz queries / 100 Hz execution")
+        if type(self.action_chunk_len) is not int or not 2 <= self.action_chunk_len <= 100:
+            raise ValueError("action_chunk_len must be 2..100")
         if self.aggregation not in ("newest", "official", "recency"):
             raise ValueError("unknown aggregation strategy")
         for name in ("decay_ms", "max_prediction_age_ms", "feedback_max_age_ms", "force_max_age_ms",

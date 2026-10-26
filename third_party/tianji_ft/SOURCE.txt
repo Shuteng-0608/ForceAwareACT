@@ -1,0 +1,8 @@
+Source: tianji_io_teleop_bridge commit 587715f
+ft_compensation.cpp and ft_compensation.hpp are copied unchanged.
+The local ccs_m6_40 model is the acquisition model.
+No calibration parameters or calibration motion scripts are bundled.
+
+The matching force_hud_core.py is vendored as
+src/force_aware_act/visualization/tianji_hud_render.py (unchanged).
+The adapter keeps sensor-origin torque and only rotates display axes.

@@ -57,8 +57,8 @@ The caller skips missed ticks instead of issuing a burst of old proposals.
         if not self.origin_ns <= observed_ns <= start_ns <= available_ns <= now_ns:
             raise ValueError("prediction has inconsistent/future timestamps")
         arr = np.asarray(actions, dtype=np.float64)
-        if arr.shape != (100, 7) or not np.isfinite(arr).all():
-            raise ValueError("prediction must contain finite absolute joint positions [100,7]")
+        if arr.shape != (self.config.action_chunk_len, 7) or not np.isfinite(arr).all():
+            raise ValueError(f"prediction must contain finite absolute joint positions [{self.config.action_chunk_len},7]")
         self.seen_ids.add(query_id)
         self.chunks.append(Chunk(query_id, start_ns, observed_ns, available_ns, arr.copy()))
         cutoff = now_ns - int(self.config.max_prediction_age_ms * 1e6)

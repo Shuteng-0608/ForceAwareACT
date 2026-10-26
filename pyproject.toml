@@ -16,6 +16,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+sensor-deployment = [
+    "PyYAML",
+]
 test = [
     "pytest",
 ]

@@ -1,0 +1,142 @@
+传感器力部署接入（2026-10-21，本机实现）
+
+一、边界和来源
+分支：codex/real-robot-sdk-deployment。
+独立标定程序不属于本次改动；开机标定成功后，提供最新的 YAML 参数路径即可。
+每次创建部署会话重新加载该文件；文件可被下一次标定覆盖。不固定标定参数哈希。
+一次会话内参数固定，文件后来被覆盖不会在运动中改变补偿。
+运行记录保存实际加载的参数、软件去皮值和时间，便于解释当次数据。
+
+补偿核心来自 tianji_io_teleop_bridge 的 587715f 提交，cpp/hpp 原样复制到
+third_party/tianji_ft/，增加薄 C ABI；没有重新实现拟合、补偿或去皮算法。
+HUD 核心同样复制自该版本。运行不依赖另一工作目录，不需要 ROS。
+FK 使用本仓库现有 M6 CCS40 右臂模型；保留的是几何模型版本检查，不是标定参数哈希。
+
+二、数据链路
+SDK 右臂 channel 216：m_EST_Joint_Firc_Dot[0:6]，单位换算乘 0.0001；
+同一 DCSS 帧的实际关节角 -> FK -> 工具重力/重力矩 + 固定偏置扣除；
+任务开始、最终阻抗模式和参数确认后，采集静止无接触窗口，捕获固定去皮偏置；
+最终输出 [Fx,Fy,Fz,Tx,Ty,Tz]，单位 N/Nm，right_ft_measurement，参考点为传感器原点。
+同帧序号和主机单调接收时间随数据记录，不把 SDK 时间伪装为 ROS 原始时间。
+
+去皮完全采用采集核心条件：完整至少 5 s、至少 200 个不同反馈帧，最大帧间隔 0.2 s，
+low_speed 标志为真，各关节速度 <=0.2 deg/s、窗口位置跨度 <=0.15 deg，
+各力分量标准差 <=0.1 N，各力矩分量标准差 <=0.005 Nm。
+去皮失败等待新的完整稳定窗口，受原启动超时约束；未去皮的数据不进入模型。
+这比旧部署七关节外力矩的 2 s 校零更严格。七关节保护仍执行自身的稳定窗口检查。
+去皮偏置在任务中不累计、不自动追随接触力，不调用硬件置零。
+有力输入的模型在去皮后还会等待一个完整历史时长（当前 200 ms）再开始预测；
+不把去皮前原始值填入模型历史，ACT 不需要等待力历史。
+复用核心写出的 tare YAML 中 ros_stamp_ns/first_sample_stamp_ns/last_sample_stamp_ns
+在本接入中均为主机 monotonic ns；controller report 明确记录此时间域。
+
+三、模型与控制
+新模型经 prepare_sensor_model.py 在 CPU 严格加载，输出显式的部署 manifest。
+manifest 固定的是 checkpoint 身份和训练输入契约，不包含校准文件哈希，也不表示已实机验证。
+旧的 contact/ACT 默认权重检查及旧的七维模型入口保留。
+end_effector_force3 只取前三维；end_effector_wrench6 取六维；ACT 不使用力作为输入。
+使用 checkpoint 的训练归一化及已有历史打包，不做雅可比反算，不再次补偿或去皮。
+原始补偿六维力均记录；HUD 的低通、死区和坐标转换不进入模型或保护。
+动作 shape 为 [checkpoint.chunk_len,7]，允许 2..100，支持新训练的 [20,7]。
+控制网格仍为 100 Hz，推理仍为 50 Hz；20 点对应 200 ms。
+按时间戳索引进行现有 temporal aggregation；耗尽后不会持续复用末点。
+目标点、单步/反馈保护、停止与下使能的原有流程保留。
+
+四、保护和 HUD
+保留七关节 estimated disturbance 的独立校零和原有 Nm 保护；它不作为新传感器模型输入。
+新增可选 ft_force_hard_n（三轴 N）及 ft_torque_hard_nm（三轴 Nm）。
+默认 null = 未启用传感器幅值限值，不能声称已具备六轴传感器超力保护。
+不能直接把七关节限值搬作这六个值；具体值需要另行确定。
+传感器失效、非有限值、channel 不匹配会撤销目标许可并进入已有停止流程；
+停止阶段继续读取关节反馈，不让无效 FT 阻断静止/下使能确认。
+
+force_hud_sensor.json：right_ft_sensor，独立 CPU 进程，100 Hz 渲染上限；
+同帧 FK 和标定 R_flange_sensor 只旋转到 right_sdk_base 显示坐标；力矩原点仍是传感器。
+20 N / 2 Nm 仅是显示量程；0.5 N 是环形显示死区；低通时间常数 80 ms。
+沿用采集时的环形投影轴和 contact_side 语义（preview=true，方向尚未现场确认）。
+无显示端再次去皮；左臂不伪造传感器数据。浏览器页面目前约 30 Hz 拉取最新帧。
+
+五、本机构建与禁用预览（以下命令不连接机器人）
+从仓库根目录执行，Python 环境需现有训练依赖与 PyYAML。
+编译依赖：g++、Eigen3 头文件、yaml-cpp 开发库。
+HUD 依赖现有 OpenCV；将来相机联调还需 pyrealsense2。
+
+export PYTHONPATH=src:.
+python scripts/deployment/build_ft_compensation.py --output build/ft_compensation.so
+python scripts/deployment/build_right_arm_transport.py \
+  --sdk-directory /path/to/validated/SDK100343014 \
+  --session-config configs/deployment/command_session_sensor_ft.json \
+  --sensor-ft --output build/right_arm_transport_sensor.so
+
+以上构建目标已存在时会拒绝覆盖，需自行选择新的构建输出名。
+传感器 transport ABI=3；旧 ABI=2 不具有传感器反馈扩展。
+传感器配置使用 SDK 100343014，SDK 文件校验沿用已确认的采集版本。
+
+python scripts/deployment/prepare_sensor_model.py \
+  --checkpoint /path/to/new_sensor_checkpoint.pt --output /path/to/model_manifest.json
+
+python scripts/deployment/run_contact_controller.py \
+  --goal-id x14y08 \
+  --session-config configs/deployment/command_session_sensor_ft.json \
+  --model-manifest /path/to/model_manifest.json \
+  --ft-calibration /path/to/current_calibration.yaml \
+  --ft-library build/ft_compensation.so --hud
+
+此处未包含 enable-control；配置默认 allow_hardware=false。
+预览只显示计划，不启动设备，不承诺预览已验证硬件或模型效果。
+prepare-only 是既有的硬件准备模式，会配置控制器参数/模式，不能当成只读模式使用。
+本轮没有运行硬件准备、连接机器人、同步新 PC 或下发运动指令。
+
+六、本机测试
+PYTHONPATH=src:. python -m pytest -q tests/test_sensor_ft_deployment.py \
+  tests/test_command_session.py tests/test_shadow_controller.py tests/test_goal_selection.py \
+  tests/test_deployment_force_hud.py tests/test_act_deployment.py tests/test_real_robot_inference.py \
+  tests/test_real_robot_sensor_force3.py tests/test_real_robot_wrench6.py
+
+新增测试使用合成的标定参数、传感器值和小模型，检查单位/坐标、同帧补偿、固定去皮、
+覆盖参数后重新加载、3/6 维输入/归一化/因果性、20 点时序、默认不连接的模型预览、HUD。
+只验证数学/软件数据路径，不重新运行标定动作，也没有实机动作回放或故障注入。
+实际相机/SDK时延、传感器现场方向与真实新权重效果，需要后续只读联调验收。
+
+七、本轮验证结果
+补偿库以及 SDK100343014 的 ABI3 transport 已在本机编译通过（没有加载/连接 SDK）。
+上述组合测试：164 passed in 11.12s。git diff --check 通过。
+2000 次合成姿态的本机单帧数学处理：P50 0.02845 ms，P99 0.03837 ms，最大 0.37710 ms。
+包括同帧 FK、C++ 补偿、固定去皮和 Python 输出构建；
+不包含 SDK/相机/GPU/控制循环/HUD，也不是新 PC 的实时性能结论。
+原始统计：outputs/sensor_ft_deployment_20261021/local_math_timing.json。
+
+八、2026-10-26 补齐传感器只读入口
+observe_sensor_ft_readonly.py 使用 SensorReadOnlyTransport。
+必须通过 --sensor-ft --read-only 构建专用 transport；原有控制库不能用于此入口。
+构建会用 nm 检查实际 SDK 引用白名单，并确认不存在目标/参数/模式/下使能导出。
+白名单：CheckSDKTypeCompat、OnGetSDKVersion、OnLinkTo、OnGetBuf、
+OnSetUserSpcfData_B（仅选择 216 反馈内容）、OnRelease。
+编译时排除了 fa_target/fa_configure/fa_enter_impedance/fa_servo_off。
+
+新 PC 当前地址：shutiao@192.168.8.112（地址可能变化）。
+本次标定参数：2026-10-26 02:03:58 UTC，mass_kg=0.3150315330909086；
+验证 RMS：0.037305998 N、0.001157953 Nm。
+仍使用新 PC 的 right_ft_calibration_current.yaml 路径，每次启动加载最新内容。
+
+构建示例（依赖可放在用户目录，无需系统安装）：
+python scripts/deployment/build_ft_compensation.py --output build/ft_compensation.so \
+  --dependency-prefix /home/shutiao/tianji_deployment/dependencies_20261026/root/usr
+python scripts/deployment/build_right_arm_transport.py \
+  --sdk-directory /home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++ \
+  --session-config configs/deployment/command_session_sensor_ft.json \
+  --sensor-ft --read-only --output build/right_arm_sensor_readonly.so
+
+只读入口预览（默认不连接）：
+python scripts/deployment/observe_sensor_ft_readonly.py \
+  --transport build/right_arm_sensor_readonly.so \
+  --sdk /home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++/libMarvinSDK.so \
+  --ft-library build/ft_compensation.so \
+  --ft-calibration /home/shutiao/tianji_ws/src/tianji_io_teleop_bridge/config/right_ft_calibration_current.yaml
+
+增加 --connect --seconds 10 --output reports/一个新目录 才会连接和读取。
+默认不进行任务去皮，只记录原始 SI 值及扣除重力/固定偏置的值；不能把这些值
+称为“本次去皮后的模型输入”。本入口不启动相机、不加载模型、不运行控制器。
+将来有现场静止无接触确认时，可增加 --tare --operator-confirmed-no-contact；
+复用相同 SensorFT 进行纯软件去皮，不自动清故障、使能、切换模式或回到初始位置。
+每次观测都释放 SDK 连接，Ctrl-C 同样走释放流程，报告中记录各项行为。

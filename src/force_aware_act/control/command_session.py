@@ -39,6 +39,11 @@ class SessionOptions:
     sdk_busy_timeout_ms: float = 100.
     expected_sdk_version: int = 100343013
     expected_sdk_sha256: str = "47ab2ab6e35cf899eae3978dfb50ee219e05b10f72aedd6bc9ba6a338a8b4011"
+    ft_calibration_file: str | None = None
+    ft_compensation_library: str | None = None
+    ft_tare_window_s: float = 5.
+    ft_force_hard_n: tuple[float, ...] | None = None
+    ft_torque_hard_nm: tuple[float, ...] | None = None
 
     def __post_init__(self):
         if self.schema_version != "right_command_session_v1" or self.stop_policy != "cease_targets":
@@ -46,12 +51,19 @@ class SessionOptions:
         if type(self.allow_hardware) is not bool or type(self.servo_off_after_standstill) is not bool:
             raise ValueError("hardware and servo-off switches must be JSON booleans")
         for name in self.__dataclass_fields__:
-            if name.endswith(("_s", "_ms", "_rad", "_nm")):
+            if name.endswith(("_s", "_ms", "_rad", "_nm")) and name != "ft_torque_hard_nm":
                 value = getattr(self, name)
                 if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
                     raise ValueError(f"invalid {name}")
         if self.calibration_window_s < 2 or self.stationary_dwell_ms < 500:
             raise ValueError("calibration >=2s and standstill observation >=500ms required")
+        if bool(self.ft_calibration_file) != bool(self.ft_compensation_library):
+            raise ValueError("FT requires both calibration file and compensation library")
+        if self.ft_tare_window_s < 5:
+            raise ValueError("sensor tare requires at least 5 seconds")
+        for name in ("ft_force_hard_n", "ft_torque_hard_nm"):
+            if getattr(self, name) is not None:
+                object.__setattr__(self, name, tuple(vector(getattr(self, name), name, 3, positive=True)))
 
     @classmethod
     def read(cls, path):
@@ -90,12 +102,17 @@ sending or latching an SDK failure. `hardware` identifies real side effects.
 Start authorization is per session, never persisted by importing this module.
 """
     def __init__(self, selection, options, transport, *, run_id, origin_ns,
-                 enable_control=False, operator_confirmed_no_contact=False):
+                 enable_control=False, operator_confirmed_no_contact=False, sensor_ft=None, output=None):
         if not enable_control or not operator_confirmed_no_contact:
             raise ValueError("explicit startup control and no-contact confirmation required")
         if transport.hardware and not options.allow_hardware:
             raise ValueError("session configuration disables hardware control")
         self.selection, self.options, self.transport = selection, options, transport
+        if bool(options.ft_calibration_file) != (sensor_ft is not None):
+            raise ValueError("sensor session must have a loaded compensation core")
+        self.sensor_ft, self.output = sensor_ft, Path(output) if output is not None else None
+        if sensor_ft is not None and self.output is None:
+            raise ValueError("sensor session requires an output directory for tare")
         self.baseline = json.loads(selection.controller_baseline_json)
         if self.baseline["arm"] != "right" or self.baseline["control_mode"] != "joint_impedance":
             raise ValueError("right joint impedance baseline required")
@@ -207,6 +224,12 @@ the two-second window, including any transition transient still in that window.
         }
         if failed:
             return
+        if self.sensor_ft is not None:
+            if not self.sensor_ft.capture(end_ns, self.output / "ft_tare"):
+                self.calibration_status["status"] = "waiting_for_sensor_tare"
+                self.calibration_status["sensor_tare_reason"] = self.sensor_ft.waiting_reason
+                return
+            self.last["sensor_ft"] = self.sensor_ft.process(row)  # First freshly tared frame.
         self.bias = raw.mean(axis=0)
         self.calibration = {"bias_nm": self.bias.tolist(), "samples": len(self.rows),
                             "start_ns": self.rows[0]["received_monotonic_ns"], "end_ns": end_ns,
@@ -254,6 +277,21 @@ the two-second window, including any transition transient still in that window.
         if self.tool_context is not None and context != self.tool_context:
             self.stop("tool_context_changed", now_ns); return
         self.tool_context = context
+        if self.sensor_ft is not None:
+            try:
+                sensor = self.sensor_ft.process(row, collect=self.state == "CALIBRATING")
+                self.last["sensor_ft"] = sensor
+                if sensor["valid"]:
+                    wrench = np.abs(sensor["wrench_si"])
+                    for values, bound, reason in (
+                        (wrench[:3], self.options.ft_force_hard_n, "sensor_force_hard"),
+                        (wrench[3:], self.options.ft_torque_hard_nm, "sensor_torque_hard")):
+                        if bound is not None and np.any(values >= bound):
+                            self.stop(reason, now_ns); return
+            except (ValueError, RuntimeError, KeyError) as exc:
+                self.stop("sensor_ft_invalid", now_ns)
+                self.stop_request["sensor_detail"] = str(exc)
+                return
         if self.state == "WAIT_STATIONARY":
             if row["state"] not in (0, 3) or (row["state"] == 3 and row["impedance_type"] != 1):
                 self.stop("unsupported_initial_mode", now_ns); return
@@ -448,6 +486,7 @@ the two-second window, including any transition transient still in that window.
                 "control_packets_submitted": dict(self.packet_counts), "stop": self.stop_request,
                 "expired_target_ticks": self.expired_target_ticks,
                 "state_history": self.history, "calibration": self.calibration,
+                "sensor_ft": self.sensor_ft.report() if self.sensor_ft is not None else None,
                 "calibration_status": self.calibration_status,
                 "calibration_valid_at_end": False, "options": asdict(self.options),
                 "goal_selection": self.selection.to_dict(),

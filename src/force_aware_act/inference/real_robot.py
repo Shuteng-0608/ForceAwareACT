@@ -137,12 +137,14 @@ class RealRobotObservationBuffer:
                                *, available_ns: int | None = None,
                                qpos: np.ndarray | None = None) -> None:
         """Append estimated_joint_disturbance.effort, preserving its own clock."""
+        if self.config.uses_wrench_sensor:
+            raise ValueError("sensor models require append_sensor_wrench, not joint torque")
         timestamp_ns, available_ns = self._message_times(
             timestamp_ns, available_ns, self._torques[-1] if self._torques else None
         )
         torque = _vector7(external_joint_torque, "external_joint_torque")
         valid = True
-        if self.config.force_dim == 3:
+        if self.config.force_representation == "flange_force3":
             if qpos is None:
                 raise ValueError("flange_force3 requires same-frame qpos with external torque")
             from force_aware_act.real_robot.flange_force import joint_torque_to_flange_force
@@ -150,6 +152,19 @@ class RealRobotObservationBuffer:
             result = joint_torque_to_flange_force(qpos, external_joint_torque)
             torque, valid = result.force.astype(np.float32), bool(result.valid)
         self._torques.append(_TorqueMessage(timestamp_ns, available_ns, torque, valid))
+
+    def append_sensor_wrench(self, timestamp_ns: int, wrench: np.ndarray, *,
+                             frame_id: str, available_ns: int | None = None) -> None:
+        """Already compensated and tared sensor SI values; select channels once."""
+        if not self.config.uses_wrench_sensor or frame_id != self.config.wrench_frame:
+            raise ValueError("sensor source/frame differs from checkpoint contract")
+        values = np.asarray(wrench, dtype=np.float32)
+        if values.shape != (6,) or not np.isfinite(values).all():
+            raise ValueError("sensor input must be finite [Fx,Fy,Fz,Tx,Ty,Tz] in N/Nm")
+        timestamp_ns, available_ns = self._message_times(
+            timestamp_ns, available_ns, self._torques[-1] if self._torques else None)
+        self._torques.append(_TorqueMessage(timestamp_ns, available_ns,
+                                            values[:self.config.force_dim].copy(), True))
 
     def append_image(self, camera_name: str, timestamp_ns: int, rgb: np.ndarray,
                      *, available_ns: int | None = None) -> None:

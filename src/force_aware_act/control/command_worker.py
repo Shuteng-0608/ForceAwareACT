@@ -78,7 +78,7 @@ def run_loop(session, transport, inbox, feedback_out, stop_event, overflow, outp
                             hud_dropped += 1
                     except Exception:
                         hud_errors += 1  # A display issue cannot alter send/stop decisions.
-                    hud_next_ns = now+33_333_333
+                    hud_next_ns = now+(10_000_000 if session.sensor_ft is not None else 33_333_333)
                 time.sleep(max(0., min(.001, (next_read-time.monotonic_ns())/1e9)))
     except BaseException as exc:
         errors.append({"type": type(exc).__name__, "message": str(exc)})
@@ -101,6 +101,8 @@ def run_loop(session, transport, inbox, feedback_out, stop_event, overflow, outp
             report['hud_telemetry'] = {'dropped_snapshots':hud_dropped,'publish_errors':hud_errors,
                                      'reader_can_block_control':False}
         (output/"report.json").write_text(json.dumps(report, indent=2)+"\n")
+        if session.sensor_ft is not None:
+            session.sensor_ft.close()
     return report
 
 
@@ -109,13 +111,21 @@ def _worker(selection, options, shim, sdk, address, origin_ns, run_id,
     # Imported only in the explicitly enabled child, never in the default CLI.
     from .sdk_transport import RightArmTransport
     transport = None
+    sensor = None
     try:
+        if options.ft_calibration_file:
+            from .sensor_ft import SensorFT
+            sensor = SensorFT(options.ft_calibration_file, options.ft_compensation_library,
+                              window_s=options.ft_tare_window_s)
         transport = RightArmTransport(shim, sdk, options, enable_control=True)
         session = CommandSession(selection, options, transport, run_id=run_id, origin_ns=origin_ns,
-                                 enable_control=True, operator_confirmed_no_contact=True)
+                                 enable_control=True, operator_confirmed_no_contact=True,
+                                 sensor_ft=sensor, output=output)
         transport.open(address)
         run_loop(session, transport, inbox, feedback_out, stop_event, overflow, output, hud_channel)
     except BaseException as exc:
+        if sensor is not None:
+            sensor.close()
         if transport is not None:
             transport.revoke_targets()
             transport.close()

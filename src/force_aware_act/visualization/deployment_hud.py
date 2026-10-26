@@ -23,7 +23,7 @@ import numpy as np
 
 from force_aware_act.control.kinematics import right_flange_transform
 from force_aware_act.control.wrench_estimation import flange_jacobian, equivalent_wrench
-from .tianji_hud_render import AXES, HudModel, RingMapping, render_hud
+from .tianji_hud_render import AXES, FT_AXES, HudModel, RingMapping, render_hud, ft_sensor_report
 
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3]/'configs/deployment/force_hud.json'
@@ -33,9 +33,10 @@ def read_config(path=DEFAULT_CONFIG):
     config = json.loads(Path(path).read_text())
     if config['schema_version'] != 'deployment_force_hud_v1':
         raise ValueError('unsupported HUD config')
-    if not 1 <= config['display_rate_hz'] <= 30:
-        raise ValueError('HUD display rate must be 1..30 Hz')
-    if config['show_high_residual_samples'] is not True:
+    sensor = config.get('source_kind') == 'right_ft_sensor'
+    if not 1 <= config['display_rate_hz'] <= (100 if sensor else 30):
+        raise ValueError('HUD display rate exceeds its source-specific limit')
+    if not sensor and config['show_high_residual_samples'] is not True:
         raise ValueError('deployment HUD requires explicit full residual display')
     if config['mapping']['frame'] != config['wrench_frame']:
         raise ValueError('task axes and estimated wrench must use the same frame')
@@ -49,7 +50,8 @@ class DeploymentHud:
     def __init__(self, config, goal):
         self.config, self.goal = config, goal
         self.model = HudModel(timeout=config['input_timeout_s'],
-                              smoothing_sec=config['smoothing_time_constant_s'])
+                              smoothing_sec=config['smoothing_time_constant_s'],
+                              source_kind=config.get('source_kind', 'joint_estimate'))
         self.mapping = RingMapping(**config['mapping'])
         self.packet = None
         self.estimate = None
@@ -77,6 +79,31 @@ class DeploymentHud:
             tau = np.asarray(record['external_raw_nm'], dtype=float)-bias
             if q.shape != (7,) or tau.shape != (7,) or bias.shape != (7,):
                 raise ValueError('expected seven joints and seven calibration biases')
+            if self.config.get('source_kind') == 'right_ft_sensor':
+                sensor = record['sensor_ft']
+                if (not sensor['valid'] or sensor['source_ns'] != source_ns
+                        or sensor['frame_serial'] != record['frame_serial']):
+                    raise ValueError('waiting for valid same-frame sensor tare')
+                transform = right_flange_transform(q)
+                rotation = transform[:3, :3] @ np.asarray(sensor['sensor_to_flange_rotation'])
+                w_sensor = np.asarray(sensor['wrench_si'], dtype=float)
+                msg = NS(header=NS(frame_id=sensor['frame_id'],
+                          stamp=NS(sec=source_ns//10**9, nanosec=source_ns%10**9)),
+                         name=list(FT_AXES), effort=w_sensor)
+                report = ft_sensor_report(msg, display_rotation=rotation,
+                            display_frame=self.config['wrench_frame'], joint_stamp_ns=source_ns)
+                self.model.ingest(report, now_ns, now_ns/1e9)
+                if not self.model.arms['right'].valid:
+                    self.estimate = None
+                    return
+                w = np.r_[rotation @ w_sensor[:3], rotation @ w_sensor[3:]]
+                self.estimate = {'source_ns':source_ns, 'qpos_rad':q.tolist(),
+                    'zeroed_tau_nm':tau.tolist(), 'wrench_base':w.tolist(),
+                    'wrench_sensor':w_sensor.tolist(), 'reference_point':'sensor',
+                    'source_kind':'right_ft_sensor', 'relative_residual':None,
+                    'condition':None, 'rank':None, 'diagnostics':[],
+                    'distance_mm':float(np.linalg.norm(transform[:3,3]/1000.-self.goal['target_position_m'])*1000.)}
+                return
             out = equivalent_wrench(flange_jacobian(q), tau)
             w = out['wrench_base']
             transform = right_flange_transform(q)
@@ -178,8 +205,12 @@ class DeploymentHud:
                 text(f'{axis}: {values[j]:+.3f} '+('N' if j<3 else 'Nm'), 970, 185+j*31, .5)
             text(f'|F| RAW: {np.linalg.norm(view.raw[:3]):.2f} N', 970, 405)
             text(f'|M| RAW: {np.linalg.norm(view.raw[3:]):.3f} Nm', 970, 437)
-            text(f'RESIDUAL: {e["relative_residual"]:.1%}', 970, 480)
-            text(f'CONDITION: {e["condition"]:.2f}', 970, 512)
+            if e.get('source_kind') == 'right_ft_sensor':
+                text('FT SENSOR / compensated', 970, 480, .4)
+                text('Torque origin: sensor', 970, 512, .4)
+            else:
+                text(f'RESIDUAL: {e["relative_residual"]:.1%}', 970, 480)
+                text(f'CONDITION: {e["condition"]:.2f}', 970, 512)
             text(f'GOAL: {e["distance_mm"]:.1f} mm', 970, 544)
             if e['diagnostics']:
                 text(' / '.join(e['diagnostics'])[:30], 970, 582, .4, (90,190,240))
@@ -188,7 +219,8 @@ class DeploymentHud:
         # The deployment bias already zeros the shared source, no second tare.
         cv2.rectangle(image, (int(340*scale_x),int(564*scale_y)),
                       (int(937*scale_x),int(594*scale_y)), (44,37,29), -1)
-        text('Deployment joint zero | no additional display tare', 363, 583, .44)
+        text(('Sensor gravity compensation + task tare' if self.config.get('source_kind') == 'right_ft_sensor'
+              else 'Deployment joint zero | no additional display tare'), 363, 583, .44)
         return image, status
 
 
