@@ -1,0 +1,98 @@
+2026-10-26 新 PC 六维力 / HUD / 模型只读联调
+
+实施版本：4e0822ff8b673068556572d6a5a401ed1a626176
+分支：codex/real-robot-sdk-deployment
+新 PC 仓库：/home/shutiao/tianji_deployment/ForceAwareACT
+新增入口：scripts/deployment/shadow_sensor_readonly.py
+已有只读 observer 增加 --stream，提供同帧补偿、去皮后的数据。
+HUD 的传感器模式不再要求七关节估计力矩校零；没有该零偏时显示 --。
+本次没有指定任务目标点，HUD 不显示完成距离，也不进行完成判定。
+
+硬件与标定
+D455 261822304024、D405 260322275961，均实际读取 RGB 640x480 / 30 fps。
+深度流按既有采集配置同时打开；模型只使用 RGB。
+标定文件：/home/shutiao/tianji_ws/src/tianji_io_teleop_bridge/config/right_ft_calibration_current.yaml
+加载本次开机标定，质量 0.3150315330909086 kg；没有锁定标定文件哈希。
+每个反馈帧以同帧实际关节角计算 FK、工具重力和重力矩，扣除固定偏置。
+独立 observer 负责 SDK、补偿和任务去皮；模型与 HUD 消费同一份结果。
+软件去皮：2255 个独立反馈帧，5.00037 s；之后固定去皮偏置。
+偏置 [N,N,N,Nm,Nm,Nm]：
+[0.4848082783,-0.1053267790,0.7895706168,-0.0055992767,0.0097669708,0.0199509863]
+去皮窗口标准差：
+[0.0116860,0.0122356,0.0144232,0.000244659,0.000259434,0.000307057]
+运行期间静止去皮后的均值：
+[0.0191106,0.00114566,0.0285496,-0.000238334,0.000628809,0.000790956]
+运行期间单轴绝对值最大约 0.1131 N / 0.002631 Nm。
+
+实测模型
+/home/shutiao/ForceAwareACT_workspace/ForceAwareACT/outputs/1mm_x14y08_55_wrench6_v1/runs/contact_wrench6_ah20_fh20_seed0_b8_es3000_p20_r001/best.pt
+global_step=15250，模型文件没有移动或改写。
+checkpoint SHA256=5ae5f9d2f9abc6d82e04e8a4e7a3ea3e1aeec6f2599ccfdf6d0f2574fd699875
+输入力为 right_ft_measurement 的真实六维传感器值；保留训练归一化。
+模型输入使用原始 RGB，不增加 JPEG 编解码；只使用查询时已到达的历史数据。
+同一个固定 epoch 偏移映射主机 monotonic 接收时间，保留数据可用时间。
+200 ms 力历史中每次实际有效样本 86..94 个，按原读取器的 10 ms 分箱、最多8样本处理。
+此处报告的是 SDK 反馈读取密度，不能据此认定力传感器的原生刷新频率。
+输出：动作 [20,7]，六维力 [20,6]，高频力 [20,3,6]；动作全部有限值。
+预测只写日志，没有接入执行器或任何运动目标发送函数。
+
+120 秒结果
+成功预测 6000，跳过 0；完成频率 49.99996 Hz。
+预测间隔 P99 20.0476 ms，最大 20.1457 ms。
+GPU 推理 P99 8.6672 ms，最大 11.3485 ms。
+完整准备/推理/写日志循环 P99 13.0164 ms，最大 18.1077 ms。
+反馈 56993 帧，读取观测速率 454.685 Hz；间隔 P99 2.3756 ms，最大 8.5168 ms。
+同帧 FK/重力补偿处理 P99 0.1290 ms。
+跨进程反馈延迟 P99 1.1595 ms，最大 6.4882 ms；没有超过20ms而丢弃的反馈。
+模型使用的关节状态年龄最大 7.0708 ms。
+D455 接收间隔 P99 34.7118 ms，最大 34.9130 ms。
+D405 接收间隔 P99 34.7464 ms，最大 64.1399 ms。
+模型实际使用的图像年龄最大分别为 34.0253 / 33.8814 ms，未出现100ms超龄。
+D405 的64ms间隔如实保留；本次不能据此宣布永远不会有掉帧或调度抖动。
+
+HUD
+实际 HTTP /status.json 和 /frame.jpg 均读取、核验成功。
+显示帧 13516，100Hz渲染时钟跳过1槽；渲染 P99 6.5097 ms，最大10.5351 ms。
+100Hz为绘制频率；浏览器画面拉取频率约30Hz，非传感器刷新频率。
+沿用采集HUD：80ms因果低通、200ms过期、20N/2Nm显示范围、0.5N方向死区。
+模型输入保持传感器测量坐标系；HUD旋转到基座显示，力矩参考点仍为传感器原点。
+任务轴仍为既有未标定的方向预览，没有将其作为插入方向的标定结论。
+HUD进程没有加载 torch、相机库或机器人 transport。
+测试结束后 HUD 服务随入口正常关闭。
+
+只读边界与结束状态
+使用 build/right_arm_sensor_readonly.so，未加载控制版入口。
+只读构建符号白名单、ABI与SDK文件检查通过。
+本轮未修改 C++ 源码，沿用此前在新 PC 成功构建并核验的只读及补偿动态库。
+不发送位置目标、速度/刚度参数、模式切换、使能或下使能指令。
+SDK唯一设置接口 OnSetUserSpcfData_B(216) 仅选择六维力反馈通道。
+反馈模式始终 [state=0, impedance_type=0]，错误码始终0，通道始终216。
+七关节位置跨度最大 1.9175e-6 rad。
+observer exit=0，SDK已释放；结束后没有残留observer进程或UDP4730占用。
+现有SDK100343014/控制器100343024兼容性事项仍按前一份报告记录；本轮不验证运动接口。
+静止联调证明读取/补偿/去皮/推理/HUD链路可运行，不代表已验证移动中的补偿精度或插入效果。
+
+验证与日志
+本机89项相关测试通过；新PC12项入口/HUD测试通过。
+新增测试覆盖默认不连接、显式确认、同帧数据、时间可用性、无旧关节校零HUD及无目标渲染。
+测试指令（本机使用forceact，新PC使用tianji）：
+PYTHONPATH=src:. python -m pytest -q tests/test_shadow_sensor_readonly.py tests/test_deployment_force_hud.py tests/test_sensor_ft_deployment.py tests/test_real_robot_inference.py tests/test_realtime_gc.py tests/test_real_robot_sensor_force3.py tests/test_rollout_force_hud.py tests/test_command_session.py
+新 PC 全量日志：
+/home/shutiao/tianji_deployment/ForceAwareACT/reports/sensor_policy_hud_20261026_run1/
+本机摘要/统计/截图：
+/home/stw/ForceAwareACT_workspace/ForceAwareACT/outputs/sensor_policy_hud_acceptance_20261026/
+
+下次独立只读运行方式（需当次静止、无接触且无外力后才能声明确认）
+cd /home/shutiao/tianji_deployment/ForceAwareACT
+conda activate tianji
+export PYTHONPATH=src:.
+python scripts/deployment/shadow_sensor_readonly.py \
+  --connect --operator-confirmed-no-contact \
+  --checkpoint /home/shutiao/ForceAwareACT_workspace/ForceAwareACT/outputs/1mm_x14y08_55_wrench6_v1/runs/contact_wrench6_ah20_fh20_seed0_b8_es3000_p20_r001/best.pt \
+  --transport build/right_arm_sensor_readonly.so \
+  --sdk /home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++/libMarvinSDK.so \
+  --ft-library build/ft_compensation.so \
+  --ft-calibration /home/shutiao/tianji_ws/src/tianji_io_teleop_bridge/config/right_ft_calibration_current.yaml \
+  --seconds 120 --output reports/UNIQUE_NEW_RUN_DIRECTORY
+HUD：http://127.0.0.1:8787（新PC本机；仅运行期间提供服务）。
+仅查看入口、不打开硬件：python scripts/deployment/shadow_sensor_readonly.py
