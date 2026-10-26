@@ -127,7 +127,11 @@ class RightArmTransport:
         self.lib.fa_revoke_targets()  # Local flag only, no SDK command.
 
     def servo_off(self):
-        return self._packet_result(self.lib.fa_servo_off())
+        started_ns = time.monotonic_ns()
+        try:
+            return self._packet_result(self.lib.fa_servo_off())
+        finally:
+            self.last_servo_off_timing = {'started_ns': started_ns, 'finished_ns': time.monotonic_ns()}
 
     def close(self):
         result = self.lib.fa_close()

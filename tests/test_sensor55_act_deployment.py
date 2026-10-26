@@ -25,6 +25,7 @@ def test_act1_preview_selects_new_library_checkpoint_and_keeps_hardware_disabled
     assert preview['policy_inputs'] == ['RGB d455', 'RGB d405', 'qpos_rad']
     assert preview['session']['ft_force_hard_n'] == [20, 20, 60]
     assert preview['session']['servo_off_after_standstill'] is True
+    assert preview['session']['servo_off_on_fault'] is True
     assert preview['goal_selection']['goal_id'] == 'x14y08'
     assert preview['goal_selection']['config']['action_chunk_len'] == 20
     assert preview['goal_selection']['config']['max_prediction_age_ms'] == 200
@@ -36,6 +37,16 @@ def test_act1_preview_selects_new_library_checkpoint_and_keeps_hardware_disabled
     assert checkpoint.endswith('/01_act_none_no_history_zero/best.pt')
     with pytest.raises(SystemExit):
         entry.controller_arguments(['--checkpoint', 'old_baseline.pt'])
+
+
+def test_act_hardware_entry_rejects_a_session_without_immediate_protection(tmp_path):
+    old = json.loads((entry.ROOT/'configs/deployment/command_session_sensor55_candidate.json').read_text())
+    old.pop('servo_off_on_fault')
+    old['allow_hardware'] = True
+    path = tmp_path/'previous_session.json'
+    path.write_text(json.dumps(old))
+    with pytest.raises(SystemExit):
+        entry.controller_arguments(['--enable-control', '--session-config', str(path)])
 
 
 @pytest.mark.parametrize('field,value', [

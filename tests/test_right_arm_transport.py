@@ -118,6 +118,7 @@ def test_build_then_nominal_right_packets_units_readback_and_revocation(native_t
     assert transport.target(target, deadline_ns=time.monotonic_ns()+20_000_000) == "error"
     assert library.fake_calls() == before
     assert transport.servo_off() == "submitted" and transport.read()["state"] == 0
+    assert transport.last_servo_off_timing['finished_ns'] >= transport.last_servo_off_timing['started_ns']
     transport.close()
     assert not transport.connected
 

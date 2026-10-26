@@ -28,7 +28,7 @@ int begin_packet(bool stopping = false) {
   if (!connected) { packet_detail="not_connected"; return -1; }
   if (!authorized) { packet_detail="not_authorized"; return -1; }
   // A failure latches motion off, but must not block the separately authorized
-  // IDLE packet after targets are revoked and Python observes standstill.
+  // IDLE packet after target revocation, including immediate protective stops.
   if (failed && !stopping) { packet_detail="sdk_failure_latched"; return -1; }
   if (revoked && !stopping) { packet_detail="targets_revoked"; return -1; }
   if (!api(OnClearSet)) { packet_detail="clear_set_busy"; return 0; }

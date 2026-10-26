@@ -3,6 +3,7 @@
   "allow_hardware": false,
   "stop_policy": "cease_targets",
   "servo_off_after_standstill": true,
+  "servo_off_on_fault": true,
   "startup_timeout_s": 15.0,
   "packet_settle_ms": 250.0,
   "transition_timeout_s": 2.0,

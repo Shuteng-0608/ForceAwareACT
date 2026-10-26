@@ -2,6 +2,7 @@
   "schema_version": "sensor55_deployment_binding_v1",
   "model_library_id": 1,
   "checkpoint_selection": "action",
+  "require_servo_off_on_fault": true,
   "model_manifest": "configs/deployment/models/act_sensor55_ah20_seed0.json",
   "checkpoint": "/home/shutiao/ForceAwareACT_workspace/model_library/1mm_x14y08_55_v3_20261026/01_action_early_stop/01_act_none_no_history_zero/best.pt",
   "checkpoint_sha256": "be3f8756534df3b7622db5d6dc0e86143a0d6fa036c27bfe299762b58e2c9b08",
@@ -14,5 +15,5 @@
   "force_input": "none",
   "force_role": "same-frame gravity compensation and task tare for safety and HUD",
   "sdk": "/home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++/libMarvinSDK.so",
-  "transport": "build/right_arm_sensor_control_sdk20261026b.so"
+  "transport": "build/right_arm_sensor_control_protective_sdk20261026.so"
 }

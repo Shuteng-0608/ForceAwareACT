@@ -124,8 +124,12 @@ def describe(selected, options, *, prepare_only=False, policy_kind="contact", ma
                          ("5s or longer no-contact sensor tare in final mode" if options.ft_calibration_file else "2s no-contact software calibration in final mode"),
                          f"fresh observations and [{selected.config.action_chunk_len},7] prediction",
                          "50Hz inference / 100Hz aggregation and guarded target submission",
-                         "revoke targets / observe standstill / optional servo off"],
-            "stop_limit": "ceasing targets can retain the last target; communication loss cannot confirm standstill"}
+                         ("protective fault: revoke targets and immediately request IDLE; confirm feedback and standstill"
+                          if options.servo_off_on_fault else "protective fault: revoke targets / observe standstill / optional servo off"),
+                         "normal completion or time limit: revoke targets / observe standstill / optional servo off"],
+            "stop_limit": ("protective IDLE submission needs controller feedback and measured standstill confirmation; no zero-force requirement"
+                           if options.servo_off_on_fault else
+                           "ceasing targets can retain the last target; communication loss cannot confirm standstill")}
 
 
 def run_live(args, selected, options, *, policy_kind="contact"):

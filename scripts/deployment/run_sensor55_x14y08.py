@@ -31,6 +31,11 @@ def controller_arguments(argv=None, *, binding_path=None,
             or m['model_kind']!=model_kind or m['force_dim']!=6 or m['action_chunk_len']!=20
             or m['force_frame']!='right_ft_measurement'):
         raise ValueError(f'pinned sensor55 {model_kind} model contract changed')
+    if a.enable_control and b.get('require_servo_off_on_fault'):
+        from force_aware_act.control.command_session import SessionOptions
+        options=SessionOptions.read(a.session_config or ROOT/b['session_config'])
+        if not options.servo_off_on_fault:
+            p.error('this entry requires servo_off_on_fault=true; create a new session from the current candidate config')
     args=['--goal-id','x14y08','--model-manifest',str(manifest),
           '--checkpoint',b['checkpoint'],'--controller-profile',str(ROOT/b['controller_profile']),
           '--session-config',str(a.session_config or ROOT/b['session_config']),

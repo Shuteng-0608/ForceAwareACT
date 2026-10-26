@@ -142,6 +142,98 @@ def test_actual_fk_sphere_dwell_uses_same_stop_path():
     assert transport.revoked and session.core.goal.result["goal_id"] == "x13y07"
 
 
+@pytest.mark.parametrize('reason', ['sensor_force_hard', 'sensor_torque_hard',
+                                  'target_feedback_error', 'feedback_timeout', 'camera_timeout'])
+def test_protective_stop_submits_idle_immediately_then_checks_mode_and_standstill(reason):
+    session, transport, start = prepared_session()
+    session.options = replace(session.options, servo_off_on_fault=True)
+    nominal_tick(session, transport, start+10_000_000, 1)
+    stop_at = start+20_000_000
+    session.stop(reason, stop_at)
+    assert transport.calls[-1][0] == 'servo_off'
+    assert session.stop_request['servo_off_first_attempt_ns'] == stop_at
+    assert session.stop_request['servo_off_requested']
+    assert session.packet_counts['servo_off'] == 1 and session.core.executor.closed
+    assert session.state == 'STOPPING'  # Submission is not physical confirmation.
+    for elapsed in range(10_000_000, 900_000_000, 10_000_000):
+        row = transport.row(stop_at+elapsed)
+        if elapsed <= 300_000_000:
+            row['qvel_rad_s'][0] = .2
+        session.feedback(row, stop_at+elapsed)
+        assert session.tick(stop_at+elapsed, stop_at+elapsed) is None
+        if elapsed == 400_000_000:
+            assert session.state == 'STOPPING'  # IDLE feedback alone is insufficient.
+    assert session.state == 'SERVO_OFF_CONFIRMED'
+    assert session.packet_counts['target'] == 1 and session.packet_counts['servo_off'] == 1
+    assert session.stop_request['servo_off_feedback_ns'] == stop_at+10_000_000
+    assert session.stop_request['standstill_observed_ns'] >= stop_at+800_000_000
+    assert session.stop_request['reason'] == reason
+
+
+def test_protective_setting_preserves_normal_standstill_then_idle_sequence():
+    session, transport, start = prepared_session(servo_off=True)
+    session.options = replace(session.options, servo_off_on_fault=True)
+    stop_at = start+10_000_000
+    session.stop('operator_or_parent_stop', stop_at)
+    assert session.packet_counts['servo_off'] == 0
+    for elapsed in range(10_000_000, 900_000_000, 10_000_000):
+        session.feedback(transport.row(stop_at+elapsed), stop_at+elapsed)
+    assert session.state == 'SERVO_OFF_CONFIRMED'
+    assert session.stop_request['servo_off_first_attempt_ns'] >= stop_at+500_000_000
+    assert 'immediate_servo_off' not in session.stop_request
+
+
+def test_busy_protective_idle_is_retried_without_a_standstill_wait():
+    session, transport, start = prepared_session()
+    session.options = replace(session.options, servo_off_on_fault=True)
+    send = transport.servo_off
+    calls = []
+    def busy_once():
+        calls.append(1)
+        return 'busy' if len(calls) == 1 else send()
+    transport.servo_off = busy_once
+    session.stop('sensor_force_hard', start)
+    assert session.state == 'STOPPING' and not session.stop_request['servo_off_requested']
+    session.poll(start+1_000_000)
+    assert session.packet_counts['servo_off'] == 1
+    assert session.stop_request['servo_off_submission_attempts'] == 2
+    assert session.stop_request['servo_off_submission']['at_ns'] == start+1_000_000
+
+
+def test_pending_protective_idle_cannot_finish_as_holding_last_target():
+    session, transport, start = prepared_session()
+    session.options = replace(session.options, servo_off_on_fault=True)
+    transport.servo_off = lambda: 'busy'
+    session.stop('sensor_force_hard', start)
+    for elapsed in range(10_000_000, 700_000_000, 10_000_000):
+        session.feedback(transport.row(start+elapsed), start+elapsed)
+        session.poll(start+elapsed)
+    assert session.state == 'STOPPING' and not session.stop_request['servo_off_confirmed']
+    session.poll(start+2_000_000_000)
+    assert session.state == 'STOP_UNCONFIRMED' and session.packet_counts['target'] == 0
+
+
+@pytest.mark.parametrize('raises', [False, True])
+def test_protective_idle_submission_failure_never_claims_confirmation(raises):
+    session, transport, start = prepared_session()
+    session.options = replace(session.options, servo_off_on_fault=True)
+    def fail():
+        if raises:
+            raise RuntimeError('offline SDK result unavailable')
+        return 'error'
+    transport.servo_off = fail
+    session.stop('sensor_force_hard', start)
+    assert session.state == 'STOP_UNCONFIRMED'
+    assert not session.stop_request['servo_off_confirmed']
+    assert session.stop_request['reason'] == 'sensor_force_hard'
+    assert transport.revoked and session.packet_counts['target'] == 0
+
+
+def test_protective_setting_requires_an_explicit_boolean():
+    with pytest.raises(ValueError, match='JSON booleans'):
+        SessionOptions(servo_off_on_fault=1)
+
+
 def test_preview_and_discard_do_not_advance_submitted_reference():
     config = select_goal("x13y07").config
     q = (np.array(config.limits.joint_min_rad)+config.limits.joint_max_rad)/2

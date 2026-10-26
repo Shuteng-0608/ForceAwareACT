@@ -27,6 +27,7 @@ class SessionOptions:
     stop_policy: str = "cease_targets"
     # An IDLE packet disables the servo, not the robot's main electrical supply.
     servo_off_after_standstill: bool = False
+    servo_off_on_fault: bool = False
     startup_timeout_s: float = 15.
     packet_settle_ms: float = 250.
     transition_timeout_s: float = 2.
@@ -48,7 +49,8 @@ class SessionOptions:
     def __post_init__(self):
         if self.schema_version != "right_command_session_v1" or self.stop_policy != "cease_targets":
             raise ValueError("unsupported session schema/stop policy")
-        if type(self.allow_hardware) is not bool or type(self.servo_off_after_standstill) is not bool:
+        if any(type(getattr(self, name)) is not bool for name in (
+                'allow_hardware', 'servo_off_after_standstill', 'servo_off_on_fault')):
             raise ValueError("hardware and servo-off switches must be JSON booleans")
         for name in self.__dataclass_fields__:
             if name.endswith(("_s", "_ms", "_rad", "_nm")) and name != "ft_torque_hard_nm":
@@ -287,7 +289,13 @@ the two-second window, including any transition transient still in that window.
                         (wrench[:3], self.options.ft_force_hard_n, "sensor_force_hard"),
                         (wrench[3:], self.options.ft_torque_hard_nm, "sensor_torque_hard")):
                         if bound is not None and np.any(values >= bound):
-                            self.stop(reason, now_ns); return
+                            self.stop(reason, now_ns)
+                            self.stop_request['sensor_hard_trigger'] = {
+                                'detected_ns': now_ns, 'received_ns': received,
+                                'frame_serial': frame, 'wrench_N_Nm': list(sensor['wrench_si']),
+                                'force_limits_N': self.options.ft_force_hard_n,
+                                'moment_limits_Nm': self.options.ft_torque_hard_nm}
+                            return
             except (ValueError, RuntimeError, KeyError) as exc:
                 self.stop("sensor_ft_invalid", now_ns)
                 self.stop_request["sensor_detail"] = str(exc)
@@ -359,6 +367,8 @@ the two-second window, including any transition transient still in that window.
             if now_ns >= deadline:
                 self.stop_request["physical_status"] = "unconfirmed"
                 self._transition("STOP_UNCONFIRMED", now_ns)
+            elif self.stop_request.get('immediate_servo_off') and self.stop_stage != 'IDLE_SENT':
+                self._submit_servo_off(now_ns)
             return
         if self.last is not None and now_ns-self.last["received_monotonic_ns"] > self.selection.config.feedback_max_age_ms*1e6:
             self.stop("feedback_timeout", now_ns); return
@@ -421,6 +431,8 @@ the two-second window, including any transition transient still in that window.
 
     def stop(self, reason, now_ns):
         if self.stop_request is not None:
+            if reason not in ('coarse_goal_reached', 'operator_stop', 'operator_or_parent_stop'):
+                self._request_protective_servo_off(reason, now_ns)
             return
         self.stop_request = {"reason": reason, "requested_ns": now_ns,
                              "targets_revoked": True, "physical_status": "unconfirmed",
@@ -433,11 +445,51 @@ the two-second window, including any transition transient still in that window.
         self.bias = None  # Never reusable for inference or in another session.
         self.stop_rows.clear()
         self._transition("STOPPING", now_ns)
+        if reason not in ('coarse_goal_reached', 'operator_stop', 'operator_or_parent_stop'):
+            self._request_protective_servo_off(reason, now_ns)
+
+    def _request_protective_servo_off(self, reason, now_ns):
+        """Submit the existing vendor IDLE request without waiting for standstill."""
+        if not self.options.servo_off_on_fault or self.terminal:
+            return
+        self.stop_request.setdefault('immediate_servo_off', {
+            'trigger_reason': reason, 'requested_ns': now_ns})
+        if self.stop_stage != 'IDLE_SENT':
+            self._submit_servo_off(now_ns)
+
+    def _submit_servo_off(self, now_ns):
+        if self.terminal or self.stop_stage == 'IDLE_SENT':
+            return
+        self.stop_request.setdefault('servo_off_first_attempt_ns', now_ns)
+        self.stop_request['servo_off_submission_attempts'] = self.stop_request.get('servo_off_submission_attempts', 0)+1
+        try:
+            result = self.transport.servo_off()
+            detail = deepcopy(getattr(self.transport, 'last_submission_detail', None))
+        except Exception as exc:
+            result, detail = 'error', {'exception': type(exc).__name__, 'message': str(exc)}
+        submission = {'result': result, 'at_ns': now_ns, 'transport': detail}
+        timing = getattr(self.transport, 'last_servo_off_timing', None)
+        if timing:
+            submission['sdk_timing'] = dict(timing)
+            submission['stop_to_sdk_finished_ms'] = (timing['finished_ns']-self.stop_request['requested_ns'])/1e6
+            protective = self.stop_request.get('immediate_servo_off')
+            if protective:
+                submission['protective_to_sdk_finished_ms'] = (timing['finished_ns']-protective['requested_ns'])/1e6
+        self.stop_request['servo_off_submission'] = submission
+        if result == 'submitted':
+            self.packet_counts['servo_off'] += 1
+            self.stop_request['servo_off_requested'] = True
+            self.stop_stage, self.phase_ns = 'IDLE_SENT', now_ns
+        elif result != 'busy':
+            self.stop_request['physical_status'] = 'servo_off_submission_failed'
+            self._transition('STOP_UNCONFIRMED', now_ns)
 
     def _observe_stop(self, row, now_ns):
         if self.terminal or row["received_monotonic_ns"] <= self.stop_request["requested_ns"]:
             return
         self._observe_sensor_after_stop(row, now_ns)
+        if self.terminal:
+            return
         if row["error_code"] != 0:
             self.stop_request["controller_error_after_stop"] = row["error_code"]
             self.stop_rows.clear(); return
@@ -446,14 +498,27 @@ the two-second window, including any transition transient still in that window.
             torque = np.abs(np.asarray(row["external_raw_nm"])-self.stop_bias)
             if np.any(torque >= self.selection.config.limits.torque_hard_nm):
                 self.stop_request["hard_torque_after_stop"] = {"at_ns": now_ns, "absolute_nm": torque.tolist()}
+                self._request_protective_servo_off('hard_torque_after_stop', now_ns)
+                if self.terminal:
+                    return
         self.stop_rows.append(row)
         while len(self.stop_rows) > 2 and row["received_monotonic_ns"]-self.stop_rows[1]["received_monotonic_ns"] >= self.options.stationary_dwell_ms*1e6:
             self.stop_rows.popleft()
         if self.stop_stage == "IDLE_SENT":
+            if row['state'] == 0:
+                self.stop_request.setdefault('servo_off_feedback_ns', now_ns)
+            stationary = self._stationary(self.stop_rows, self.options.stationary_dwell_ms)
+            if stationary:
+                self.stop_request.setdefault('standstill_observed_ns', now_ns)
             if row["state"] == 0 and now_ns-self.phase_ns >= self.options.packet_settle_ms*1e6:
+                if self.stop_request.get('immediate_servo_off') and not stationary:
+                    return
                 self.stop_request.update(servo_off_confirmed=True, physical_status="servo_off_feedback")
+                self.stop_request['servo_off_confirmed_ns'] = now_ns
                 self._transition("SERVO_OFF_CONFIRMED", now_ns)
             return
+        if self.stop_request.get('immediate_servo_off'):
+            return  # An SDK-busy protective request stays pending; poll retries it.
         if self._stationary(self.stop_rows, self.options.stationary_dwell_ms):
             self.stop_request["physical_status"] = "standstill_observed_servo_may_hold_last_target"
             if not self.options.servo_off_after_standstill:
@@ -462,23 +527,13 @@ the two-second window, including any transition transient still in that window.
                 self.stop_request.update(servo_off_confirmed=True, physical_status="already_servo_off_feedback")
                 self._transition("SERVO_OFF_CONFIRMED", now_ns)
             elif row["state"] == 3 and row["impedance_type"] == 1:
-                result = self.transport.servo_off()
-                self.stop_request["servo_off_submission"] = {
-                    "result": result, "at_ns": now_ns,
-                    "transport": deepcopy(getattr(self.transport, "last_submission_detail", None))}
-                if result == "submitted":
-                    self.packet_counts["servo_off"] += 1
-                    self.stop_request["servo_off_requested"] = True
-                    self.stop_stage, self.phase_ns = "IDLE_SENT", now_ns
-                elif result != "busy":
-                    self.stop_request["physical_status"] = "servo_off_submission_failed"
-                    self._transition("STOP_UNCONFIRMED", now_ns)
+                self._submit_servo_off(now_ns)
 
     def _observe_sensor_after_stop(self, row, now_ns):
         """Keep the fixed run tare visible after revocation; never resume targets.
 
-        This monitors and records escalation only. It does not implement contact
-        unloading or change the separately configured standstill/servo-off path.
+        A newly observed fault can request protective IDLE immediately. Contact
+        unloading or zero force is not part of the stopping confirmation.
         """
         if self.sensor_ft is None:
             return
@@ -521,6 +576,7 @@ the two-second window, including any transition transient still in that window.
                          "frame_serial": row["frame_serial"], "violations": violations}
                 self.stop_request.setdefault("sensor_hard_after_stop", event)
                 self.core.safety.trip(violations[0]["reason"], now_ns, violations=violations)
+                self._request_protective_servo_off(violations[0]['reason'], now_ns)
         except (ValueError, RuntimeError, KeyError, TypeError) as exc:
             monitor["error_samples"] += 1
             row.pop("sensor_ft", None)
@@ -528,6 +584,7 @@ the two-second window, including any transition transient still in that window.
             event = {"detected_ns": now_ns, "received_ns": row["received_monotonic_ns"], "detail": str(exc)}
             self.stop_request.setdefault("sensor_ft_error_after_stop", event)
             self.core.safety.trip("sensor_ft_error_after_stop", now_ns, detail=str(exc))
+            self._request_protective_servo_off('sensor_ft_error_after_stop', now_ns)
 
     def report(self):
         reason = self.stop_request["reason"] if self.stop_request else None

@@ -262,6 +262,40 @@ def test_post_stop_monitor_records_force_when_additional_thresholds_are_unset(st
     assert session.report()['outcome'] == 'ended' and session.packet_counts['target'] == 0
 
 
+@pytest.mark.parametrize('axis', range(6))
+def test_sensor_axis_limit_submits_idle_in_the_detection_call(stopped_sensor_session, axis):
+    session, transport, start, row = stopped_sensor_session
+    session.options = replace(session.options, servo_off_on_fault=True)
+    wrench = np.zeros(6)
+    wrench[axis] = -1.1*np.array([20.,20.,60.,1.15,2.55,.24])[axis]
+    now = start+10_000_000
+    frame = row(now, wrench)
+    frame['qvel_rad_s'][0] = .2  # Submission must not wait for a stationary window.
+    session.feedback(frame, now)
+    reason = 'sensor_force_hard' if axis < 3 else 'sensor_torque_hard'
+    assert session.stop_request['reason'] == reason
+    assert session.stop_request['immediate_servo_off']['requested_ns'] == now
+    assert session.stop_request['servo_off_first_attempt_ns'] == now
+    assert session.packet_counts['servo_off'] == 1 and session.packet_counts['target'] == 0
+    assert [c[0] for c in transport.calls] == ['parameters','mode','servo_off']
+    np.testing.assert_allclose(session.stop_request['sensor_hard_trigger']['wrench_N_Nm'], wrench, atol=1e-13)
+    assert session.tick(now, now) is None and session.state == 'STOPPING'
+
+
+def test_hard_force_after_a_normal_stop_escalates_to_immediate_idle(stopped_sensor_session):
+    session, transport, start, row = stopped_sensor_session
+    session.options = replace(session.options, servo_off_on_fault=True)
+    session.stop('operator_or_parent_stop', start)
+    assert session.packet_counts['servo_off'] == 0
+    now = start+10_000_000
+    session.feedback(row(now, [0,0,-70,0,0,0]), now)
+    assert session.stop_request['reason'] == 'operator_or_parent_stop'
+    assert session.stop_request['immediate_servo_off']['trigger_reason'] == 'sensor_force_hard_after_stop'
+    assert session.stop_request['servo_off_first_attempt_ns'] == now
+    assert session.packet_counts['servo_off'] == 1
+    assert session.report()['outcome'] == 'aborted'
+
+
 def test_twenty_point_chunk_uses_timestamp_indices_and_expires():
     config = replace(select_goal('x13y07').config, action_chunk_len=20)
     executor = TemporalExecutor(0,'unit',config)
