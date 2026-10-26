@@ -1,0 +1,62 @@
+2026-10-26 新 PC 部署构建与只读入口验收
+
+代码提交：dca410c30ceaa71cdbe86e0c9a80918d6af02e01
+分支：codex/real-robot-sdk-deployment
+目标电脑：shutiao@192.168.8.112，主机 shutiao-MS-7E92
+仓库：/home/shutiao/tianji_deployment/ForceAwareACT
+Python：/home/shutiao/miniconda3/envs/tianji/bin/python
+同步方式：Git bundle 完整历史，正常 Git 分支检出；未推送 GitHub。
+旧部署快照、标定仓库、模型及数据文件未改动。
+本机无关的未跟踪数据审核文档未纳入提交。
+
+依赖和构建
+缺少 Eigen/yaml-cpp 系统开发文件，下载 Ubuntu 包并只解包到用户目录：
+/home/shutiao/tianji_deployment/dependencies_20261026/root/usr
+未使用 sudo，未安装全局软件包。
+libeigen3-dev 3.4.0-2ubuntu2；libyaml-cpp-dev/libyaml-cpp0.7 0.7.0+dfsg-8build1。
+以下均在新 PC 构建成功：
+  build/ft_compensation.so
+  build/right_arm_sensor_readonly.so
+  build/right_arm_sensor_control.so（仅编译，没有加载或执行控制入口）
+SDK：/home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++/libMarvinSDK.so
+版本 100343014，与标定使用库一致。
+
+验证
+本机测试 166 passed in 10.63s；新 PC tianji 环境 166 passed in 7.47s。
+默认只读入口预览成功加载本次参数，没有连接硬件。
+只读库的 nm 动态符号检查通过：
+  CheckSDKTypeCompat、OnGetSDKVersion、OnLinkTo、OnGetBuf、OnSetUserSpcfData_B、OnRelease。
+没有 fa_target/fa_configure/fa_enter_impedance/fa_servo_off 导出；
+没有 OnSetSend、OnSetJointCmdPos_B 等运动发送函数引用。
+
+本次参数
+/home/shutiao/tianji_ws/src/tianji_io_teleop_bridge/config/right_ft_calibration_current.yaml
+created_utc=2026-10-26T02:03:58.483330+00:00，validation_passed=true。
+mass_kg=0.3150315330909086。
+com_sensor_m=[-0.00010461330840264997,-0.0005357830441749213,0.05356472209994842]。
+文件按路径加载，没有固定标定参数哈希；下次重新标定覆盖后会加载新内容。
+
+10 秒纯反馈检查
+新 PC 日志：
+/home/shutiao/tianji_deployment/ForceAwareACT/reports/sensor_readonly_20261026_check1/
+本机摘要副本：outputs/sensor_deployment_sync_20261026_dca410c/
+独立帧 4445，观测速率 444.515 Hz（此为读取程序观测速率，不是确认传感器原生频率）。
+接收间隔 P99=2.333 ms，最大=6.837 ms。
+单帧 FK/重力补偿处理 P99=0.1456 ms。
+通道全部 216；错误码全部 0；补偿数据全部有限。
+模式读回始终 state=1、impedance_type=0；速度/加速度读回始终 10%/10%。
+各关节位置跨度最大约 1.80e-6 rad。
+未去皮的补偿六维均值 [N,N,N,Nm,Nm,Nm]：
+[0.164786,-0.031253,0.360586,-0.002297,0.005061,0.008191]。
+各轴标准差：
+[0.012075,0.012689,0.014708,0.000267,0.000270,0.000309]。
+读取结束 SDK 正常释放，未残留占用机器人 UDP 4730 的进程。
+
+本轮没有任务去皮、相机接入、模型推理、参数/模式改变、运动目标或伺服指令。
+此次仅确认最新参数加载、同帧六维数据读取、补偿运算与纯读取入口。
+下一阶段需现场确认静止无接触后完成软件去皮，再验证 HUD/相机/新权重只读推理。
+
+明确保留的版本事项
+运行日志显示控制器系统版本 100343024，SDK 版本 100343014，并打印 SDK update!。
+读取及本次标定均成功，但这不能代替运动接口版本兼容性确认。
+本轮没有替换 SDK 或更新控制器；实际运动前需核对厂家兼容要求。

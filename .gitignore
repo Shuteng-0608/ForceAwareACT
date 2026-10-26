@@ -35,3 +35,6 @@ src/*.egg-info/
 
 # Locally compiled deployment adapters and their machine-specific manifests.
 /build/
+
+# Per-machine deployment observations and acceptance reports.
+/reports/
