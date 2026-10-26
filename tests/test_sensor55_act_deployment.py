@@ -2,6 +2,7 @@
 from dataclasses import asdict
 import json
 from pathlib import Path
+import re
 from types import SimpleNamespace
 
 import numpy as np
@@ -47,6 +48,40 @@ def test_act_hardware_entry_rejects_a_session_without_immediate_protection(tmp_p
     path.write_text(json.dumps(old))
     with pytest.raises(SystemExit):
         entry.controller_arguments(['--enable-control', '--session-config', str(path)])
+
+
+def test_enabled_runs_get_unique_timestamped_paths_without_creating_directories(tmp_path):
+    paths=[]
+    for _ in range(2):
+        args=entry.controller_arguments(['--enable-control','--seconds','10'])
+        path=Path(args[args.index('--output')+1])
+        assert path.parent==entry.ROOT/'reports'
+        assert re.fullmatch(r'sensor55_act_x14y08_rollout_10s_\d{8}_\d{6}_\d{6}_[a-f0-9]{6}',path.name)
+        assert not path.exists()
+        paths.append(path)
+    assert paths[0]!=paths[1]
+    explicit=tmp_path/'chosen_by_operator'
+    args=entry.controller_arguments(['--enable-control','--output',str(explicit)])
+    assert args[args.index('--output')+1]==str(explicit) and not explicit.exists()
+
+
+def test_enabled_entry_prints_the_actual_output_before_dispatch_without_devices(tmp_path, monkeypatch, capsys):
+    from scripts.deployment import run_contact_controller as shared
+    config=json.loads((entry.ROOT/'configs/deployment/command_session_sensor55_candidate.json').read_text())
+    config['allow_hardware']=True
+    path=tmp_path/'session.json'
+    path.write_text(json.dumps(config))
+    calls=[]
+    def journal_run(args, selected, options, *, policy_kind):
+        assert not args.output.exists()
+        calls.append(args.output)
+        assert policy_kind=='act' and options.servo_off_on_fault
+        return 0
+    monkeypatch.setattr(shared,'run_live',journal_run)
+    assert entry.main(['--enable-control','--operator-confirmed-no-contact',
+                       '--session-config',str(path),'--seconds','10'])==0
+    assert capsys.readouterr().out.strip()==f'日志目录：{calls[0].resolve()}'
+    assert not calls[0].exists()
 
 
 @pytest.mark.parametrize('field,value', [

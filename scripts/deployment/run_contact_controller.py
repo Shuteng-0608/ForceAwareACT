@@ -399,6 +399,7 @@ def main(argv=None, *, policy_kind="contact"):
         preview['hud'] = {'requested':args.hud,'started':False,'url':f'http://127.0.0.1:{args.hud_port}'}
         print(json.dumps(preview, indent=2))
         return 0
+    print(f'日志目录：{args.output.resolve()}', flush=True)
     return run_live(args, selected, options, policy_kind=policy_kind)
 
 
