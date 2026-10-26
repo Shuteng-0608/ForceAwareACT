@@ -28,6 +28,7 @@ def main(argv=None):
     p.add_argument('--seconds',type=float,default=10.)
     p.add_argument('--output',type=Path)
     p.add_argument('--connect',action='store_true')
+    p.add_argument('--stream',action='store_true',help='emit same-frame observations to a read-only consumer')
     p.add_argument('--tare',action='store_true')
     p.add_argument('--operator-confirmed-no-contact',action='store_true')
     args=p.parse_args(argv)
@@ -70,6 +71,8 @@ def main(argv=None):
                         result=sensor.process(row)
                     times.append(ns);processing.append(result['processing_ms']);values.append(result['compensated_si'])
                     stream.write(json.dumps(row)+'\n')
+                    if args.stream:
+                        print(json.dumps({'kind':'feedback','record':row},separators=(',',':')),flush=True)
                 time.sleep(.002)
     except Exception as exc:errors.append(str(exc))
     finally:

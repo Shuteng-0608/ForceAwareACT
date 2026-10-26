@@ -61,7 +61,8 @@ class DeploymentHud:
     def update(self, packet, now_ns):
         self.packet = packet
         record = packet.get('record')
-        if not record or packet.get('bias_nm') is None:
+        sensor_source = self.config.get('source_kind') == 'right_ft_sensor'
+        if not record or (packet.get('bias_nm') is None and not sensor_source):
             self.estimate = None
             self.model.invalidate('WAITING for deployment software calibration')
             return
@@ -75,9 +76,9 @@ class DeploymentHud:
         self.last_source_ns = source_ns
         try:
             q = np.asarray(record['qpos_rad'], dtype=float)
-            bias = np.asarray(packet['bias_nm'], dtype=float)
-            tau = np.asarray(record['external_raw_nm'], dtype=float)-bias
-            if q.shape != (7,) or tau.shape != (7,) or bias.shape != (7,):
+            bias = np.asarray(packet['bias_nm'], dtype=float) if packet.get('bias_nm') is not None else None
+            tau = np.asarray(record['external_raw_nm'], dtype=float)-bias if bias is not None else None
+            if q.shape != (7,) or (bias is not None and (tau.shape != (7,) or bias.shape != (7,))):
                 raise ValueError('expected seven joints and seven calibration biases')
             if self.config.get('source_kind') == 'right_ft_sensor':
                 sensor = record['sensor_ft']
@@ -98,11 +99,12 @@ class DeploymentHud:
                     return
                 w = np.r_[rotation @ w_sensor[:3], rotation @ w_sensor[3:]]
                 self.estimate = {'source_ns':source_ns, 'qpos_rad':q.tolist(),
-                    'zeroed_tau_nm':tau.tolist(), 'wrench_base':w.tolist(),
+                    'zeroed_tau_nm':tau.tolist() if tau is not None else None, 'wrench_base':w.tolist(),
                     'wrench_sensor':w_sensor.tolist(), 'reference_point':'sensor',
                     'source_kind':'right_ft_sensor', 'relative_residual':None,
                     'condition':None, 'rank':None, 'diagnostics':[],
-                    'distance_mm':float(np.linalg.norm(transform[:3,3]/1000.-self.goal['target_position_m'])*1000.)}
+                    'distance_mm':(float(np.linalg.norm(transform[:3,3]/1000.-self.goal['target_position_m'])*1000.)
+                                   if self.goal.get('target_position_m') is not None else None)}
                 return
             out = equivalent_wrench(flange_jacobian(q), tau)
             w = out['wrench_base']
@@ -211,7 +213,7 @@ class DeploymentHud:
             else:
                 text(f'RESIDUAL: {e["relative_residual"]:.1%}', 970, 480)
                 text(f'CONDITION: {e["condition"]:.2f}', 970, 512)
-            text(f'GOAL: {e["distance_mm"]:.1f} mm', 970, 544)
+            text(f'GOAL: {e["distance_mm"]:.1f} mm' if e['distance_mm'] is not None else 'GOAL: not selected', 970, 544)
             if e['diagnostics']:
                 text(' / '.join(e['diagnostics'])[:30], 970, 582, .4, (90,190,240))
         else:
