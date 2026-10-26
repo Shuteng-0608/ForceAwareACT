@@ -14,14 +14,14 @@
   "stop_observe_timeout_s": 2.0,
   "sdk_busy_timeout_ms": 100.0,
   "expected_sdk_version": 100343014,
-  "expected_sdk_sha256": "dd6b7afdbda8de3bafb6797c6f94547302ae60bf285ee8daa9762de45be636d6",
+  "expected_sdk_sha256": "ac80fb5e30963bbede64bc5d0e6d866cb33e2b753de632acfb62e85ae1256492",
   "ft_calibration_file": "/home/shutiao/tianji_ws/src/tianji_io_teleop_bridge/config/right_ft_calibration_current.yaml",
   "ft_compensation_library": "/home/shutiao/tianji_deployment/ForceAwareACT/build/ft_compensation.so",
   "ft_tare_window_s": 5.0,
   "ft_force_hard_n": [
-    26.0,
-    10.0,
-    83.0
+    20.0,
+    20.0,
+    60.0
   ],
   "ft_torque_hard_nm": [
     1.15,

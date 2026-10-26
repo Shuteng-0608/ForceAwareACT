@@ -1,5 +1,8 @@
 2026-10-26 新 PC 部署构建与只读入口验收
 
+后续修正：经SDK源码核对，“SDK update!”本身不是不兼容警告，100343014与100343024符合版本系列匹配规则。
+更新后的构建和只读验证见sensor55_threshold_sdk_update_20261026.txt；下文为本轮历史记录。
+
 代码提交：dca410c30ceaa71cdbe86e0c9a80918d6af02e01
 分支：codex/real-robot-sdk-deployment
 目标电脑：shutiao@192.168.8.112，主机 shutiao-MS-7E92

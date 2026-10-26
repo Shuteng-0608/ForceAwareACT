@@ -14,7 +14,7 @@
   "stop_observe_timeout_s": 2.0,
   "sdk_busy_timeout_ms": 100.0,
   "expected_sdk_version": 100343014,
-  "expected_sdk_sha256": "dd6b7afdbda8de3bafb6797c6f94547302ae60bf285ee8daa9762de45be636d6",
+  "expected_sdk_sha256": "ac80fb5e30963bbede64bc5d0e6d866cb33e2b753de632acfb62e85ae1256492",
   "ft_calibration_file": null,
   "ft_compensation_library": null,
   "ft_tare_window_s": 5.0,

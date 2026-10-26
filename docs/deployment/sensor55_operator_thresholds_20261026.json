@@ -1,0 +1,1398 @@
+{
+  "date": "2026-10-26",
+  "authority": "operator_selected_force_axes; torque_axes_preserved",
+  "limits": [
+    20.0,
+    20.0,
+    60.0,
+    1.15,
+    2.55,
+    0.24
+  ],
+  "units": [
+    "N",
+    "N",
+    "N",
+    "N*m",
+    "N*m",
+    "N*m"
+  ],
+  "frame": "right_ft_measurement",
+  "total_triggered": 18,
+  "before_goal_triggered": 8,
+  "roles": {
+    "train": {
+      "total": 40,
+      "triggered": 13,
+      "before_goal": 6
+    },
+    "validation": {
+      "total": 10,
+      "triggered": 2,
+      "before_goal": 0
+    },
+    "test": {
+      "total": 5,
+      "triggered": 3,
+      "before_goal": 2
+    }
+  },
+  "records": [
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_172343_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 26.5012743,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.22362361100000072,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        68,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_172657_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_172907_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173022_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173133_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173236_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 22.977595614,
+      "first_axes": [
+        0
+      ],
+      "longest_s": [
+        0.2434000910000016,
+        0.0,
+        0.18621903900000092,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        74,
+        0,
+        57,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173348_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173630_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173820_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173948_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_174547_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_174924_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_175033_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_175137_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_175244_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_175356_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_175512_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 8.366122351,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.17321467500000054,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        53,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_175612_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 8.019144092,
+      "first_axes": [
+        3
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.03252622300000141,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        11,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_190921_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191045_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 8.871521486,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.010144320000000207,
+        0.0,
+        0.006670908999998559,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        13,
+        0,
+        3,
+        0
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191448_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 20.593117197,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.22400306400000147,
+        0.0,
+        0.39270629999999684,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        68,
+        0,
+        119,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191608_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191724_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191834_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 11.265685981,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.3232596660000002,
+        0.0,
+        0.5070366139999987,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        98,
+        0,
+        152,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191959_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_192116_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_192405_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_192528_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 19.165419997,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.07400561300000064,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        23,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_192637_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_192754_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193012_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 20.801088979,
+      "first_axes": [
+        5
+      ],
+      "longest_s": [
+        0.15689556499999924,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.3967411630000015
+      ],
+      "counts": [
+        48,
+        0,
+        0,
+        0,
+        0,
+        120
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193244_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 20.850859924,
+      "first_axes": [
+        5
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.12112984499999868
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        37
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193350_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 17.958308532,
+      "first_axes": [
+        0
+      ],
+      "longest_s": [
+        0.3399812709999992,
+        0.0,
+        0.3869838790000024,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        103,
+        0,
+        117,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193459_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193720_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193953_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 21.10770854,
+      "first_axes": [
+        0
+      ],
+      "longest_s": [
+        0.36034895099999886,
+        0.0,
+        0.2334173530000001,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        109,
+        0,
+        71,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_194057_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_194159_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_194655_0",
+      "role": "train",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_194803_0",
+      "role": "train",
+      "triggered": true,
+      "first_s": 19.494879452,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.24371100300000137,
+        0.0,
+        0.29038724100000124,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        74,
+        0,
+        88,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_172535_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_173526_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_174655_0",
+      "role": "validation",
+      "triggered": true,
+      "first_s": 20.244735748,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.2769255500000014,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        84,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_174817_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_175805_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191310_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_192245_0",
+      "role": "validation",
+      "triggered": true,
+      "first_s": 24.960137524,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.09433654500000088,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        29,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_192900_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193116_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193605_0",
+      "role": "validation",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_174236_0",
+      "role": "test",
+      "triggered": true,
+      "first_s": 9.557317949,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.4765076980000007,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        144,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_174427_0",
+      "role": "test",
+      "triggered": true,
+      "first_s": 6.995698284,
+      "first_axes": [
+        5
+      ],
+      "longest_s": [
+        3.2327982019999997,
+        0.0,
+        3.2734971039999996,
+        3.440570238000001,
+        3.5069176639999995,
+        3.459467062999999
+      ],
+      "counts": [
+        969,
+        0,
+        980,
+        1181,
+        1053,
+        1036
+      ],
+      "before_first_coarse_goal": true
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_191156_0",
+      "role": "test",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_193840_0",
+      "role": "test",
+      "triggered": false,
+      "first_s": null,
+      "first_axes": [],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    },
+    {
+      "episode": "Tianji_Marvin_M6CCS_261020_194306_0",
+      "role": "test",
+      "triggered": true,
+      "first_s": 26.8428033,
+      "first_axes": [
+        2
+      ],
+      "longest_s": [
+        0.0,
+        0.0,
+        0.17679250100000132,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "counts": [
+        0,
+        0,
+        54,
+        0,
+        0,
+        0
+      ],
+      "before_first_coarse_goal": false
+    }
+  ]
+}

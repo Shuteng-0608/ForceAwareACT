@@ -1,0 +1,75 @@
+2026-10-26：用户阈值调整与更新SDK复核（覆盖同日前序准备报告的对应设置）
+
+工具与目标
+用户确认末端新加装了力传感器，工具链发生变化。
+将此信息记录为新旧法兰目标差异的背景，继续使用55条新数据计算的x14y08中心：
+[508.4240171,-314.8913705,226.7064691] mm，半径3mm，连续500ms。
+35.1813mm是两批数据的法兰中心差，不是直接测得的传感器厚度。
+未改变FK本体几何、目标中心或新六维力模型绑定。
+
+当前保护值
+用户指定：Fx/Fy/Fz的绝对值硬阈值为[20,20,60] N。
+Tx/Ty/Tz保持[1.15,2.55,0.24] Nm。
+同帧补偿并任务去皮后的right_ft_measurement值，任一轴绝对值>=阈值停止。
+不在模型输入上裁剪数据；没有额外的力保护滤波、持续时间或回滞。
+首动作/后续误差0.1rad、单步0.03rad；其余位置/关节力矩保护保持不变。
+allow_hardware仍为false，静止确认后的自动下使能仍为true。
+
+55条完整记录的离线阈值检查
+训练40条：13条触发，其中6条在首次粗略目标到达前。
+验证10条：2条触发，均发生于首次粗略目标到达后。
+测试5条：3条触发，其中2条在首次粗略目标到达前。
+合计18/55条触发，8/55条在首次粗略目标到达前。
+按原始消息逐样本检查，包含到达后的停留或其他末段；这些比例不是误报率或闭环失败概率。
+统计不修改原数据、不放宽用户设置。逐条结果：sensor55_operator_thresholds_20261026.json。
+
+SDK文件更新
+新PC库路径：/home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++/libMarvinSDK.so
+新SHA256：ac80fb5e30963bbede64bc5d0e6d866cb33e2b753de632acfb62e85ae1256492
+旧SHA256：dd6b7afdbda8de3bafb6797c6f94547302ae60bf285ee8daa9762de45be636d6
+文件时间2026-10-26 11:05，SDK_PYTHON目录同名库与DEMO_C++库哈希相同。
+实际OnGetSDKVersion仍返回100343014；本次读取控制器仍返回100343024。
+SDK仓库HEAD=bc4f611，工作区另有用户的MarvinPlatform_EN/tools_cfg.json修改，未碰该文件。
+contrlSDK100343目录中旧预编译库与DEMO_C++库不同，本次绑定/构建只使用DEMO_C++的更新文件。
+
+修正此前的兼容性判断
+检查本机新PC可读的厂家源码：
+/home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/contrlSDK100343/Robot.cpp
+OnLinkTo在约684行比较(ctrlSysVers/1000)与(SDKVer/1000)，并非比较完整整数是否相同。
+100343024/1000与100343014/1000均为100343，符合源码的版本系列规则。
+OnSetUserSpcfData_B在约2022行选择CHANNEL1后，会直接打印“SDK update!”。
+该日志本身不是版本不兼容警告。真正不匹配日志含“Warning: Version mismatch”。
+本次只读连接没有该不匹配警告；不再将版本尾数不同或“SDK update!”作为待解决阻碍。
+更正同日前三份报告中把此日志列为兼容性疑点的表述。
+这证明版本系列与读取/ABI检查通过；尚未在新库上执行模式切换、运动或停止验收。
+
+构建及10秒只读检查
+使用新SDK及现有头文件，-Wall -Wextra -Werror -Wl,-z,defs构建成功：
+build/right_arm_sensor_readonly_sdk20261026b.so
+build/right_arm_sensor_control_sdk20261026b.so
+均保留旧构建，不覆盖。新模型专用入口绑定已更新为后者。
+控制版仅编译，没有加载执行控制入口。
+只读版动态符号白名单通过：CheckSDKTypeCompat, OnGetSDKVersion, OnLinkTo,
+OnGetBuf, OnSetUserSpcfData_B, OnRelease；没有运动/模式/伺服接口导出。
+运行CheckSDKTypeCompat：类型尺寸、pack(4)、字节序全部通过。
+10秒读取4533个独立反馈帧，观测453.284Hz；间隔P99=2.3303ms，最大6.0850ms。
+同帧FK/补偿处理P99=0.1400ms，errors=[]，SDK正常释放。
+结束后没有observer残留进程或UDP4730占用。
+本次未软件去皮、未加载模型推理、未发送运动目标、模式切换、刚度/速度或伺服指令。
+只调用只读入口的反馈连接及通道216选择；补偿仅在读取端计算。
+
+代码与使用
+更新command_session_sensor_ft.json和command_session_sensor55_candidate.json的SDK校验值。
+更新sensor55_model_binding.json的控制适配库路径。
+旧的当次会话JSON仍可能含旧SDK校验值，不应复用；之后从更新后的模板创建新会话。
+旧适配库构建清单也含旧SDK哈希；下一次只读使用新readonly_sdk20261026b.so。
+旧的模型文件、55条数据、标定结果和本机无关34条审核文档均未改动。
+本机相关测试22项通过，命令：
+PYTHONPATH=src:. python -m pytest -q tests/test_sensor_deployment_reference.py tests/test_command_session.py tests/test_right_arm_transport.py
+新PC默认预览仍为：PYTHONPATH=src:. python scripts/deployment/run_sensor55_x14y08.py
+默认不连接机器人；新SDK上的参数/模式准备验收及3秒动作测试留给用户现场执行。
+
+证据
+本机：outputs/sensor55_threshold_sdk_update_20261026/
+新PC：reports/sdk20261026b_readonly_check/、reports/sdk20261026b_readonly_console.txt、
+reports/readonly_sdk20261026b_build.json、reports/control_sdk20261026b_build.json。

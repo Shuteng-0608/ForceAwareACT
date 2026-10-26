@@ -1,5 +1,8 @@
 2026-10-26 新 PC 六维力 / HUD / 模型只读联调
 
+后续SDK复核：版本系列检查已通过，“SDK update!”为通道选择后的通用日志，不是版本不匹配警告。
+新库哈希、重建路径及当前力阈值见sensor55_threshold_sdk_update_20261026.txt；下文保留本轮历史实测。
+
 实施版本：4e0822ff8b673068556572d6a5a401ed1a626176
 分支：codex/real-robot-sdk-deployment
 新 PC 仓库：/home/shutiao/tianji_deployment/ForceAwareACT

@@ -19,5 +19,5 @@
     "normalization_matches": true
   },
   "sdk": "/home/shutiao/TJ_FX_ROBOT_CONTRL_SDK/DEMO_C++/libMarvinSDK.so",
-  "transport": "build/right_arm_sensor_control.so"
+  "transport": "build/right_arm_sensor_control_sdk20261026b.so"
 }

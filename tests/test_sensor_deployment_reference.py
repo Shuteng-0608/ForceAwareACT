@@ -42,5 +42,5 @@ def test_new_profile_only_selects_new_x14y08_and_guards_are_explicit():
     with pytest.raises(ValueError,match='unknown goal'):select_goal('x13y07',root)
     session=json.loads(Path('configs/deployment/command_session_sensor55_candidate.json').read_text())
     assert session['allow_hardware'] is False and session['servo_off_after_standstill'] is True
-    assert session['ft_force_hard_n']==[26,10,83]
+    assert session['ft_force_hard_n']==[20,20,60]
     assert session['ft_torque_hard_nm']==[1.15,2.55,.24]
